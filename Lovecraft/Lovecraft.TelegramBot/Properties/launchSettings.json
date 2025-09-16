@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Lovecraft.TelegramBot": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
