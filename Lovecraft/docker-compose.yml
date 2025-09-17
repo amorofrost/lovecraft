@@ -46,6 +46,7 @@ services:
       - WebApi__BaseUrl=https://lovecraft-webapi:5001/
       - ALLOWED_SERVER_THUMBPRINTS=${ALLOWED_SERVER_THUMBPRINTS}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ACCESS_CODE=${ACCESS_CODE}
     restart: unless-stopped
     healthcheck:
       # The WebAPI is configured to require client certificates in this setup.

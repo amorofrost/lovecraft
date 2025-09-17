@@ -81,9 +81,10 @@
    -e CLIENT_CERT_PATH=/app/certs/client.pfx \
    -e CLIENT_CERT_PASSWORD= \
    -e WebApi__BaseUrl=https://lovecraft-webapi:5001/ \
-   -e ALLOWED_SERVER_THUMBPRINTS="$SERVER_TP" \
-   -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
-   lovecraft-telegrambot:local
+  -e ALLOWED_SERVER_THUMBPRINTS="$SERVER_TP" \
+  -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+  -e ACCESS_CODE="$ACCESS_CODE" \
+  lovecraft-telegrambot:local
 ```
 
  Notes on names/urls
@@ -145,6 +146,8 @@ To simplify local runs you can use `docker-compose.yml` included in the repo roo
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 ALLOWED_SERVER_THUMBPRINTS=4751C07F3D796323AAB7D3B2F0F40A25CCB7C714
 ALLOWED_CLIENT_THUMBPRINTS=74D00CB9785B2BCC02E88F1466740AE9489F8688
+# ACCESS_CODE is the shared secret users must provide to the bot as `/start <ACCESS_CODE>`
+ACCESS_CODE=ABC123
 ```
 
 2) Run compose (build + start):

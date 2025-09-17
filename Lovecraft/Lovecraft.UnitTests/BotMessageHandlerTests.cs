@@ -62,23 +62,80 @@ namespace Lovecraft.UnitTests
     public class BotMessageHandlerTests
     {
         [TestMethod]
-        public async Task StartCommand_SendsWeatherResponse()
+        public async Task StartCommand_SendsWeatherResponse_WithCorrectAccessCode()
         {
             var sender = new FakeSender();
             var api = new FakeApiClient();
             var handler = new BotMessageHandler(sender, api);
 
+            // Set expected access code in environment for the handler to read
+            var prev = System.Environment.GetEnvironmentVariable("ACCESS_CODE");
+            System.Environment.SetEnvironmentVariable("ACCESS_CODE", "ABC123");
+
             var msg = new Message
             {
                 Chat = new Telegram.Bot.Types.Chat { Id = 12345 },
                 From = new Telegram.Bot.Types.User { Id = 1, Username = "testuser" },
-                Text = "/start"
+                Text = "/start ABC123"
             };
 
             await handler.HandleMessageAsync(msg, CancellationToken.None);
 
             Assert.AreEqual(12345, sender.LastChatId);
             Assert.IsTrue(sender.LastText.Contains("WeatherForecast"));
+
+            // restore previous value
+            System.Environment.SetEnvironmentVariable("ACCESS_CODE", prev);
+        }
+
+        [TestMethod]
+        public async Task StartCommand_MissingAccessCode_SendsUnauthorized()
+        {
+            var sender = new FakeSender();
+            var api = new FakeApiClient();
+            var handler = new BotMessageHandler(sender, api);
+
+            var prev = System.Environment.GetEnvironmentVariable("ACCESS_CODE");
+            System.Environment.SetEnvironmentVariable("ACCESS_CODE", "ABC123");
+
+            var msg = new Message
+            {
+                Chat = new Telegram.Bot.Types.Chat { Id = 22222 },
+                From = new Telegram.Bot.Types.User { Id = 2, Username = "user2" },
+                Text = "/start"
+            };
+
+            await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+            Assert.AreEqual(22222, sender.LastChatId);
+            Assert.IsTrue(sender.LastText.Contains("Вы не авторизованы"));
+
+            System.Environment.SetEnvironmentVariable("ACCESS_CODE", prev);
+        }
+
+        [TestMethod]
+        public async Task StartCommand_IncorrectAccessCode_SendsUnauthorized()
+        {
+            var sender = new FakeSender();
+            var api = new FakeApiClient();
+            var handler = new BotMessageHandler(sender, api);
+
+            var prev = System.Environment.GetEnvironmentVariable("ACCESS_CODE");
+            System.Environment.SetEnvironmentVariable("ACCESS_CODE", "ABC123");
+
+            var msg = new Message
+            {
+                Chat = new Telegram.Bot.Types.Chat { Id = 33333 },
+                From = new Telegram.Bot.Types.User { Id = 3, Username = "user3" },
+                Text = "/start WRONG"
+            };
+
+            await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+            Assert.AreEqual(33333, sender.LastChatId);
+            Assert.IsTrue(sender.LastText.Contains("Вы не авторизованы"));
+
+            System.Environment.SetEnvironmentVariable("ACCESS_CODE", prev);
         }
     }
 }

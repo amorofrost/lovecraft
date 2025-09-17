@@ -29,6 +29,18 @@ namespace Lovecraft.TelegramBot
 
             if (cmd == "/start")
             {
+                // Access code validation: expect /start <access_code>
+                var providedCode = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+                var expectedCode = Environment.GetEnvironmentVariable("ACCESS_CODE") ?? string.Empty;
+
+                if (string.IsNullOrEmpty(providedCode) || string.IsNullOrEmpty(expectedCode) ||
+                    !string.Equals(providedCode, expectedCode, StringComparison.Ordinal))
+                {
+                    // Localized unauthorized message to match other bot messages
+                    await _sender.SendMessageAsync(msg.Chat.Id, "Вы не авторизованы для использования системы.", ct);
+                    return;
+                }
+
                 await _sender.SendMessageAsync(msg.Chat.Id, "Привет! Я бот для доступа к Lovecraft.", ct);
                 try
                 {
