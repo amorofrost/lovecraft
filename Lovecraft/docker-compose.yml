@@ -19,14 +19,13 @@ services:
       - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/server.pfx
       - ASPNETCORE_Kestrel__Certificates__Default__Password=
       - Certificates__CaPath=/app/certs/ca.crt
-      - ASPNETCORE_ENVIRONMENT=Development
-      - Logging__LogLevel__Default=Debug
-      - Logging__LogLevel__Microsoft.AspNetCore.Server.Kestrel=Debug
       # Allowed client thumbprints (comma-separated) - override with env or .env
       - Certificates__AllowedClientThumbprints=${ALLOWED_CLIENT_THUMBPRINTS}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -k --fail https://localhost:5001/ || exit 1"]
+      # Use plain HTTP (port 5000) for the local healthcheck to avoid mTLS/TLS handshake issues.
+      # This still verifies the app and Kestrel are running and accepting requests.
+      test: ["CMD-SHELL", "curl --fail http://localhost:5000/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,7 +48,10 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -k --fail https://lovecraft-webapi:5001/WeatherForecast || exit 1"]
+      # The WebAPI is configured to require client certificates in this setup.
+      # Use the PFX (PKCS#12) file directly. If the PFX has no password, present an empty password with a trailing colon.
+      # curl needs the cert type specified for P12 files.
+      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/client.pfx: --fail https://lovecraft-webapi:5001/WeatherForecast || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

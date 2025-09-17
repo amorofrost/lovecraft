@@ -18,6 +18,6 @@ secrets.json
 thumbs.db
 
 # Local test cert artifacts
-/tmp-client.*
+tmp-client.*
 certs/tmp-client.*
 

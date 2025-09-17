@@ -2,6 +2,11 @@
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS base
+# Ensure curl is available for the docker healthcheck. The runtime image is Debian-based.
+USER root
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates curl \
+	&& rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 WORKDIR /app
 
