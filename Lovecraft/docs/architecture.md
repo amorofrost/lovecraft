@@ -28,7 +28,7 @@ flowchart LR
   end
 
   %% External
-  TelegramClient[(Telegram Users)]
+  TelegramClient([Telegram Users])
 
   %% Flows
   TelegramClient -->|Telegram API| TelegramBot
@@ -40,18 +40,8 @@ flowchart LR
   WebAPI -->|Entity / Key-Value| Tables
   WebAPI -->|Files / Blobs| Blobs
 
-  %% Notes
-  classDef secure fill:#fef3c7,stroke:#d97706
-  class WebAPI,TelegramBot,BlazorClient,MobileEdge secure
-
   %% Trust boundary
   class Infra,Storage,TelegramClient internal
-
-  %% Legend
-  subgraph Legend[ ]
-    direction LR
-    A["mTLS / Cert pinning"] --- B["Network Policies / Firewall"]
-  end
 
 ```
 
