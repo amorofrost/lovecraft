@@ -60,9 +60,6 @@ Security considerations / recommended controls
 - Rotate certificates and maintain a small, auditable trust store (CA) used to issue client certs.
 - Log and audit incoming requests in `WebAPI` and monitor failed auth attempts.
 
-How to view the diagram
-- On GitHub the Mermaid block will render in the web UI (if enabled) or with a Mermaid renderer extension. In VS Code install the "Markdown Preview Mermaid Support" extension or use built-in markdown preview if your VS Code supports Mermaid.
-
 File references
 - `Lovecraft.WebAPI` — backend project (see `Lovecraft.WebAPI/Program.cs` and `ConnectionCertificateAuthenticationHandler.cs`).
 - `Lovecraft.TelegramBot` — Telegram edge service (see `Lovecraft.TelegramBot/Program.cs` and bot handlers).
