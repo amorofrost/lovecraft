@@ -104,7 +104,6 @@ namespace Lovecraft.WebAPI
             builder.Services.AddControllers();
 
             var app = builder.Build();
-
             // Configure the HTTP request pipeline.
             app.UseHttpsRedirection();
 
@@ -112,6 +111,35 @@ namespace Lovecraft.WebAPI
             app.UseAuthorization();
 
             app.MapControllers();
+
+            // Log the server addresses on startup for easier debugging.
+            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            try
+            {
+                var addressesFeature = app.Services.GetService<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>();
+                if (addressesFeature != null && addressesFeature.Addresses.Any())
+                {
+                    foreach (var addr in addressesFeature.Addresses)
+                    {
+                        logger.LogInformation("Listening on {Address}", addr);
+                    }
+                }
+                else if (app.Urls != null && app.Urls.Any())
+                {
+                    foreach (var url in app.Urls)
+                    {
+                        logger.LogInformation("Listening on {Url}", url);
+                    }
+                }
+                else
+                {
+                    logger.LogInformation("Listening on default endpoints: http://0.0.0.0:5000 and https://0.0.0.0:5001");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to enumerate server addresses");
+            }
 
             app.Run();
         }
