@@ -16,3 +16,8 @@ secrets.json
 # OS files
 .DS_Store
 thumbs.db
+
+# Local test cert artifacts
+/tmp-client.*
+certs/tmp-client.*
+
