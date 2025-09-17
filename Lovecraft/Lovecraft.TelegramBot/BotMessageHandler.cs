@@ -35,9 +35,9 @@ namespace Lovecraft.TelegramBot
                     var weatherJson = await _apiClient.GetWeatherAsync();
                     await _sender.SendMessageAsync(msg.Chat.Id, $"WeatherForecast response:\n{weatherJson}", ct);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    await _sender.SendMessageAsync(msg.Chat.Id, "Не удалось получить данные с сервера (WebAPI).", ct);
+                    await _sender.SendMessageAsync(msg.Chat.Id, $"Не удалось получить данные с сервера (WebAPI).\r\n{ex.ToString()}", ct);
                 }
             }
             else if (cmd == "/help")

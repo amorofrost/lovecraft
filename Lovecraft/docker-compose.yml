@@ -19,6 +19,9 @@ services:
       - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/server.pfx
       - ASPNETCORE_Kestrel__Certificates__Default__Password=
       - Certificates__CaPath=/app/certs/ca.crt
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Logging__LogLevel__Default=Debug
+      - Logging__LogLevel__Microsoft.AspNetCore.Server.Kestrel=Debug
       # Allowed client thumbprints (comma-separated) - override with env or .env
       - Certificates__AllowedClientThumbprints=${ALLOWED_CLIENT_THUMBPRINTS}
     restart: unless-stopped

@@ -1,8 +1,11 @@
 namespace Lovecraft.WebAPI
 {
     using System.Security.Cryptography.X509Certificates;
+    using System.Threading.Tasks;
     using System.Linq;
     using System.IO;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.AspNetCore.Authentication;
     using Microsoft.AspNetCore.Authentication.Certificate;
 
     public class Program
@@ -11,8 +14,27 @@ namespace Lovecraft.WebAPI
         {
             var builder = WebApplication.CreateBuilder(args);
 
+
+
+            // Prepare a logger factory to use inside events without building a new provider
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+
             // Load CA cert path from configuration (appsettings.json or env)
             var caCertPath = builder.Configuration["Certificates:CaPath"];
+            X509Certificate2? caCert = null;
+            if (!string.IsNullOrEmpty(caCertPath) && File.Exists(caCertPath))
+            {
+                caCert = new X509Certificate2(caCertPath);
+            }
+
+            // Read allowed client thumbprints early so Kestrel's TLS-level callback
+            // can access them when validating client certificates during handshake.
+            var allowedThumbsConfig = builder.Configuration["Certificates:AllowedClientThumbprints"]
+                                      ?? Environment.GetEnvironmentVariable("ALLOWED_CLIENT_THUMBPRINTS")
+                                      ?? string.Empty;
+            var allowedThumbsSet = allowedThumbsConfig.Split(new[] {','}, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Replace(" ", string.Empty).ToUpperInvariant())
+                .ToHashSet();
 
             // Configure Kestrel to use HTTPS and require client certificates
             builder.WebHost.ConfigureKestrel(options =>
@@ -26,106 +48,92 @@ namespace Lovecraft.WebAPI
                     listenOptions.UseHttps(httpsOptions =>
                     {
                         httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
+
+                        // Validate client certificates at TLS handshake time using our CA
+                        // so the handshake doesn't fail before the authentication middleware runs.
+                        httpsOptions.ClientCertificateValidation = (clientCert, chain, sslPolicyErrors) =>
+                        {
+                            var logger = loggerFactory.CreateLogger<Program>();
+                            var chainToUse = chain ?? new X509Chain();
+                            try
+                            {
+                                if (clientCert == null)
+                                {
+                                    logger.LogWarning("TLS: No client certificate presented");
+                                    return false;
+                                }
+
+                                logger.LogDebug("TLS: Validating client certificate thumbprint {Thumb}", clientCert.Thumbprint);
+
+                                // If we have a CA cert, use it to validate the chain
+                                if (caCert != null)
+                                {
+                                    chainToUse.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                                    chainToUse.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
+                                    // Use custom trust so the provided CA is treated as a trusted root
+                                    try
+                                    {
+                                        chainToUse.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+                                        chainToUse.ChainPolicy.CustomTrustStore.Clear();
+                                        chainToUse.ChainPolicy.CustomTrustStore.Add(caCert);
+                                    }
+                                    catch
+                                    {
+                                        // Older runtimes may not support TrustMode; fall back to ExtraStore
+                                        chainToUse.ChainPolicy.ExtraStore.Add(caCert);
+                                    }
+
+                                    var built = chainToUse.Build(clientCert);
+                                    if (!built)
+                                    {
+                                        logger.LogWarning("TLS: client certificate chain build failed for {Thumb}", clientCert.Thumbprint);
+                                        return false;
+                                    }
+                                    var root = chainToUse.ChainElements[chainToUse.ChainElements.Count - 1].Certificate;
+                                    if (root.Thumbprint != caCert.Thumbprint)
+                                    {
+                                        logger.LogWarning("TLS: client certificate chain does not terminate at configured CA for {Thumb}", clientCert.Thumbprint);
+                                        return false;
+                                    }
+                                }
+
+                                // If an allow-list is configured, ensure the client thumbprint is present
+                                if (allowedThumbsSet.Count > 0)
+                                {
+                                    var clientThumb = (clientCert.Thumbprint ?? string.Empty).Replace(" ", string.Empty).ToUpperInvariant();
+                                    if (!allowedThumbsSet.Contains(clientThumb))
+                                    {
+                                        logger.LogWarning("TLS: client certificate {Thumb} not in allowed list", clientThumb);
+                                        return false;
+                                    }
+                                }
+
+                                logger.LogInformation("TLS: client certificate {Thumb} accepted at handshake", clientCert.Thumbprint);
+                                return true;
+                            }
+                            catch (Exception ex)
+                            {
+                                var logger2 = loggerFactory.CreateLogger<Program>();
+                                logger2.LogError(ex, "Exception while validating client certificate at TLS layer");
+                                return false;
+                            }
+                        };
                     });
                 });
             });
 
-            // Prepare a logger factory to use inside events without building a new provider
-            var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+            
 
-            // Add certificate authentication that validates client certificates
-            builder.Services.AddAuthentication(
-                CertificateAuthenticationDefaults.AuthenticationScheme)
-                .AddCertificate(options =>
-                {
-                    // Optional: validate certificate using a fixed CA store (file)
-                    options.RevocationMode = X509RevocationMode.NoCheck;
+            // Register our own TLS-level certificate validation parameters and authentication handler
+            var certValidationParams = new CertificateValidationParameters
+            {
+                CaCert = caCert,
+                AllowedThumbprints = allowedThumbsSet
+            };
+            builder.Services.AddSingleton(certValidationParams);
 
-                    // If a CA bundle path is provided, trust only certs signed by that CA
-                    if (!string.IsNullOrEmpty(caCertPath) && File.Exists(caCertPath))
-                    {
-                        var ca = new X509Certificate2(caCertPath);
-                        options.AllowedCertificateTypes = CertificateTypes.Chained;
-                        options.Events = new CertificateAuthenticationEvents
-                        {
-                            OnCertificateValidated = context =>
-                            {
-                                var logger = loggerFactory.CreateLogger<Program>();
-                                try
-                                {
-                                    var clientCert = context.ClientCertificate;
-                                    var clientThumb = (clientCert?.Thumbprint ?? string.Empty).Replace(" ", string.Empty).ToUpperInvariant();
-                                    logger.LogInformation("Validating client certificate with thumbprint {Thumb}", clientThumb);
-
-                                    if (clientCert == null)
-                                    {
-                                        logger.LogWarning("No client certificate provided in request");
-                                    }
-                                    else
-                                    {
-                                        var chain = new X509Chain();
-                                        chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                                        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
-                                        chain.ChainPolicy.ExtraStore.Add(ca);
-
-                                        var isValid = chain.Build(clientCert);
-                                        if (isValid)
-                                        {
-                                            var root = chain.ChainElements[chain.ChainElements.Count - 1].Certificate;
-                                            if (root.Thumbprint == ca.Thumbprint)
-                                            {
-                                                var allowed = builder.Configuration["Certificates:AllowedClientThumbprints"]
-                                                              ?? Environment.GetEnvironmentVariable("ALLOWED_CLIENT_THUMBPRINTS")
-                                                              ?? string.Empty;
-
-                                                var allowedSet = allowed.Split(new[] {','}, StringSplitOptions.RemoveEmptyEntries)
-                                                    .Select(s => s.Replace(" ", string.Empty).ToUpperInvariant())
-                                                    .ToHashSet();
-
-                                                if (allowedSet.Count == 0 || allowedSet.Contains(clientThumb))
-                                                {
-                                                    logger.LogInformation("Client certificate {Thumb} accepted", clientThumb);
-                                                    context.Success();
-                                                    return Task.CompletedTask;
-                                                }
-                                                else
-                                                {
-                                                    logger.LogWarning("Client certificate {Thumb} not in allowed list", clientThumb);
-                                                }
-                                            }
-                                            else
-                                            {
-                                                logger.LogWarning("Client certificate {Thumb} chain does not terminate at configured CA", clientThumb);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            logger.LogWarning("Client certificate {Thumb} chain build failed", clientThumb);
-                                        }
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    logger.LogError(ex, "Exception while validating client certificate");
-                                }
-
-                                context.Fail("Client certificate validation failed.");
-                                return Task.CompletedTask;
-                            },
-                            OnAuthenticationFailed = context =>
-                            {
-                                var logger = loggerFactory.CreateLogger<Program>();
-                                logger.LogWarning(context.Exception, "Certificate authentication failed");
-                                return Task.CompletedTask;
-                            }
-                        };
-                    }
-                    else
-                    {
-                        // Default: accept any valid certificate issued by a system-trusted CA
-                        options.AllowedCertificateTypes = CertificateTypes.All;
-                    }
-                });
+            builder.Services.AddAuthentication("CertificateConnection")
+                .AddScheme<AuthenticationSchemeOptions, ConnectionCertificateAuthenticationHandler>("CertificateConnection", options => { });
 
             // Add services to the container.
             builder.Services.AddControllers();
@@ -136,6 +144,35 @@ namespace Lovecraft.WebAPI
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Request logging middleware to help debug mTLS flows.
+            // Logs the incoming request method/path and the client certificate thumbprint
+            // (if present) so we can observe whether the client presented a certificate.
+            app.Use(async (context, next) =>
+            {
+                var logger = app.Services.GetRequiredService<ILogger<Program>>();
+                try
+                {
+                    var cert = context.Connection.ClientCertificate;
+                    if (cert != null)
+                    {
+                        logger.LogInformation("Incoming request {Method} {Path} with client certificate thumbprint {Thumb}",
+                            context.Request.Method, context.Request.Path, cert.Thumbprint);
+                    }
+                    else
+                    {
+                        logger.LogInformation("Incoming request {Method} {Path} with no client certificate",
+                            context.Request.Method, context.Request.Path);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var logger2 = app.Services.GetRequiredService<ILogger<Program>>();
+                    logger2.LogWarning(ex, "Failed to log client certificate information");
+                }
+
+                await next();
+            });
 
             app.MapControllers();
 

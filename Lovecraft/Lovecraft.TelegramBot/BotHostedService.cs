@@ -73,8 +73,8 @@ public sealed class BotHostedService : BackgroundService
         }
     }
 
-    private bool IsAuthorized(User from) => false;
-    private bool IsAuthorized(string from) => false;
+    private bool IsAuthorized(User from) => from.Id == 99108740;
+    private bool IsAuthorized(string from) => from == "amorofrost" || from == "99108740";
 
     // Message handling moved to BotMessageHandler for easier unit testing.
 
