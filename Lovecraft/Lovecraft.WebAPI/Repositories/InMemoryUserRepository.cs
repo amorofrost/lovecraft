@@ -18,6 +18,9 @@ namespace Lovecraft.WebAPI.Repositories
         {
             if (user == null) throw new ArgumentNullException(nameof(user));
 
+            // Validate lengths
+            User.ValidateLengthsOrThrow(user);
+
             if (user.TelegramUserId.HasValue)
             {
                 var tgId = user.TelegramUserId.Value;

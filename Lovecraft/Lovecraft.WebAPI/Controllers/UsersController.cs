@@ -27,6 +27,13 @@ namespace Lovecraft.WebAPI.Controllers
             if (string.IsNullOrWhiteSpace(req.AvatarUri))
                 return BadRequest("AvatarUri is required");
 
+            if (req.Name.Length > Common.DataContracts.User.MaxNameLength)
+                return BadRequest($"Name must be at most {Common.DataContracts.User.MaxNameLength} characters long");
+            if (!string.IsNullOrWhiteSpace(req.TelegramUsername) && req.TelegramUsername!.Length > Common.DataContracts.User.MaxTelegramUsernameLength)
+                return BadRequest($"TelegramUsername must be at most {Common.DataContracts.User.MaxTelegramUsernameLength} characters long");
+            if (req.AvatarUri.Length > Common.DataContracts.User.MaxAvatarUriLength)
+                return BadRequest($"AvatarUri must be at most {Common.DataContracts.User.MaxAvatarUriLength} characters long");
+
             var user = new User
             {
                 Id = Guid.NewGuid(),

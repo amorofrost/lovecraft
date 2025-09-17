@@ -32,10 +32,19 @@ namespace Lovecraft.UnitTests
         public async Task Create_LongStrings_AreStored()
         {
             var repo = new InMemoryUserRepository();
-            var longName = new string('x', 10000);
-            var u = new User { Name = longName, AvatarUri = "https://a" };
+            var validName = new string('x', Lovecraft.Common.DataContracts.User.MaxNameLength);
+            var u = new User { Name = validName, AvatarUri = "https://a" };
             var created = await repo.CreateAsync(u);
-            Assert.AreEqual(longName, created.Name);
+            Assert.AreEqual(validName, created.Name);
+        }
+
+        [TestMethod]
+        public async Task Create_TooLongName_ThrowsArgument()
+        {
+            var repo = new InMemoryUserRepository();
+            var longName = new string('x', Lovecraft.Common.DataContracts.User.MaxNameLength + 1);
+            var u = new User { Name = longName, AvatarUri = "https://a" };
+            await Assert.ThrowsExceptionAsync<ArgumentException>(async () => await repo.CreateAsync(u));
         }
 
         [TestMethod]
