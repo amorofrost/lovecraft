@@ -17,10 +17,16 @@ namespace Lovecraft.WebAPI
             // Configure Kestrel to use HTTPS and require client certificates
             builder.WebHost.ConfigureKestrel(options =>
             {
-                options.ConfigureHttpsDefaults(httpsOptions =>
+                // Explicitly bind HTTP and HTTPS endpoints.
+                // HTTP: listen on 0.0.0.0:5000 (optional)
+                // HTTPS: listen on 0.0.0.0:5001 and require client certificates for mTLS
+                options.ListenAnyIP(5000); // HTTP
+                options.ListenAnyIP(5001, listenOptions =>
                 {
-                    // Require client certificate
-                    httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
+                    listenOptions.UseHttps(httpsOptions =>
+                    {
+                        httpsOptions.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.RequireCertificate;
+                    });
                 });
             });
 
