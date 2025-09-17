@@ -9,13 +9,13 @@ flowchart LR
     direction TB
     subgraph AKS[Container Hosts]
       direction LR
-      WebAPI[[Lovecraft.WebAPI (Container))]]
-      TelegramBot[[Lovecraft.TelegramBot (Container)]]
+      WebAPI[[Lovecraft.WebAPI]]
+      TelegramBot[[Lovecraft.TelegramBot]]
     end
     subgraph Mobile[Mobile / Web Clients]
       direction TB
-      BlazorClient[[Blazor Web UI (future)]]
-      MobileEdge[[Mobile Edge Service (Android / iOS)]]
+      BlazorClient[[Blazor Web UI]]
+      MobileEdge[[Mobile Edge Service]]
     end
   end
 
