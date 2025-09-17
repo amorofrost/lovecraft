@@ -15,11 +15,17 @@ public sealed class BotHostedService : BackgroundService
 
     private readonly ITelegramBotClient _bot;
     private readonly ILogger<BotHostedService> _log;
+    private readonly Lovecraft.Common.ILovecraftApiClient _apiClient;
+    private readonly IBotHandler _handler;
+    private readonly IBotSender _sender;
 
-    public BotHostedService(ITelegramBotClient bot, ILogger<BotHostedService> log)
+    public BotHostedService(ITelegramBotClient bot, ILogger<BotHostedService> log, Lovecraft.Common.ILovecraftApiClient apiClient, IBotHandler handler, IBotSender sender)
     {
         _bot = bot;
         _log = log;
+        _apiClient = apiClient;
+        _handler = handler;
+        _sender = sender;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,10 +54,10 @@ public sealed class BotHostedService : BackgroundService
     {
         try
         {
-            if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text)
-            {
-                await HandleMessage(update.Message!, ct);
-            }
+                if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text)
+                {
+                    await _handler.HandleMessageAsync(update.Message!, ct);
+                }
             else if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Photo)
             {
                 // handle photo message
@@ -70,56 +76,30 @@ public sealed class BotHostedService : BackgroundService
     private bool IsAuthorized(User from) => false;
     private bool IsAuthorized(string from) => false;
 
-    private async Task HandleMessage(Message msg, CancellationToken ct)
+    // Message handling moved to BotMessageHandler for easier unit testing.
+
+    private Task<Member> HandleInit(Message msg, CancellationToken ct)
     {
-        _log.LogInformation($"Received message from {msg.From?.Username}|{msg.From?.Id}: {msg.Text} (#{msg.Chat.Id})");
-
-        if (msg.From is null) return;
-
-        if (!IsAuthorized(msg.From))
-        {
-            _log.LogWarning("Unauthorized access attempt by {Username}", msg.From.Username);
-            await _bot.SendMessage(msg.Chat.Id, $"Твой аккаунт ({msg.From.Username}) еще не зарегистрирован", cancellationToken: ct);
-            return;
-        }
-
-        var member = await HandleInit(msg, ct);
-        if (member is null)
-        {
-            _log.LogWarning("Member initialization failed for {Username}", msg.From.Username);
-            await _bot.SendMessage(msg.Chat.Id, "Ошибка инициализации пользователя", cancellationToken: ct);
-            return;
-        }
-
-        var text = msg.Text!.Trim();
-        var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        var cmd = parts[0].ToLowerInvariant();
-        var arg = parts.Length > 1 ? parts[1].Trim() : string.Empty;
-
-        switch (cmd)
-        {
-            case "/start":
-                await HandleStartCmd(member, msg, ct);
-                break;
-
-            case "/help":
-                await HandleHelpCmd(member, msg, ct);
-                break;
-
-            default:
-                await _bot.SendMessage(msg.Chat.Id, "Неизвестная команда, /help - список команд", cancellationToken: ct);
-                break;
-        }
-    }
-
-    private async Task<Member> HandleInit(Message msg, CancellationToken ct)
-    {
-        return new Member();
+        return Task.FromResult(new Member());
     }
 
     private async Task HandleStartCmd(Member member, Message msg, CancellationToken ct)
     {
+        // Greet the user
         await _bot.SendMessage(msg.Chat.Id, $"Привет! Я бот для доступа к Lovecraft.", cancellationToken: ct);
+
+        // Try to call the protected WebAPI using the typed ApiClient (mTLS configured)
+        try
+        {
+            var weatherJson = await _apiClient.GetWeatherAsync();
+            // Send the raw JSON result to the user (consider formatting/parsing for prettier output)
+            await _bot.SendMessage(msg.Chat.Id, $"WeatherForecast response:\n{weatherJson}", cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Failed to call WebAPI");
+            await _bot.SendMessage(msg.Chat.Id, "Не удалось получить данные с сервера (WebAPI).", cancellationToken: ct);
+        }
     }
 
     private async Task HandleHelpCmd(Member member, Message msg, CancellationToken ct)

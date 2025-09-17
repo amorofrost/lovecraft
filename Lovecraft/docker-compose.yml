@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  webapi:
+    build:
+      context: .
+      dockerfile: Lovecraft.WebAPI/Dockerfile
+    image: lovecraft-webapi:local
+    container_name: lovecraft-webapi
+    networks:
+      - lovecraft-net
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/server.pfx
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=
+      - Certificates__CaPath=/app/certs/ca.crt
+      # Allowed client thumbprints (comma-separated) - override with env or .env
+      - Certificates__AllowedClientThumbprints=${ALLOWED_CLIENT_THUMBPRINTS}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k --fail https://localhost:5001/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  telegrambot:
+    build:
+      context: .
+      dockerfile: Lovecraft.TelegramBot/Dockerfile
+    image: lovecraft-telegrambot:local
+    container_name: lovecraft-telegrambot
+    networks:
+      - lovecraft-net
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - CLIENT_CERT_PATH=/app/certs/client.pfx
+      - CLIENT_CERT_PASSWORD=
+      - WebApi__BaseUrl=https://lovecraft-webapi:5001/
+      - ALLOWED_SERVER_THUMBPRINTS=${ALLOWED_SERVER_THUMBPRINTS}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k --fail https://lovecraft-webapi:5001/WeatherForecast || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+networks:
+  lovecraft-net:
+    driver: bridge

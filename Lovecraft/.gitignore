@@ -1,0 +1,18 @@
+# Ignore generated certificates and secrets
+certs/
+certs_test/
+
+# User secrets and environment files
+.env
+secrets.json
+
+# Build outputs
+**/bin/
+**/obj/
+
+# VSCode
+.vscode/
+
+# OS files
+.DS_Store
+thumbs.db
