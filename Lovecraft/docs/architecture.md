@@ -9,8 +9,8 @@ flowchart LR
     direction TB
     subgraph AKS[Container Hosts]
       direction LR
-      WebAPI[[Lovecraft.WebAPI\n(Container)]]
-      TelegramBot[[Lovecraft.TelegramBot\n(Container)]]
+      WebAPI[[Lovecraft.WebAPI (Container))]]
+      TelegramBot[[Lovecraft.TelegramBot (Container)]]
     end
     subgraph Mobile[Mobile / Web Clients]
       direction TB
