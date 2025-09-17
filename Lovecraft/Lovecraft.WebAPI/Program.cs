@@ -137,6 +137,8 @@ namespace Lovecraft.WebAPI
 
             // Add services to the container.
             builder.Services.AddControllers();
+            // Register user repository (in-memory for now)
+            builder.Services.AddSingleton<Repositories.IUserRepository, Repositories.InMemoryUserRepository>();
 
             var app = builder.Build();
             // Configure the HTTP request pipeline.

@@ -1,9 +1,16 @@
+using System;
 using System.Threading.Tasks;
+using Lovecraft.Common.DataContracts;
 
 namespace Lovecraft.Common
 {
     public interface ILovecraftApiClient
     {
         Task<string> GetWeatherAsync();
+
+        Task<User> CreateUserAsync(CreateUserRequest req);
+        Task<User?> GetUserByIdAsync(Guid id);
+        Task<User?> GetUserByTelegramUserIdAsync(long telegramUserId);
+        Task<User?> GetUserByTelegramUsernameAsync(string username);
     }
 }
