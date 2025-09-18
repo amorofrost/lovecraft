@@ -10,7 +10,7 @@ namespace Lovecraft.WebAPI
 
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -150,6 +150,48 @@ namespace Lovecraft.WebAPI
             builder.Services.AddSingleton<Repositories.IUserRepository, Repositories.InMemoryUserRepository>();
 
             var app = builder.Build();
+
+            // Load sample users from sample-users.json into the in-memory repository (if present)
+            try
+            {
+                var env = builder.Environment;
+                var contentRoot = env.ContentRootPath;
+                var samplePath = Path.Combine(contentRoot, "sample-users.json");
+                if (File.Exists(samplePath))
+                {
+                    var loggerLoad = app.Services.GetRequiredService<ILogger<Program>>();
+                    loggerLoad.LogInformation("Loading sample users from {Path}", samplePath);
+                    var json = await File.ReadAllTextAsync(samplePath);
+                    var users = System.Text.Json.JsonSerializer.Deserialize<Lovecraft.Common.DataContracts.User[]>(json, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (users != null && users.Length > 0)
+                    {
+                        var repo = app.Services.GetRequiredService<Repositories.IUserRepository>();
+                        foreach (var u in users)
+                        {
+                            try
+                            {
+                                // Ensure IDs and CreatedAt are set if omitted in file
+                                if (u.Id == Guid.Empty) u.Id = Guid.NewGuid();
+                                if (u.CreatedAt == default) u.CreatedAt = DateTime.UtcNow;
+                                await repo.CreateAsync(u);
+                                loggerLoad.LogInformation("Inserted sample user {Name} ({Id})", u.Name, u.Id);
+                            }
+                            catch (Exception ex)
+                            {
+                                loggerLoad.LogWarning(ex, "Failed to insert sample user {Name}", u?.Name);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                var loggerEx = app.Services.GetRequiredService<ILogger<Program>>();
+                loggerEx.LogWarning(ex, "Failed to load sample users");
+            }
             // Configure the HTTP request pipeline.
             app.UseHttpsRedirection();
 
@@ -216,7 +258,7 @@ namespace Lovecraft.WebAPI
                 logger.LogWarning(ex, "Failed to enumerate server addresses");
             }
 
-            app.Run();
+            await app.RunAsync();
         }
     }
 }

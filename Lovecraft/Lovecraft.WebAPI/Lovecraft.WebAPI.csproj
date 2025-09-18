@@ -17,4 +17,12 @@
     <ProjectReference Include="..\Lovecraft.Common\Lovecraft.Common.csproj" />
   </ItemGroup>
 
+  <!-- Include sample resources in publish output so they end up in the app content root inside the container -->
+  <ItemGroup>
+    <None Include="Resources/sample-users.json">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
