@@ -54,14 +54,11 @@ public sealed class BotHostedService : BackgroundService
     {
         try
         {
-                if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text)
+                if (update.Type == UpdateType.Message &&
+                    (update.Message!.Type == MessageType.Text || update.Message!.Type == MessageType.Photo))
                 {
                     await _handler.HandleMessageAsync(update.Message!, ct);
                 }
-            else if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Photo)
-            {
-                // handle photo message
-            }
             else if (update.Type == UpdateType.CallbackQuery)
             {
                 await HandleCallback(update.CallbackQuery!, ct);
