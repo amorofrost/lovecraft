@@ -23,10 +23,11 @@ namespace Lovecraft.UnitTests
             });
 
             // direct call to WebAPI
-            var res = await client.GetAsync("/WeatherForecast");
+            var res = await client.GetAsync("/health");
             res.EnsureSuccessStatusCode();
             var json = await res.Content.ReadAsStringAsync();
-            Assert.IsTrue(json.Length > 10);
+            // Expect a JSON payload with at least the 'Ready' field
+            Assert.IsTrue(json.Contains("Ready") || json.Contains("ready"));
 
             // Now use ApiClient with the factory client and BotMessageHandler
             var apiClient = new Lovecraft.Common.LovecraftApiClient(client);

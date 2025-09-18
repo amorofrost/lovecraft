@@ -9,10 +9,10 @@ namespace Lovecraft.WebAPI.Repositories
     public class InMemoryUserRepository : IUserRepository
     {
         private readonly ConcurrentDictionary<Guid, User> _store = new();
-    // Index from TelegramUserId -> internal Guid
-    private readonly ConcurrentDictionary<long, Guid> _telegramIndex = new();
-    // Index for username (case-insensitive) -> internal Guid
-    private readonly ConcurrentDictionary<string, Guid> _usernameIndex = new(StringComparer.OrdinalIgnoreCase);
+        // Index from TelegramUserId -> internal Guid
+        private readonly ConcurrentDictionary<long, Guid> _telegramIndex = new();
+        // Index for username (case-insensitive) -> internal Guid
+        private readonly ConcurrentDictionary<string, Guid> _usernameIndex = new(StringComparer.OrdinalIgnoreCase);
 
         public Task<User> CreateAsync(User user)
         {

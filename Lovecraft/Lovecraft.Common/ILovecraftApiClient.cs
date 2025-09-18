@@ -6,7 +6,7 @@ namespace Lovecraft.Common
 {
     public interface ILovecraftApiClient
     {
-        Task<string> GetWeatherAsync();
+        Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync();
 
         Task<User> CreateUserAsync(CreateUserRequest req);
         Task<User?> GetUserByIdAsync(Guid id);

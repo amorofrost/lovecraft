@@ -93,7 +93,7 @@
  5) Test with your Telegram client
 
  - Open your Telegram app and send `/start` to your bot (the bot username is printed in logs when it starts).
- - The bot should reply with a greeting and the `WeatherForecast` response fetched from the WebAPI via mTLS.
+- The bot should reply with a greeting and the `Health` response fetched from the WebAPI via mTLS.
 
  Helpful commands while debugging
  ```bash

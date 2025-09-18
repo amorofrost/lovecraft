@@ -21,9 +21,9 @@ namespace Lovecraft.UnitTests
 
     class FakeApiClient : Lovecraft.Common.ILovecraftApiClient
     {
-        public Task<string> GetWeatherAsync()
+        public Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync()
         {
-            return Task.FromResult("[{\"Summary\":\"Test\", \"TemperatureC\":25}] ");
+            return Task.FromResult(new Lovecraft.Common.DataContracts.HealthInfo { Ready = true, Version = "test", Uptime = System.TimeSpan.FromSeconds(1) });
         }
 
         public Task<Lovecraft.Common.DataContracts.User> CreateUserAsync(Lovecraft.Common.DataContracts.CreateUserRequest req)
@@ -82,7 +82,7 @@ namespace Lovecraft.UnitTests
             await handler.HandleMessageAsync(msg, CancellationToken.None);
 
             Assert.AreEqual(12345, sender.LastChatId);
-            Assert.IsTrue(sender.LastText.Contains("WeatherForecast"));
+            Assert.IsTrue(sender.LastText.Contains("Health"));
 
             // restore previous value
             System.Environment.SetEnvironmentVariable("ACCESS_CODE", prev);

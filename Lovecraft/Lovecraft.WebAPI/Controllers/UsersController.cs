@@ -1,5 +1,4 @@
-using System;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Lovecraft.Common.DataContracts;
 using Lovecraft.WebAPI.Repositories;
@@ -8,6 +7,7 @@ namespace Lovecraft.WebAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly IUserRepository _repo;

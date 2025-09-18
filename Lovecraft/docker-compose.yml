@@ -52,7 +52,7 @@ services:
       # The WebAPI is configured to require client certificates in this setup.
       # Use the PFX (PKCS#12) file directly. If the PFX has no password, present an empty password with a trailing colon.
       # curl needs the cert type specified for P12 files.
-      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/client.pfx: --fail https://lovecraft-webapi:5001/WeatherForecast || exit 1"]
+      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/client.pfx: --fail https://lovecraft-webapi:5001/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

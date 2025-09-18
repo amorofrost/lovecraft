@@ -44,8 +44,8 @@ namespace Lovecraft.TelegramBot
                 await _sender.SendMessageAsync(msg.Chat.Id, "Привет! Я бот для доступа к Lovecraft.", ct);
                 try
                 {
-                    var weatherJson = await _apiClient.GetWeatherAsync();
-                    await _sender.SendMessageAsync(msg.Chat.Id, $"WeatherForecast response:\n{weatherJson}", ct);
+                    var health = await _apiClient.GetHealthAsync();
+                    await _sender.SendMessageAsync(msg.Chat.Id, $"Health: ready={health.Ready}, version={health.Version}, uptime={health.Uptime}", ct);
                 }
                 catch (Exception ex)
                 {

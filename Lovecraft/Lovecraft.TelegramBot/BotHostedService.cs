@@ -83,18 +83,17 @@ public sealed class BotHostedService : BackgroundService
         return Task.FromResult(new Member());
     }
 
-    private async Task HandleStartCmd(Member member, Message msg, CancellationToken ct)
+        private async Task HandleStartCmd(Member member, Message msg, CancellationToken ct)
     {
         // Greet the user
         await _bot.SendMessage(msg.Chat.Id, $"Привет! Я бот для доступа к Lovecraft.", cancellationToken: ct);
 
         // Try to call the protected WebAPI using the typed ApiClient (mTLS configured)
-        try
-        {
-            var weatherJson = await _apiClient.GetWeatherAsync();
-            // Send the raw JSON result to the user (consider formatting/parsing for prettier output)
-            await _bot.SendMessage(msg.Chat.Id, $"WeatherForecast response:\n{weatherJson}", cancellationToken: ct);
-        }
+    try
+    {
+        var health = await _apiClient.GetHealthAsync();
+        await _bot.SendMessage(msg.Chat.Id, $"Health: ready={health.Ready}, version={health.Version}, uptime={health.Uptime}", cancellationToken: ct);
+    }
         catch (Exception ex)
         {
             _log.LogError(ex, "Failed to call WebAPI");

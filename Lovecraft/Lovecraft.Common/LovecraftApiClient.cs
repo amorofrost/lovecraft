@@ -16,11 +16,13 @@ namespace Lovecraft.Common
             _http = http;
         }
 
-        public async Task<string> GetWeatherAsync()
+        public async Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync()
         {
-            var res = await _http.GetAsync("/WeatherForecast");
+            var res = await _http.GetAsync("/health");
             res.EnsureSuccessStatusCode();
-            return await res.Content.ReadAsStringAsync();
+            var dto = await res.Content.ReadFromJsonAsync<Lovecraft.Common.DataContracts.HealthInfo>();
+            if (dto != null) return dto;
+            return new Lovecraft.Common.DataContracts.HealthInfo { Ready = true, Version = string.Empty, Uptime = TimeSpan.Zero };
         }
 
         public async Task<User> CreateUserAsync(CreateUserRequest req)
