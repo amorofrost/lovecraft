@@ -156,7 +156,7 @@ namespace Lovecraft.WebAPI
             {
                 var env = builder.Environment;
                 var contentRoot = env.ContentRootPath;
-                var samplePath = Path.Combine(contentRoot, "sample-users.json");
+                var samplePath = Path.Combine(contentRoot, "Resources", "sample-users.json");
                 if (File.Exists(samplePath))
                 {
                     var loggerLoad = app.Services.GetRequiredService<ILogger<Program>>();
