@@ -9,7 +9,6 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 WORKDIR /app
-EXPOSE 5000
 EXPOSE 5001
 
 

@@ -121,6 +121,21 @@
    - Automate certificate rotation and update pinned thumbprints via a secure secret store.
    - Remove permissive validation and enforce full chain validation + revocation checks.
 
+Production HTTPS-only
+---------------------
+
+- The WebAPI is configured to accept HTTPS (port `5001`) and to require client certificates for mTLS in production. The HTTP endpoint (port `5000`) is intentionally disabled in non-development environments to prevent unauthenticated access.
+- For convenience the HTTP endpoint is enabled automatically when `ASPNETCORE_ENVIRONMENT=Development` so local development remains easy. In Production this is disabled and the startup log will include a line like:
+
+```
+info: KestrelEndpointConfig[0]
+  Kestrel endpoint config: Environment=Production; EnableHttp5000=False
+```
+
+- Docker healthchecks have been updated to use HTTPS. The `webapi` healthcheck uses `curl` with `--cacert /app/certs/ca.crt` to validate the server certificate; the `telegrambot` healthcheck presents the client PFX during the call to the WebAPI health endpoint so the API can accept the check over mTLS.
+- If you prefer strict curl verification inside the container, ensure the CA is installed into the image trust store and remove the `-k` flag from the healthcheck in `docker-compose.yml`.
+- Note: I removed the obsolete top-level `version` key from `docker-compose.yml` to avoid compose warnings; this does not change behavior but keeps the compose file modern.
+
 Git / secrets guidance
 - The `certs/` and `certs_test/` directories are now listed in `.gitignore` to avoid committing private keys and certs.
 - If you accidentally committed certs earlier, remove them from the git index with:

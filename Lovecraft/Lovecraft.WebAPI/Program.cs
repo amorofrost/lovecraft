@@ -39,10 +39,19 @@ namespace Lovecraft.WebAPI
             // Configure Kestrel to use HTTPS and require client certificates
             builder.WebHost.ConfigureKestrel(options =>
             {
-                // Explicitly bind HTTP and HTTPS endpoints.
-                // HTTP: listen on 0.0.0.0:5000 (optional)
+                // Explicitly bind HTTPS endpoint and only bind HTTP in Development.
                 // HTTPS: listen on 0.0.0.0:5001 and require client certificates for mTLS
-                options.ListenAnyIP(5000); // HTTP
+                var env = builder.Environment.EnvironmentName;
+                // Log the environment and whether HTTP will be enabled so deployments
+                // can be audited for accidentally exposing an HTTP endpoint.
+                var kestrelLogger = loggerFactory.CreateLogger("KestrelEndpointConfig");
+                var willEnableHttp = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
+                kestrelLogger.LogInformation("Kestrel endpoint config: Environment={Env}; EnableHttp5000={EnableHttp}", env, willEnableHttp);
+                if (willEnableHttp)
+                {
+                    // In Development we enable the HTTP endpoint for convenience.
+                    options.ListenAnyIP(5000); // HTTP (development only)
+                }
                 options.ListenAnyIP(5001, listenOptions =>
                 {
                     listenOptions.UseHttps(httpsOptions =>
@@ -199,7 +208,7 @@ namespace Lovecraft.WebAPI
                 }
                 else
                 {
-                    logger.LogInformation("Listening on default endpoints: http://0.0.0.0:5000 and https://0.0.0.0:5001");
+                    logger.LogInformation("Listening on default endpoints: https://0.0.0.0:5001{maybeHttp}", string.Equals(builder.Environment.EnvironmentName, "Development", StringComparison.OrdinalIgnoreCase) ? " and http://0.0.0.0:5000" : string.Empty);
                 }
             }
             catch (Exception ex)
