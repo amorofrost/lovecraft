@@ -59,7 +59,7 @@ namespace Lovecraft.TelegramBot
                             return;
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         // If health check fails later we'll report; but proceed to offer registration
                         // log is not available here; send minimal info
@@ -74,6 +74,36 @@ namespace Lovecraft.TelegramBot
                 {
                     await _sender.SendMessageAsync(msg.Chat.Id, "/start - начать работу с ботом\n/help - показать это сообщение", ct);
                     return;
+                }
+                else if (cmd == "/me")
+                {
+                    // Show user's profile if exists
+                    try
+                    {
+                        var existing = await _apiClient.GetUserByTelegramUserIdAsync(msg.From.Id);
+                        if (existing == null)
+                        {
+                            await _sender.SendMessageAsync(msg.Chat.Id, "Аккаунт не найден. Пожалуйста, зарегистрируйтесь сначала с помощью /start <access_code>", ct);
+                            return;
+                        }
+
+                        // If we have a Telegram avatar file id, send it as a photo
+                        if (!string.IsNullOrWhiteSpace(existing.TelegramAvatarFileId))
+                        {
+                            await _sender.SendPhotoAsync(msg.Chat.Id, existing.TelegramAvatarFileId!, caption: existing.Name, cancellationToken: ct);
+                        }
+                        else
+                        {
+                            // Fallback: send name as text
+                            await _sender.SendMessageAsync(msg.Chat.Id, $"Имя: {existing.Name}", ct);
+                        }
+                        return;
+                    }
+                    catch (System.Exception)
+                    {
+                        await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка при получении профиля. Попробуйте позже.", ct);
+                        return;
+                    }
                 }
 
                 // If we're in registration waiting for a name, accept the message as name

@@ -11,7 +11,7 @@ using Lovecraft.TelegramBot.DataContracts;
 
 public sealed class BotHostedService : BackgroundService
 {
-    private const string BotVer = "v0.0.2";
+    private const string BotVer = "v0.0.3";
 
     private readonly ITelegramBotClient _bot;
     private readonly ILogger<BotHostedService> _log;

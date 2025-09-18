@@ -17,6 +17,13 @@ namespace Lovecraft.UnitTests
             LastText = text;
             return Task.CompletedTask;
         }
+        public Task SendPhotoAsync(long chatId, string fileId, string? caption = null, CancellationToken cancellationToken = default)
+        {
+            // Tests don't need to actually send photos; record as a message for assertions if needed
+            LastChatId = chatId;
+            LastText = caption ?? string.Empty;
+            return Task.CompletedTask;
+        }
     }
 
     class FakeApiClient : Lovecraft.Common.ILovecraftApiClient
@@ -61,6 +68,59 @@ namespace Lovecraft.UnitTests
                     TelegramUserId = telegramUserId,
                     TelegramUsername = "testuser",
                     TelegramAvatarFileId = "fileid"
+                });
+            }
+            return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+        }
+
+        public Task<Lovecraft.Common.DataContracts.User?> GetUserByTelegramUsernameAsync(string username)
+        {
+            return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+        }
+    }
+
+    class FakeNoAvatarApiClient : Lovecraft.Common.ILovecraftApiClient
+    {
+        public Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync()
+        {
+            return Task.FromResult(new Lovecraft.Common.DataContracts.HealthInfo { Ready = true, Version = "test", Uptime = System.TimeSpan.FromSeconds(1) });
+        }
+
+        public Task<Lovecraft.Common.DataContracts.User> CreateUserAsync(Lovecraft.Common.DataContracts.CreateUserRequest req)
+        {
+            var u = new Lovecraft.Common.DataContracts.User
+            {
+                Id = System.Guid.NewGuid(),
+                Name = req.Name,
+                AvatarUri = req.AvatarUri,
+                TelegramUserId = req.TelegramUserId,
+                TelegramUsername = req.TelegramUsername,
+                TelegramAvatarFileId = req.TelegramAvatarFileId,
+                CreatedAt = System.DateTime.UtcNow,
+                Version = System.Guid.NewGuid().ToString()
+            };
+            return Task.FromResult(u);
+        }
+
+        public Task<Lovecraft.Common.DataContracts.User?> GetUserByIdAsync(System.Guid id)
+        {
+            return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+        }
+
+        public Task<Lovecraft.Common.DataContracts.User?> GetUserByTelegramUserIdAsync(long telegramUserId)
+        {
+            if (telegramUserId == 3)
+            {
+                return Task.FromResult<Lovecraft.Common.DataContracts.User?>(new Lovecraft.Common.DataContracts.User
+                {
+                    Id = System.Guid.NewGuid(),
+                    Name = "NoAvatarUser",
+                    AvatarUri = string.Empty,
+                    CreatedAt = System.DateTime.UtcNow,
+                    Version = System.Guid.NewGuid().ToString(),
+                    TelegramUserId = telegramUserId,
+                    TelegramUsername = "noavatar",
+                    TelegramAvatarFileId = null
                 });
             }
             return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
@@ -163,6 +223,69 @@ namespace Lovecraft.UnitTests
                 System.Environment.SetEnvironmentVariable("ACCESS_CODE", prev);
             }
         }
+
+        [TestMethod]
+        public async Task MeCommand_UserNotRegistered_PromptsToRegister()
+        {
+            var sender = new FakeSender();
+            var api = new FakeApiClient(); // returns null for Telegram id != 1
+            var handler = new BotMessageHandler(sender, api);
+
+            var msg = new Message
+            {
+                Chat = new Telegram.Bot.Types.Chat { Id = 44444 },
+                From = new Telegram.Bot.Types.User { Id = 2, Username = "noone" },
+                Text = "/me"
+            };
+
+            await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+            Assert.AreEqual(44444, sender.LastChatId);
+            Assert.IsTrue(sender.LastText.Contains("зарегистрируйтесь"));
+        }
+
+        [TestMethod]
+        public async Task MeCommand_UserRegisteredWithPhoto_SendsPhotoAndName()
+        {
+            var sender = new FakeSender();
+            var api = new FakeApiClient(); // returns a user for telegram id == 1
+            var handler = new BotMessageHandler(sender, api);
+
+            var msg = new Message
+            {
+                Chat = new Telegram.Bot.Types.Chat { Id = 55555 },
+                From = new Telegram.Bot.Types.User { Id = 1, Username = "testuser" },
+                Text = "/me"
+            };
+
+            await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+            Assert.AreEqual(55555, sender.LastChatId);
+            // FakeSender stores caption of photo in LastText; user.Name is "test"
+            Assert.IsTrue(sender.LastText.Contains("test"));
+        }
+
+        [TestMethod]
+        public async Task MeCommand_UserRegisteredNoAvatar_SendsNameTextFallback()
+        {
+            var sender = new FakeSender();
+            // Create a fake API client that returns a user without TelegramAvatarFileId for id == 3
+            var api = new FakeNoAvatarApiClient();
+            var handler = new BotMessageHandler(sender, api);
+
+            var msg = new Message
+            {
+                Chat = new Telegram.Bot.Types.Chat { Id = 66666 },
+                From = new Telegram.Bot.Types.User { Id = 3, Username = "noavatar" },
+                Text = "/me"
+            };
+
+            await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+            Assert.AreEqual(66666, sender.LastChatId);
+            // Should send a text fallback containing the user's name
+            Assert.IsTrue(sender.LastText.Contains("NoAvatarUser") || sender.LastText.Contains("Имя"));
+        }
     }
 }
 
@@ -178,6 +301,12 @@ namespace Lovecraft.UnitTests
             {
                 LastChatId = chatId;
                 Messages.Add(text);
+                return Task.CompletedTask;
+            }
+            public Task SendPhotoAsync(long chatId, string fileId, string? caption = null, CancellationToken cancellationToken = default)
+            {
+                LastChatId = chatId;
+                Messages.Add(caption ?? string.Empty);
                 return Task.CompletedTask;
             }
         }
