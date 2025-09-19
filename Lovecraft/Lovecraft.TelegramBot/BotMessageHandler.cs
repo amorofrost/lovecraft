@@ -147,12 +147,29 @@ namespace Lovecraft.TelegramBot
                             var val = statusProp.GetValue(httpEx);
                             if (val != null)
                             {
+                                // Check common representations: enum name (e.g. "Conflict") or numeric value (409)
                                 var s = val.ToString() ?? string.Empty;
-                                if (s.Contains("409"))
+                                if (s.Contains("409") || s.Contains("Conflict"))
+                                {
                                     isConflict = true;
+                                }
+                                else
+                                {
+                                    // Try numeric comparison if possible
+                                    try
+                                    {
+                                        if (val is System.Net.HttpStatusCode enumVal && (int)enumVal == 409)
+                                            isConflict = true;
+                                        else if (val is int intVal && intVal == 409)
+                                            isConflict = true;
+                                    }
+                                    catch { }
+                                }
                             }
                         }
-                        else if (httpEx.Message != null && httpEx.Message.Contains("409"))
+
+                        // Fallback: check message text for "409"
+                        if (!isConflict && httpEx.Message != null && httpEx.Message.Contains("409"))
                         {
                             isConflict = true;
                         }

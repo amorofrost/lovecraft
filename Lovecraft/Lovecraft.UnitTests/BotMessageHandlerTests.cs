@@ -299,4 +299,86 @@ public class BotMessageHandlerRegistrationTests
         Assert.IsTrue(sender.Messages.Exists(m => m.Contains("уже занято") || m.Contains("введите другое")));
         Assert.IsFalse(sender.Messages.Exists(m => m.Contains("пароль")));
     }
+
+    [TestMethod]
+    public async Task Registration_CreateUserConflict_PromptsForUsername()
+    {
+        var sender = new RecordingSender();
+        var api = new FakeCreateUserConflictApiClient();
+        var accessCodeManager = new FakeAccessCodeManager();
+        var fakeLogger = new FakeLogger<BotMessageHandler>();
+        var handler = new BotMessageHandler(sender, api, accessCodeManager, fakeLogger);
+
+        // Start registration
+        var startMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 2001 },
+            From = new Telegram.Bot.Types.User { Id = 700, Username = "conflictuser" },
+            Text = "/start ABC123",
+        };
+        await handler.HandleMessageAsync(startMsg, CancellationToken.None);
+        // Send name
+        var nameMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 2001 }, From = new Telegram.Bot.Types.User { Id = 700, Username = "conflictuser" }, Text = "Carol" };
+        await handler.HandleMessageAsync(nameMsg, CancellationToken.None);
+        // Send username
+        var usernameMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 2001 }, From = new Telegram.Bot.Types.User { Id = 700, Username = "conflictuser" }, Text = "carol1" };
+        await handler.HandleMessageAsync(usernameMsg, CancellationToken.None);
+        // Send password
+        var passwordMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 2001 }, From = new Telegram.Bot.Types.User { Id = 700, Username = "conflictuser" }, Text = "pw" };
+        await handler.HandleMessageAsync(passwordMsg, CancellationToken.None);
+        // Send photo which will trigger CreateUserAsync and the fake will throw 409
+        var photoSize = new Telegram.Bot.Types.PhotoSize { FileId = "photo-conflict" };
+        var photoMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 2001 },
+            From = new Telegram.Bot.Types.User { Id = 700, Username = "conflictuser" },
+            Photo = new[] { photoSize },
+        };
+
+        await handler.HandlePhotoAsync(photoMsg, CancellationToken.None);
+
+        // Expect bot to prompt for another username due to conflict
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("Имя пользователя или Telegram имя уже занято") || m.Contains("введите другое имя пользователя") || m.Contains("другое имя пользователя")));
+    }
+
+    [TestMethod]
+    public async Task Registration_CreateUserConflict_TelegramUsernameConflict_PromptsForUsername()
+    {
+        var sender = new RecordingSender();
+        var api = new FakeCreateUserConflictApiClient();
+        var accessCodeManager = new FakeAccessCodeManager();
+        var fakeLogger = new FakeLogger<BotMessageHandler>();
+        var handler = new BotMessageHandler(sender, api, accessCodeManager, fakeLogger);
+
+        // Start registration
+        var startMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 3001 },
+            From = new Telegram.Bot.Types.User { Id = 701, Username = "conflicttg" },
+            Text = "/start ABC123",
+        };
+        await handler.HandleMessageAsync(startMsg, CancellationToken.None);
+        // Send name
+        var nameMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 3001 }, From = new Telegram.Bot.Types.User { Id = 701, Username = "conflicttg" }, Text = "Dave" };
+        await handler.HandleMessageAsync(nameMsg, CancellationToken.None);
+        // Send username
+        var usernameMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 3001 }, From = new Telegram.Bot.Types.User { Id = 701, Username = "conflicttg" }, Text = "dave1" };
+        await handler.HandleMessageAsync(usernameMsg, CancellationToken.None);
+        // Send password
+        var passwordMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 3001 }, From = new Telegram.Bot.Types.User { Id = 701, Username = "conflicttg" }, Text = "pw2" };
+        await handler.HandleMessageAsync(passwordMsg, CancellationToken.None);
+        // Send photo which will trigger CreateUserAsync and the fake will throw 409
+        var photoSize = new Telegram.Bot.Types.PhotoSize { FileId = "photo-conflict2" };
+        var photoMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 3001 },
+            From = new Telegram.Bot.Types.User { Id = 701, Username = "conflicttg" },
+            Photo = new[] { photoSize },
+        };
+
+        await handler.HandlePhotoAsync(photoMsg, CancellationToken.None);
+
+        // Expect bot to prompt for another username due to conflict
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("Имя пользователя или Telegram имя уже занято") || m.Contains("введите другое имя пользователя") || m.Contains("другое имя пользователя")));
+    }
 }
