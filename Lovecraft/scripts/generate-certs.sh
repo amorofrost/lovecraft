@@ -46,6 +46,37 @@ else
   openssl pkcs12 -export -out "$OUT_DIR/client.pfx" -inkey "$OUT_DIR/client.key" -in "$OUT_DIR/client.crt" -certfile "$OUT_DIR/ca.crt" -passout pass:$CLIENT_PFX_PASS
 fi
 
+# 8) Blazor server key & CSR
+openssl genrsa -out "$OUT_DIR/blazor_server.key" 2048
+openssl req -new -key "$OUT_DIR/blazor_server.key" -subj "/CN=blazor" -out "$OUT_DIR/blazor_server.csr"
+
+cat > "$OUT_DIR/blazor_server_ext.cnf" <<EOF
+subjectAltName = DNS:blazor,IP:127.0.0.1
+extendedKeyUsage = serverAuth
+EOF
+
+openssl x509 -req -in "$OUT_DIR/blazor_server.csr" -CA "$OUT_DIR/ca.crt" -CAkey "$OUT_DIR/ca.key" -CAcreateserial -out "$OUT_DIR/blazor_server.crt" -days 365 -sha256 -extfile "$OUT_DIR/blazor_server_ext.cnf"
+
+# Blazor server PFX
+openssl pkcs12 -export -out "$OUT_DIR/blazor_server.pfx" -inkey "$OUT_DIR/blazor_server.key" -in "$OUT_DIR/blazor_server.crt" -certfile "$OUT_DIR/ca.crt" -passout pass:
+
+# 9) Blazor client key & CSR
+openssl genrsa -out "$OUT_DIR/blazor_client.key" 2048
+openssl req -new -key "$OUT_DIR/blazor_client.key" -subj "/CN=blazor-client" -out "$OUT_DIR/blazor_client.csr"
+
+cat > "$OUT_DIR/blazor_client_ext.cnf" <<EOF
+extendedKeyUsage = clientAuth
+EOF
+
+openssl x509 -req -in "$OUT_DIR/blazor_client.csr" -CA "$OUT_DIR/ca.crt" -CAkey "$OUT_DIR/ca.key" -CAcreateserial -out "$OUT_DIR/blazor_client.crt" -days 365 -sha256 -extfile "$OUT_DIR/blazor_client_ext.cnf"
+
+# Blazor client PFX (no password)
+if [ -z "$CLIENT_PFX_PASS" ]; then
+  openssl pkcs12 -export -out "$OUT_DIR/blazor_client.pfx" -inkey "$OUT_DIR/blazor_client.key" -in "$OUT_DIR/blazor_client.crt" -certfile "$OUT_DIR/ca.crt" -passout pass:
+else
+  openssl pkcs12 -export -out "$OUT_DIR/blazor_client.pfx" -inkey "$OUT_DIR/blazor_client.key" -in "$OUT_DIR/blazor_client.crt" -certfile "$OUT_DIR/ca.crt" -passout pass:$CLIENT_PFX_PASS
+fi
+
 ls -la "$OUT_DIR"
 
 echo "Generated certs in $OUT_DIR"
@@ -73,6 +104,8 @@ extract_thumbprint() {
 CA_FP=$(extract_thumbprint "$OUT_DIR/ca.crt" || true)
 SERVER_FP=$(extract_thumbprint "$OUT_DIR/server.crt" || true)
 CLIENT_FP=$(extract_thumbprint "$OUT_DIR/client.crt" || true)
+BLZ_SERVER_FP=$(extract_thumbprint "$OUT_DIR/blazor_server.crt" || true)
+BLZ_CLIENT_FP=$(extract_thumbprint "$OUT_DIR/blazor_client.crt" || true)
 
 if [ -n "$CA_FP" ]; then
   echo "CA SHA1 Thumbprint: $CA_FP"
@@ -85,4 +118,12 @@ fi
 if [ -n "$CLIENT_FP" ]; then
   echo "Client SHA1 Thumbprint: $CLIENT_FP"
   echo "$CLIENT_FP" > "$OUT_DIR/client.thumbprint"
+fi
+if [ -n "$BLZ_SERVER_FP" ]; then
+  echo "Blazor Server SHA1 Thumbprint: $BLZ_SERVER_FP"
+  echo "$BLZ_SERVER_FP" > "$OUT_DIR/blazor_server.thumbprint"
+fi
+if [ -n "$BLZ_CLIENT_FP" ]; then
+  echo "Blazor Client SHA1 Thumbprint: $BLZ_CLIENT_FP"
+  echo "$BLZ_CLIENT_FP" > "$OUT_DIR/blazor_client.thumbprint"
 fi

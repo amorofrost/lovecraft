@@ -72,15 +72,17 @@ services:
       - ./certs:/app/certs:ro
     environment:
       - ASPNETCORE_URLS=https://+:5002
-      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/server.pfx
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/blazor_server.pfx
       - ASPNETCORE_Kestrel__Certificates__Default__Password=
       - Certificates__CaPath=/app/certs/ca.crt
       - WebApi__BaseUrl=https://lovecraft-webapi:5001/
+      - BLZ_CLIENT_CERT_PATH=/app/certs/blazor_client.pfx
+      - BLZ_CLIENT_CERT_PASSWORD=
       - ACCESS_CODE=${ACCESS_CODE}
     restart: unless-stopped
     healthcheck:
       # Verify the Blazor Server app responds over HTTPS on 5002. Present the client pfx for mutual TLS if needed.
-      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/client.pfx: --fail https://localhost:5002/ || exit 1"]
+      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/blazor_client.pfx: --fail https://localhost:5002/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

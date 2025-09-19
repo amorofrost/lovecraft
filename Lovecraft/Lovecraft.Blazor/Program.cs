@@ -11,18 +11,22 @@ builder.Services.AddServerSideBlazor();
 
 // Configure HttpClient for calling the WebAPI and present client certificate (PFX) from /app/certs
 string webApiBase = builder.Configuration["WebApi:BaseUrl"] ?? "https://lovecraft-webapi:5001/";
-string pfxPath = "/app/certs/client.pfx";
+// Determine which client certificate to use for outbound WebAPI calls.
+// Prefer Blazor-specific client cert (BLZ_CLIENT_CERT_PATH) if provided; otherwise fall back to common client.pfx.
+string blzClientPath = builder.Configuration["BLZ_CLIENT_CERT_PATH"] ?? Environment.GetEnvironmentVariable("BLZ_CLIENT_CERT_PATH") ?? string.Empty;
+string blzClientPassword = builder.Configuration["BLZ_CLIENT_CERT_PASSWORD"] ?? Environment.GetEnvironmentVariable("BLZ_CLIENT_CERT_PASSWORD") ?? string.Empty;
+string defaultClientPath = "/app/certs/client.pfx";
 X509Certificate2? clientCert = null;
-if (File.Exists(pfxPath))
+string chosenClientPath = string.IsNullOrEmpty(blzClientPath) ? defaultClientPath : blzClientPath;
+if (File.Exists(chosenClientPath))
 {
     try
     {
-        // Use EphemeralKeySet where possible to avoid requiring key storage permissions in containers
-        clientCert = new X509Certificate2(pfxPath, "", X509KeyStorageFlags.EphemeralKeySet);
+        clientCert = new X509Certificate2(chosenClientPath, blzClientPassword ?? string.Empty, X509KeyStorageFlags.EphemeralKeySet);
     }
     catch
     {
-        // best-effort; leave clientCert null if loading fails
+        // ignore failures; leave clientCert null
     }
 }
 

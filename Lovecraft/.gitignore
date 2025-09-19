@@ -1,9 +1,11 @@
 # Ignore generated certificates and secrets
 certs/
+certs_old/
 certs_test/
 
 # User secrets and environment files
 .env
+.env.old
 secrets.json
 
 # Build outputs
