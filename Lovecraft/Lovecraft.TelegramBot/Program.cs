@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Http;
+using Lovecraft.Common.Interfaces;
+using Lovecraft.Common.Services;
 
 internal class Program
 {
@@ -25,8 +27,8 @@ internal class Program
                         ?? Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
                         ?? throw new InvalidOperationException("Bot token missing.");
             services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(token));
-
-            services.AddSingleton<IBotSender>(sp => new BotSender(sp.GetRequiredService<Telegram.Bot.ITelegramBotClient>()));
+            services.AddSingleton<IBotSender, BotSender>();
+            services.AddSingleton<IAccessCodeManager, EnvironmentVariableAccessCodeManager>();
             services.AddSingleton<IBotHandler, BotMessageHandler>();
             services.AddHostedService<BotHostedService>();
 
@@ -36,7 +38,7 @@ internal class Program
             var clientCertPassword = Environment.GetEnvironmentVariable("CLIENT_CERT_PASSWORD")
                                        ?? ctx.Configuration["Certificates:ClientCertPassword"];
 
-            services.AddHttpClient<Lovecraft.Common.ILovecraftApiClient, Lovecraft.Common.LovecraftApiClient>(client =>
+            services.AddHttpClient<ILovecraftApiClient, LovecraftApiClient>(client =>
             {
                 client.BaseAddress = new Uri(ctx.Configuration["WebApi:BaseUrl"] ?? "https://webapi:5001/");
             })

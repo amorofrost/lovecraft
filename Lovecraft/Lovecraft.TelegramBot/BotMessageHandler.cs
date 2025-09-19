@@ -1,138 +1,81 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Telegram.Bot.Types;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Telegram.Bot.Types;
 using Lovecraft.Common.DataContracts;
+using Lovecraft.Common.Interfaces;
+using Lovecraft.Common.Services;
+
 
 namespace Lovecraft.TelegramBot
 {
     public class BotMessageHandler : IBotHandler
     {
         private readonly IBotSender _sender;
-        private readonly Lovecraft.Common.ILovecraftApiClient _apiClient;
+        private readonly ILovecraftApiClient _apiClient;
+
+        private IAccessCodeManager _accessCodeManager;
+
+        private readonly ILogger<BotMessageHandler> _logger;
+
         // In-memory registration state per Telegram user id
         private readonly ConcurrentDictionary<long, RegistrationState> _registrations = new();
 
-        public BotMessageHandler(IBotSender sender, Lovecraft.Common.ILovecraftApiClient apiClient)
+        private readonly Dictionary<string, Func<Common.DataContracts.User, Message, string, CancellationToken, Task>> CommandHandlers;
+
+        public BotMessageHandler(IBotSender sender, ILovecraftApiClient apiClient, IAccessCodeManager accessCodeManager, ILogger<BotMessageHandler> logger)
         {
             _sender = sender;
             _apiClient = apiClient;
+            _accessCodeManager = accessCodeManager;
+            _logger = logger;
+
+            CommandHandlers = new Dictionary<string, Func<Common.DataContracts.User, Message, string, CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "/start", HandleStartCmd },
+                { "/help", HandleHelpCmd },
+                { "/me", HandleMeCmd }
+            };
         }
 
         public async Task HandleMessageAsync(Message msg, CancellationToken ct)
         {
             if (msg.From is null) return;
 
-            // simplified authorization for tests: accept any non-null
-            var text = msg.Text?.Trim() ?? string.Empty;
+            var text = msg.Text!.Trim() ?? string.Empty;
             var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
             var cmd = parts.Length > 0 ? parts[0].ToLowerInvariant() : string.Empty;
+            var arg = parts.Length > 1 ? parts[1].Trim() : string.Empty;
 
-            // Handle text messages (commands and registration name entry)
-            if (!string.IsNullOrWhiteSpace(msg.Text))
+            // TODO: check in cache first
+            var member = await _apiClient.GetUserByTelegramUserIdAsync(msg.From.Id);
+            if (member == default && !text.StartsWith("/"))
             {
-                if (cmd == "/start")
-                {
-                    // Access code validation: expect /start <access_code>
-                    var providedCode = parts.Length > 1 ? parts[1].Trim() : string.Empty;
-                    var expectedCode = Environment.GetEnvironmentVariable("ACCESS_CODE") ?? string.Empty;
-
-                    if (string.IsNullOrEmpty(providedCode) || string.IsNullOrEmpty(expectedCode) ||
-                        !string.Equals(providedCode, expectedCode, StringComparison.Ordinal))
-                    {
-                        // Localized unauthorized message to match other bot messages
-                        await _sender.SendMessageAsync(msg.Chat.Id, "Вы не авторизованы для использования системы.", ct);
-                        return;
-                    }
-
-                    // Authorized: check whether a user already exists for this Telegram id
-                    try
-                    {
-                        var existing = await _apiClient.GetUserByTelegramUserIdAsync(msg.From.Id);
-                        if (existing != null)
-                        {
-                            // known user: greet and show health
-                            await _sender.SendMessageAsync(msg.Chat.Id, "Привет! Я бот для доступа к Lovecraft.", ct);
-                            var health = await _apiClient.GetHealthAsync();
-                            await _sender.SendMessageAsync(msg.Chat.Id, $"Health: ready={health.Ready}, version={health.Version}, uptime={health.Uptime}", ct);
-                            return;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        // If health check fails later we'll report; but proceed to offer registration
-                        // log is not available here; send minimal info
-                    }
-
-                    // User not found -> start registration
-                    _registrations[msg.From.Id] = new RegistrationState { Stage = RegistrationStage.WaitingName };
-                    await _sender.SendMessageAsync(msg.Chat.Id, "Пользователь не найден. Давайте создадим аккаунт. Пожалуйста, введите ваше имя:", ct);
-                    return;
-                }
-                else if (cmd == "/help")
-                {
-                    await _sender.SendMessageAsync(msg.Chat.Id, "/start - начать работу с ботом\n/help - показать это сообщение", ct);
-                    return;
-                }
-                else if (cmd == "/me")
-                {
-                    // Show user's profile if exists
-                    try
-                    {
-                        var existing = await _apiClient.GetUserByTelegramUserIdAsync(msg.From.Id);
-                        if (existing == null)
-                        {
-                            await _sender.SendMessageAsync(msg.Chat.Id, "Аккаунт не найден. Пожалуйста, зарегистрируйтесь сначала с помощью /start <access_code>", ct);
-                            return;
-                        }
-
-                        // If we have a Telegram avatar file id, send it as a photo
-                        if (!string.IsNullOrWhiteSpace(existing.TelegramAvatarFileId))
-                        {
-                            await _sender.SendPhotoAsync(msg.Chat.Id, existing.TelegramAvatarFileId!, caption: existing.Name, cancellationToken: ct);
-                        }
-                        else
-                        {
-                            // Fallback: send name as text
-                            await _sender.SendMessageAsync(msg.Chat.Id, $"Имя: {existing.Name}", ct);
-                        }
-                        return;
-                    }
-                    catch (System.Exception)
-                    {
-                        await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка при получении профиля. Попробуйте позже.", ct);
-                        return;
-                    }
-                }
-
-                // If we're in registration waiting for a name, accept the message as name
-                if (_registrations.TryGetValue(msg.From.Id, out var state) && state.Stage == RegistrationStage.WaitingName)
-                {
-                    var name = text;
-                    if (string.IsNullOrWhiteSpace(name))
-                    {
-                        await _sender.SendMessageAsync(msg.Chat.Id, "Имя не может быть пустым. Пожалуйста, введите ваше имя:", ct);
-                        return;
-                    }
-                    if (name.Length > Lovecraft.Common.DataContracts.User.MaxNameLength)
-                    {
-                        await _sender.SendMessageAsync(msg.Chat.Id, $"Имя слишком длинное. Максимальная длина {Lovecraft.Common.DataContracts.User.MaxNameLength} символов. Пожалуйста, введите имя снова:", ct);
-                        return;
-                    }
-
-                    state.Name = name;
-                    state.Stage = RegistrationStage.WaitingPhoto;
-                    _registrations[msg.From.Id] = state;
-                    await _sender.SendMessageAsync(msg.Chat.Id, "Спасибо. Теперь отправьте фотографию, которая будет использоваться как аватар (фото в чате).", ct);
-                    return;
-                }
-
-                await _sender.SendMessageAsync(msg.Chat.Id, "Неизвестная команда, /help - список команд", ct);
+                // handle registration flow
+                await HandleRegistrationAsync(msg, ct);
                 return;
             }
 
-            // Handle photo messages as part of registration
+            if (string.IsNullOrWhiteSpace(cmd))
+            {
+                await _sender.SendMessageAsync(msg.Chat.Id, "Неизвестная команда. Используйте /help для справки.", ct);
+                return;
+            }
+
+            if (CommandHandlers.TryGetValue(cmd, out var handler))
+            {
+                await handler(member, msg, arg, ct);
+                return;
+            }
+            else
+            {
+                // TODO: check for interactive states (e.g. registration)
+                await _sender.SendMessageAsync(msg.Chat.Id, "Неизвестная команда. Используйте /help для справки.", ct);
+                return;
+            }
+        }
+
+        public async Task HandlePhotoAsync(Message msg, CancellationToken ct)
+        { 
             if (msg.Photo != null && msg.Photo.Length > 0)
             {
                 if (!_registrations.TryGetValue(msg.From.Id, out var reg) || reg.Stage != RegistrationStage.WaitingPhoto)
@@ -181,8 +124,9 @@ namespace Lovecraft.TelegramBot
                     _registrations.TryRemove(msg.From.Id, out _);
                     return;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    _logger.LogError(ex, "Failed to create user during registration");
                     // Handle conflicts and other errors
                     await _sender.SendMessageAsync(msg.Chat.Id, "Не удалось создать аккаунт из-за ошибки на сервере. Пожалуйста, попробуйте позже.", ct);
                     // keep registration state so user can retry
@@ -191,9 +135,110 @@ namespace Lovecraft.TelegramBot
                     return;
                 }
             }
+        }
 
-            // Unhandled message types
-            await _sender.SendMessageAsync(msg.Chat.Id, "Неизвестный тип сообщения. Используйте /help для справки.", ct);
+        private async Task HandleRegistrationAsync(Message msg, CancellationToken ct)
+        {
+            if (_registrations.TryGetValue(msg.From.Id, out var state) && state.Stage == RegistrationStage.WaitingName)
+            {
+                var text = msg.Text?.Trim() ?? string.Empty;
+                var name = text;
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    await _sender.SendMessageAsync(msg.Chat.Id, "Имя не может быть пустым. Пожалуйста, введите ваше имя:", ct);
+                    return;
+                }
+                if (name.Length > Lovecraft.Common.DataContracts.User.MaxNameLength)
+                {
+                    await _sender.SendMessageAsync(msg.Chat.Id, $"Имя слишком длинное. Максимальная длина {Lovecraft.Common.DataContracts.User.MaxNameLength} символов. Пожалуйста, введите имя снова:", ct);
+                    return;
+                }
+
+                state.Name = name;
+                state.Stage = RegistrationStage.WaitingPhoto;
+                _registrations[msg.From.Id] = state;
+                await _sender.SendMessageAsync(msg.Chat.Id, "Спасибо. Теперь отправьте фотографию, которая будет использоваться как аватар (фото в чате).", ct);
+                return;
+            }
+
+            await _sender.SendMessageAsync(msg.Chat.Id, "Неизвестная команда, /help - список команд", ct);
+            return;
+        }
+
+        private async Task HandleStartCmd(Common.DataContracts.User member, Message msg, string arg, CancellationToken ct)
+        {
+            // Access code validation: expect /start <access_code>
+            var providedCode = arg;
+            
+            if (string.IsNullOrEmpty(providedCode) || !_accessCodeManager.IsValidCode(providedCode))
+            {
+                // Localized unauthorized message to match other bot messages
+                await _sender.SendMessageAsync(msg.Chat.Id, "Вы не авторизованы для использования системы.", ct);
+                return;
+            }
+
+            // Authorized: check whether a user already exists for this Telegram id
+            try
+            {
+                var existing = member;
+                if (existing != null)
+                {
+                    // known user: greet and show health
+                    await _sender.SendMessageAsync(msg.Chat.Id, "Привет! Я бот для доступа к Lovecraft.", ct);
+                    var health = await _apiClient.GetHealthAsync();
+                    await _sender.SendMessageAsync(msg.Chat.Id, $"Health: ready={health.Ready}, version={health.Version}, uptime={health.Uptime}", ct);
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // If health check fails later we'll report; but proceed to offer registration
+                // log is not available here; send minimal info
+            }
+
+            // User not found -> start registration
+            _registrations[msg.From.Id] = new RegistrationState { Stage = RegistrationStage.WaitingName };
+            await _sender.SendMessageAsync(msg.Chat.Id, "Пользователь не найден. Давайте создадим аккаунт. Пожалуйста, введите ваше имя:", ct);
+            return;
+        }
+
+        private async Task HandleHelpCmd(Common.DataContracts.User member, Message msg, string arg, CancellationToken ct)
+        {
+            var helpText = "/start <access_code> - начать работу с ботом\n" +
+                           "/help - показать это сообщение\n" +
+                           "/me - показать ваш профиль";
+            await _sender.SendMessageAsync(msg.Chat.Id, helpText, ct);
+        }
+
+        private async Task HandleMeCmd(Common.DataContracts.User member, Message msg, string arg, CancellationToken ct)
+        {
+            // Show user's profile if exists
+            try
+            {
+                var existing = member;
+                if (existing == null)
+                {
+                    await _sender.SendMessageAsync(msg.Chat.Id, "Аккаунт не найден. Пожалуйста, зарегистрируйтесь сначала с помощью /start <access_code>", ct);
+                    return;
+                }
+
+                // If we have a Telegram avatar file id, send it as a photo
+                if (!string.IsNullOrWhiteSpace(existing.TelegramAvatarFileId))
+                {
+                    await _sender.SendPhotoAsync(msg.Chat.Id, existing.TelegramAvatarFileId!, caption: existing.Name, cancellationToken: ct);
+                }
+                else
+                {
+                    // Fallback: send name as text
+                    await _sender.SendMessageAsync(msg.Chat.Id, $"Имя: {existing.Name}", ct);
+                }
+                return;
+            }
+            catch (System.Exception)
+            {
+                await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка при получении профиля. Попробуйте позже.", ct);
+                return;
+            }
         }
 
         private class RegistrationState

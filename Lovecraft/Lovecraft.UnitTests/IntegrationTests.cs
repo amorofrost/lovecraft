@@ -1,10 +1,9 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Threading.Tasks;
 using Lovecraft.WebAPI;
-using System.Net.Http;
 using Lovecraft.TelegramBot;
-using System.Threading;
+using Lovecraft.UnitTests.Fakes;
+using Lovecraft.Common.Services;
 using Telegram.Bot.Types;
 
 namespace Lovecraft.UnitTests
@@ -30,9 +29,11 @@ namespace Lovecraft.UnitTests
             Assert.IsTrue(json.Contains("Ready") || json.Contains("ready"));
 
             // Now use ApiClient with the factory client and BotMessageHandler
-            var apiClient = new Lovecraft.Common.LovecraftApiClient(client);
+            var apiClient = new LovecraftApiClient(client);
             var fakeSender = new FakeSender();
-            var handler = new BotMessageHandler(fakeSender, apiClient);
+            var accessCodeManager = new FakeAccessCodeManager();
+            var fakeLogger = new FakeLogger<BotMessageHandler>();
+            var handler = new BotMessageHandler(fakeSender, apiClient, accessCodeManager, fakeLogger);
 
             var msg = new Message
             {
