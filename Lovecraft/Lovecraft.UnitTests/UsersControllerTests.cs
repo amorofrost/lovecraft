@@ -72,5 +72,23 @@ namespace Lovecraft.UnitTests
             var user = result!.Value as User;
             Assert.IsNotNull(user);
         }
+
+        [TestMethod]
+        public async Task Create_DuplicateLoginUsernames_ReturnsConflict()
+        {
+            var repo = new InMemoryUserRepository();
+            var controller = new UsersController(repo);
+
+            var req1 = new CreateUserRequest { Name = "Zoe", AvatarUri = "https://avatar", Username = "dupuser", Password = "p" };
+            var result1 = await controller.Create(req1) as CreatedAtActionResult;
+            Assert.IsNotNull(result1);
+
+            // Try to create second user with same login username (case-insensitive)
+            var req2 = new CreateUserRequest { Name = "Zoe2", AvatarUri = "https://avatar2", Username = "DupUser", Password = "p2" };
+            var result2 = await controller.Create(req2);
+
+            // Expect Conflict (409)
+            Assert.IsInstanceOfType(result2, typeof(ConflictObjectResult));
+        }
     }
 }

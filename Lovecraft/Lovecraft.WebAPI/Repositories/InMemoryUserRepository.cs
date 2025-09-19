@@ -12,8 +12,10 @@ namespace Lovecraft.WebAPI.Repositories
         private readonly ConcurrentDictionary<Guid, User> _store = new();
         // Index from TelegramUserId -> internal Guid
         private readonly ConcurrentDictionary<long, Guid> _telegramIndex = new();
-        // Index for username (case-insensitive) -> internal Guid
-        private readonly ConcurrentDictionary<string, Guid> _usernameIndex = new(StringComparer.OrdinalIgnoreCase);
+    // Index for telegram username (case-insensitive) -> internal Guid
+    private readonly ConcurrentDictionary<string, Guid> _telegramUsernameIndex = new(StringComparer.OrdinalIgnoreCase);
+    // Index for login username (case-insensitive) -> internal Guid
+    private readonly ConcurrentDictionary<string, Guid> _loginUsernameIndex = new(StringComparer.OrdinalIgnoreCase);
 
         public Task<User> CreateAsync(User user)
         {
@@ -33,8 +35,15 @@ namespace Lovecraft.WebAPI.Repositories
             if (!string.IsNullOrWhiteSpace(user.TelegramUsername))
             {
                 var uname = user.TelegramUsername!;
-                if (_usernameIndex.ContainsKey(uname))
+                if (_telegramUsernameIndex.ContainsKey(uname))
                     throw new DuplicateTelegramUsernameException(uname);
+            }
+
+            if (!string.IsNullOrWhiteSpace(user.Username))
+            {
+                var uname = user.Username!;
+                if (_loginUsernameIndex.ContainsKey(uname))
+                    throw new DuplicateUsernameException(uname);
             }
 
             if (user.Id == Guid.Empty)
@@ -47,7 +56,8 @@ namespace Lovecraft.WebAPI.Repositories
             // then storing in _store. If reserving one index succeeds and another fails, rollback the successful one.
 
             bool addedTelegram = false;
-            bool addedUsername = false;
+            bool addedTelegramUsername = false;
+            bool addedLoginUsername = false;
             try
             {
                 if (user.TelegramUserId.HasValue)
@@ -61,9 +71,17 @@ namespace Lovecraft.WebAPI.Repositories
                 if (!string.IsNullOrWhiteSpace(user.TelegramUsername))
                 {
                     var uname = user.TelegramUsername!;
-                    if (!_usernameIndex.TryAdd(uname, user.Id))
+                    if (!_telegramUsernameIndex.TryAdd(uname, user.Id))
                         throw new DuplicateTelegramUsernameException(uname);
-                    addedUsername = true;
+                    addedTelegramUsername = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(user.Username))
+                {
+                    var uname = user.Username!;
+                    if (!_loginUsernameIndex.TryAdd(uname, user.Id))
+                        throw new DuplicateUsernameException(uname);
+                    addedLoginUsername = true;
                 }
 
                 // Store user by internal id
@@ -77,9 +95,13 @@ namespace Lovecraft.WebAPI.Repositories
                 {
                     _telegramIndex.TryRemove(user.TelegramUserId.Value, out _);
                 }
-                if (addedUsername && !string.IsNullOrWhiteSpace(user.TelegramUsername))
+                if (addedTelegramUsername && !string.IsNullOrWhiteSpace(user.TelegramUsername))
                 {
-                    _usernameIndex.TryRemove(user.TelegramUsername!, out _);
+                    _telegramUsernameIndex.TryRemove(user.TelegramUsername!, out _);
+                }
+                if (addedLoginUsername && !string.IsNullOrWhiteSpace(user.Username))
+                {
+                    _loginUsernameIndex.TryRemove(user.Username!, out _);
                 }
 
                 throw;
@@ -108,10 +130,23 @@ namespace Lovecraft.WebAPI.Repositories
             if (string.IsNullOrWhiteSpace(telegramUsername))
                 return Task.FromResult<User?>(null);
 
-            if (_usernameIndex.TryGetValue(telegramUsername, out var id))
+            if (_telegramUsernameIndex.TryGetValue(telegramUsername, out var id))
             {
                 _store.TryGetValue(id, out var user);
-                return Task.FromResult(user);
+                return Task.FromResult<User?>(user);
+            }
+
+            return Task.FromResult<User?>(null);
+        }
+
+        public Task<User?> GetByUsernameAsync(string username)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                return Task.FromResult<User?>(null);
+            if (_loginUsernameIndex.TryGetValue(username, out var id))
+            {
+                _store.TryGetValue(id, out var user);
+                return Task.FromResult<User?>(user);
             }
 
             return Task.FromResult<User?>(null);

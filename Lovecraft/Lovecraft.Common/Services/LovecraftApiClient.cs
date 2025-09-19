@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Net;
+using System.Text.Json;
 using Lovecraft.Common.DataContracts;
 using Lovecraft.Common.Interfaces;
 
@@ -11,6 +13,19 @@ public class LovecraftApiClient : ILovecraftApiClient
     public LovecraftApiClient(HttpClient http)
     {
         _http = http;
+    }
+
+    public async Task<bool> IsUsernameAvailableAsync(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        var res = await _http.GetAsync($"/api/users/usernameAvailable/{Uri.EscapeDataString(username)}");
+        if (res.StatusCode == HttpStatusCode.BadRequest) return false;
+        if (res.StatusCode == HttpStatusCode.Conflict) return false;
+        res.EnsureSuccessStatusCode();
+        var dto = await res.Content.ReadFromJsonAsync<JsonElement>();
+        if (dto.ValueKind == JsonValueKind.Object && dto.TryGetProperty("available", out var availableProp) && availableProp.ValueKind == JsonValueKind.True)
+            return true;
+        return false;
     }
 
     public async Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync()

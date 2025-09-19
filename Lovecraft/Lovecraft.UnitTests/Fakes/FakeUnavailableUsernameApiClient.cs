@@ -2,15 +2,8 @@ namespace Lovecraft.UnitTests.Fakes;
 
 using Lovecraft.Common.Interfaces;
 
-internal class FakeNextApiClient : ILovecraftApiClient
+internal class FakeUnavailableUsernameApiClient : ILovecraftApiClient
 {
-    private readonly Lovecraft.Common.DataContracts.User _next;
-
-    public FakeNextApiClient(Lovecraft.Common.DataContracts.User next)
-    {
-        _next = next;
-    }
-
     public Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync()
     {
         return Task.FromResult(new Lovecraft.Common.DataContracts.HealthInfo { Ready = true, Version = "test", Uptime = System.TimeSpan.FromSeconds(1) });
@@ -18,7 +11,18 @@ internal class FakeNextApiClient : ILovecraftApiClient
 
     public Task<Lovecraft.Common.DataContracts.User> CreateUserAsync(Lovecraft.Common.DataContracts.CreateUserRequest req)
     {
-        throw new System.NotImplementedException();
+        var u = new Lovecraft.Common.DataContracts.User
+        {
+            Id = System.Guid.NewGuid(),
+            Name = req.Name,
+            AvatarUri = req.AvatarUri,
+            TelegramUserId = req.TelegramUserId,
+            TelegramUsername = req.TelegramUsername,
+            TelegramAvatarFileId = req.TelegramAvatarFileId,
+            CreatedAt = System.DateTime.UtcNow,
+            Version = System.Guid.NewGuid().ToString()
+        };
+        return Task.FromResult(u);
     }
 
     public Task<Lovecraft.Common.DataContracts.User?> GetUserByIdAsync(System.Guid id)
@@ -28,6 +32,7 @@ internal class FakeNextApiClient : ILovecraftApiClient
 
     public Task<Lovecraft.Common.DataContracts.User?> GetUserByTelegramUserIdAsync(long telegramUserId)
     {
+        // For registration tests, return null to indicate user not found
         return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
     }
 
@@ -38,11 +43,12 @@ internal class FakeNextApiClient : ILovecraftApiClient
 
     public Task<bool> IsUsernameAvailableAsync(string username)
     {
-        return Task.FromResult(true);
+        // Simulate that username is always unavailable
+        return Task.FromResult(false);
     }
 
     public Task<Lovecraft.Common.DataContracts.User?> GetNextProfileAsync()
     {
-        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(_next);
+        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
     }
 }

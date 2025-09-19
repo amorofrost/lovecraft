@@ -213,7 +213,7 @@ public class BotMessageHandlerRegistrationTests
 
         Assert.IsTrue(sender.Messages.Exists(m => m.Contains("введите ваше имя")), "Bot did not ask for name after start");
 
-        // 2) send name
+        // 2) send name -> bot should ask for username now
         var nameMsg = new Message
         {
             Chat = new Telegram.Bot.Types.Chat { Id = 999 },
@@ -222,9 +222,31 @@ public class BotMessageHandlerRegistrationTests
         };
         await handler.HandleMessageAsync(nameMsg, CancellationToken.None);
 
-        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("Теперь отправьте фотографию")), "Bot did not ask for photo after name");
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("введите желаемое имя пользователя") || m.Contains("имя пользователя")), "Bot did not ask for username after name");
 
-        // 3) send photo message with a fake FileId
+        // 3) send desired username -> bot should ask for password
+        var usernameMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 999 },
+            From = new Telegram.Bot.Types.User { Id = 555, Username = "reguser" },
+            Text = "alice1",
+        };
+        await handler.HandleMessageAsync(usernameMsg, CancellationToken.None);
+
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("Введите пароль") || m.Contains("пароль")), "Bot did not ask for password after username");
+
+        // 4) send password -> bot should ask for photo
+        var passwordMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 999 },
+            From = new Telegram.Bot.Types.User { Id = 555, Username = "reguser" },
+            Text = "s3cr3t",
+        };
+        await handler.HandleMessageAsync(passwordMsg, CancellationToken.None);
+
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("Теперь отправьте фотографию") || m.Contains("отправьте фотографию")), "Bot did not ask for photo after password");
+
+        // 5) send photo message with a fake FileId
         var photoSize = new Telegram.Bot.Types.PhotoSize { FileId = "photo-file-id" };
         var photoMsg = new Message
         {
@@ -244,5 +266,37 @@ public class BotMessageHandlerRegistrationTests
 
         // Ensure a confirmation message was sent
         Assert.IsTrue(sender.Messages.Exists(m => m.Contains("Аккаунт создан")), "Bot did not send account created confirmation");
+    }
+
+    [TestMethod]
+    public async Task Registration_UsernameUnavailable_PromptsAgain()
+    {
+        var sender = new RecordingSender();
+        var api = new FakeUnavailableUsernameApiClient();
+        var accessCodeManager = new FakeAccessCodeManager();
+        var fakeLogger = new FakeLogger<BotMessageHandler>();
+        var handler = new BotMessageHandler(sender, api, accessCodeManager, fakeLogger);
+
+        // Start registration
+        var startMsg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 1001 },
+            From = new Telegram.Bot.Types.User { Id = 600, Username = "testu" },
+            Text = "/start ABC123",
+        };
+        await handler.HandleMessageAsync(startMsg, CancellationToken.None);
+        // Send name
+        var nameMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 1001 }, From = new Telegram.Bot.Types.User { Id = 600, Username = "testu" }, Text = "Bob" };
+        await handler.HandleMessageAsync(nameMsg, CancellationToken.None);
+        // Bot should ask for username
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("имя пользователя") || m.Contains("Введите")));
+
+        // Send a username which the fake API will report unavailable
+        var usernameMsg = new Message { Chat = new Telegram.Bot.Types.Chat { Id = 1001 }, From = new Telegram.Bot.Types.User { Id = 600, Username = "testu" }, Text = "takenname" };
+        await handler.HandleMessageAsync(usernameMsg, CancellationToken.None);
+
+        // Bot should prompt to enter another username and should NOT ask for password
+        Assert.IsTrue(sender.Messages.Exists(m => m.Contains("уже занято") || m.Contains("введите другое")));
+        Assert.IsFalse(sender.Messages.Exists(m => m.Contains("пароль")));
     }
 }
