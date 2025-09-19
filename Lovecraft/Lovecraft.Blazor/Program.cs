@@ -47,6 +47,25 @@ builder.Services.AddHttpClient("webapi", client =>
         return handler;
     });
 
+// Register the typed API client so pages can inject ILovecraftApiClient
+builder.Services.AddHttpClient<Lovecraft.Common.Interfaces.ILovecraftApiClient, Lovecraft.Common.Services.LovecraftApiClient>(client =>
+{
+    client.BaseAddress = new Uri(webApiBase);
+})
+    .ConfigurePrimaryHttpMessageHandler(() =>
+    {
+        var handler = new HttpClientHandler();
+        if (clientCert != null)
+        {
+            handler.ClientCertificates.Add(clientCert);
+        }
+        handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        return handler;
+    });
+
+// Add browser storage for simple persistence (store logged-in user id)
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedLocalStorage>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

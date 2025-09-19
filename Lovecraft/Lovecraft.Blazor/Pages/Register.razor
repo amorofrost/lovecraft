@@ -1,0 +1,52 @@
+@page "/register"
+@inject Lovecraft.Common.Interfaces.ILovecraftApiClient ApiClient
+@inject NavigationManager Navigation
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedLocalStorage ProtectedLocalStorage
+
+<h3>Create account</h3>
+
+@if (error != null)
+{
+    <p style="color:red">@error</p>
+}
+
+<div>
+    <div><label>Login (username): <input @bind="model.Username" /></label></div>
+    <div><label>Password: <input type="password" @bind="model.Password" /></label></div>
+    <div><label>Name: <input @bind="model.Name" /></label></div>
+    <div><label>Avatar URL: <input @bind="model.AvatarUri" /></label></div>
+    <div>
+        <button @onclick="OnCreate">Create</button>
+        <a href="/">Back</a>
+    </div>
+</div>
+
+@code {
+    private CreateModel model = new();
+    private string? error;
+
+    private class CreateModel { public string Username { get; set; } = string.Empty; public string Password { get; set; } = string.Empty; public string Name { get; set; } = string.Empty; public string AvatarUri { get; set; } = string.Empty; }
+
+    private async Task OnCreate()
+    {
+        error = null;
+        try
+        {
+            var req = new Lovecraft.Common.DataContracts.CreateUserRequest
+            {
+                Username = model.Username,
+                Password = model.Password,
+                Name = model.Name,
+                AvatarUri = model.AvatarUri
+            };
+            var user = await ApiClient.CreateUserAsync(req);
+            // store id
+            await ProtectedLocalStorage.SetAsync("lovecraft_user_id", user.Id.ToString());
+            Navigation.NavigateTo($"/profile/{user.Id}");
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+}

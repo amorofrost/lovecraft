@@ -1,0 +1,57 @@
+@page "/profile/{UserId:guid}"
+@inject Lovecraft.Common.Interfaces.ILovecraftApiClient ApiClient
+@inject NavigationManager Navigation
+
+@using Lovecraft.Common.DataContracts
+
+<h3>Profile</h3>
+
+@if (loading)
+{
+    <p>Loading...</p>
+}
+else if (error != null)
+{
+    <p style="color:red">@error</p>
+}
+else if (user != null)
+{
+    <div>
+        <img src="@user.AvatarUri" alt="Avatar" style="max-width:200px;max-height:200px" />
+        <h4>@user.Name</h4>
+        <p><strong>Username:</strong> @user.Username</p>
+        <p><strong>Telegram user id:</strong> @(user.TelegramUserId?.ToString() ?? "(not set)")</p>
+        <p><strong>Telegram username:</strong> @(user.TelegramUsername ?? "(not set)")</p>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    private User? user;
+    private bool loading = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            user = await ApiClient.GetUserByIdAsync(UserId);
+            if (user == null)
+            {
+                error = "User not found";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}
