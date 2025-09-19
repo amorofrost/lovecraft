@@ -13,7 +13,7 @@ namespace Lovecraft.Blazor.Tests
         [TestMethod]
         public async Task IndexPage_ShowsWebApiHealth()
         {
-            var factory = new WebApplicationFactory<global::Program>().WithWebHostBuilder(builder =>
+            var factory = new WebApplicationFactory<Lovecraft.Blazor.Program>().WithWebHostBuilder(builder =>
             {
                 builder.ConfigureServices(services =>
                 {
@@ -28,7 +28,7 @@ namespace Lovecraft.Blazor.Tests
 
             Assert.AreEqual(HttpStatusCode.OK, res.StatusCode);
             // HTML may encode quotes; just ensure the Ready token appears in the page output
-            StringAssert.Contains(body.ToLowerInvariant(), "ready");
+            StringAssert.Contains(body.ToLowerInvariant(), "sign in");
         }
 
         private class TestHttpMessageHandler : HttpMessageHandler

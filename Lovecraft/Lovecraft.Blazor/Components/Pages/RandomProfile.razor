@@ -1,0 +1,68 @@
+@page "/random"
+@inject AuthService AuthService
+@inject Lovecraft.Common.Interfaces.ILovecraftApiClient ApiClient
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    @code { protected override void OnAfterRender(bool firstRender) { if (firstRender) Navigation.NavigateTo("/"); } }
+}
+else
+{
+    <h3>Random profile</h3>
+    @if (loading)
+    {
+        <p>Loading...</p>
+    }
+    else if (error != null)
+    {
+        <p style="color:red">@error</p>
+    }
+    else if (profile == null)
+    {
+        <p>No profiles available</p>
+    }
+    else
+    {
+        <div>
+            <img src="@profile.AvatarUri" alt="avatar" style="max-width:200px;max-height:200px" />
+            <p><strong>Name:</strong> @profile.Name</p>
+            @if (!string.IsNullOrWhiteSpace(profile.TelegramUsername))
+            {
+                <p><strong>Telegram:</strong> @profile.TelegramUsername</p>
+            }
+        </div>
+    }
+    <div style="margin-top:0.5rem">
+        <button @onclick="LoadNext">Next</button>
+    </div>
+}
+
+@code {
+    private Lovecraft.Common.DataContracts.User? profile;
+    private bool loading = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNext();
+    }
+
+    private async Task LoadNext()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            profile = await ApiClient.GetNextProfileAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

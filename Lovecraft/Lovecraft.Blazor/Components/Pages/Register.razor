@@ -1,7 +1,6 @@
 @page "/register"
-@inject Lovecraft.Common.Interfaces.ILovecraftApiClient ApiClient
 @inject NavigationManager Navigation
-@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedLocalStorage ProtectedLocalStorage
+@inject AuthService AuthService
 
 <h3>Create account</h3>
 
@@ -15,7 +14,7 @@
     <div><label>Password: <input type="password" @bind="model.Password" /></label></div>
     <div><label>Name: <input @bind="model.Name" /></label></div>
     <div><label>Avatar URL: <input @bind="model.AvatarUri" /></label></div>
-    <div>
+    <div style="margin-top:0.5rem">
         <button @onclick="OnCreate">Create</button>
         <a href="/">Back</a>
     </div>
@@ -32,17 +31,15 @@
         error = null;
         try
         {
-            var req = new Lovecraft.Common.DataContracts.CreateUserRequest
+            var created = await AuthService.RegisterAsync(model.Username, model.Password, model.Name, model.AvatarUri);
+            if (created != null)
             {
-                Username = model.Username,
-                Password = model.Password,
-                Name = model.Name,
-                AvatarUri = model.AvatarUri
-            };
-            var user = await ApiClient.CreateUserAsync(req);
-            // store id
-            await ProtectedLocalStorage.SetAsync("lovecraft_user_id", user.Id.ToString());
-            Navigation.NavigateTo($"/profile/{user.Id}");
+                Navigation.NavigateTo($"/profile");
+            }
+            else
+            {
+                error = "Registration failed";
+            }
         }
         catch (Exception ex)
         {

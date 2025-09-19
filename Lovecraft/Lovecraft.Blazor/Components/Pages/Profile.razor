@@ -1,0 +1,33 @@
+@page "/profile"
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+@if (!AuthService.IsAuthenticated)
+{
+    @code { protected override void OnAfterRender(bool firstRender) { if (firstRender) Navigation.NavigateTo("/"); } }
+}
+else
+{
+    <h3>Your profile</h3>
+    <div>
+        <img src="@AuthService.CurrentUser!.AvatarUri" alt="avatar" style="max-width:200px;max-height:200px" />
+    </div>
+    <div>
+        <p><strong>Name:</strong> @AuthService.CurrentUser!.Name</p>
+        @if (!string.IsNullOrWhiteSpace(AuthService.CurrentUser!.TelegramUsername))
+        {
+            <p><strong>Telegram:</strong> @AuthService.CurrentUser!.TelegramUsername</p>
+        }
+    </div>
+    <div>
+        <button @onclick="OnSignOut">Sign out</button>
+    </div>
+}
+
+@code {
+    private async Task OnSignOut()
+    {
+        await AuthService.SignOutAsync();
+        Navigation.NavigateTo("/");
+    }
+}
