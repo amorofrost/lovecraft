@@ -50,5 +50,20 @@ namespace Lovecraft.UnitTests
             Assert.IsNotNull(byUsername);
             Assert.AreEqual(created.Id, byUsername!.Id);
         }
+
+        [TestMethod]
+        public async Task GetRandomAsync_ReturnsOneOfCreatedUsers()
+        {
+            var repo = new InMemoryUserRepository();
+            var u1 = new User { Name = "Alice", AvatarUri = "https://a" };
+            var u2 = new User { Name = "Bob", AvatarUri = "https://b" };
+
+            var c1 = await repo.CreateAsync(u1);
+            var c2 = await repo.CreateAsync(u2);
+
+            var random = await repo.GetRandomAsync();
+            Assert.IsNotNull(random);
+            Assert.IsTrue(random!.Id == c1.Id || random.Id == c2.Id);
+        }
     }
 }

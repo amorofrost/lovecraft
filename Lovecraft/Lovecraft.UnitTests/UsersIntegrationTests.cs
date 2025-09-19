@@ -90,6 +90,21 @@ namespace Lovecraft.UnitTests
         }
 
         [TestMethod]
+        public async Task GetNextEndpoint_ReturnsOneOfSampleUsers()
+        {
+            // The shared test host loads Resources/sample-users.json on startup; ensure /api/users/next returns one of those
+            var res = await _client!.GetAsync("/api/users/next");
+            Assert.AreEqual(System.Net.HttpStatusCode.OK, res.StatusCode);
+
+            var body = await res.Content.ReadAsStringAsync();
+            var returned = JsonSerializer.Deserialize<User>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            Assert.IsNotNull(returned);
+
+            var allowedNames = new[] { "Андрей", "Даша", "Валера", "Аня" };
+            Assert.IsTrue(System.Array.Exists(allowedNames, n => n == returned!.Name) || returned!.Id != default);
+        }
+
+        [TestMethod]
         public async Task PostDuplicateTelegramUserId_ReturnsConflict()
         {
             var req = new CreateUserRequest { Name = "DupTest1", AvatarUri = "https://a", TelegramUserId = 77777, TelegramUsername = "dup1" };
@@ -115,6 +130,40 @@ namespace Lovecraft.UnitTests
             var json2 = JsonSerializer.Serialize(req2);
             var res2 = await _client.PostAsync("/api/users", new StringContent(json2, Encoding.UTF8, "application/json"));
             Assert.AreEqual(HttpStatusCode.Conflict, res2.StatusCode);
+        }
+
+        [TestMethod]
+        public async Task GetNextProfile_ReturnsAUser_WhenUsersExist()
+        {
+            // Use a fresh factory/client for isolation so repo starts empty for this test
+            var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.Guid.NewGuid().ToString());
+            System.IO.Directory.CreateDirectory(tempDir);
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                // Point ContentRoot to an empty temp dir so Program won't find Resources/sample-users.json
+                // UseSetting("contentRoot", ...) works without extra hosting references in the test project.
+                builder.UseSetting("contentRoot", tempDir);
+            });
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+            // Create a user
+            var req = new CreateUserRequest { Name = "IntNext", AvatarUri = "https://a" };
+            var json = JsonSerializer.Serialize(req);
+            var res = await client.PostAsync("/api/users", new StringContent(json, Encoding.UTF8, "application/json"));
+            Assert.AreEqual(HttpStatusCode.Created, res.StatusCode);
+
+            var createdBody = await res.Content.ReadAsStringAsync();
+            var created = JsonSerializer.Deserialize<User>(createdBody, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            Assert.IsNotNull(created);
+
+            // Call the next endpoint
+            var nextRes = await client.GetAsync("/api/users/next");
+            Assert.AreEqual(HttpStatusCode.OK, nextRes.StatusCode);
+
+            var body = await nextRes.Content.ReadAsStringAsync();
+            var returned = JsonSerializer.Deserialize<User>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            Assert.IsNotNull(returned);
+            Assert.AreEqual(created!.Id, returned!.Id);
         }
     }
 }

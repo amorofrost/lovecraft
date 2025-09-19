@@ -143,6 +143,51 @@ public class BotMessageHandlerTests
         // Should send a text fallback containing the user's name
         Assert.IsTrue(sender.LastText.Contains("NoAvatarUser") || sender.LastText.Contains("Имя"));
     }
+
+    [TestMethod]
+    public async Task NextCommand_NoProfiles_SendsNotFoundMessage()
+    {
+        var sender = new FakeSender();
+        var api = new FakeApiClient(); // returns null for GetNextProfileAsync
+        var accessCodeManager = new FakeAccessCodeManager();
+        var fakeLogger = new FakeLogger<BotMessageHandler>();
+        var handler = new BotMessageHandler(sender, api, accessCodeManager, fakeLogger);
+
+        var msg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 77777 },
+            From = new Telegram.Bot.Types.User { Id = 10, Username = "whoever" },
+            Text = "/next"
+        };
+
+        await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+        Assert.AreEqual(77777, sender.LastChatId);
+        Assert.IsTrue(sender.LastText.Contains("Профили не найдены") || sender.LastText.Contains("не найд"));
+    }
+
+    [TestMethod]
+    public async Task NextCommand_WithProfile_CallsSendProfileCard()
+    {
+        var recSender = new RecordingSender();
+        var user = new Lovecraft.Common.DataContracts.User { Id = System.Guid.NewGuid(), Name = "NextUser", AvatarUri = "https://a" };
+        var api = new FakeNextApiClient(user);
+        var accessCodeManager = new FakeAccessCodeManager();
+        var fakeLogger = new FakeLogger<BotMessageHandler>();
+        var handler = new BotMessageHandler(recSender, api, accessCodeManager, fakeLogger);
+
+        var msg = new Message
+        {
+            Chat = new Telegram.Bot.Types.Chat { Id = 88888 },
+            From = new Telegram.Bot.Types.User { Id = 11, Username = "someone" },
+            Text = "/next"
+        };
+
+        await handler.HandleMessageAsync(msg, CancellationToken.None);
+
+        Assert.AreEqual(88888, recSender.LastChatId);
+        Assert.IsTrue(recSender.Messages.Exists(m => m.Contains("Profile card for NextUser")));
+    }
 }
 
 [TestClass]

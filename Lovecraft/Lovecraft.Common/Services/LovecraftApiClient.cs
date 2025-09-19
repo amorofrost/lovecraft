@@ -54,4 +54,12 @@ public class LovecraftApiClient : ILovecraftApiClient
         res.EnsureSuccessStatusCode();
         return await res.Content.ReadFromJsonAsync<User>();
     }
+
+    public async Task<User?> GetNextProfileAsync()
+    {
+        var res = await _http.GetAsync($"/api/users/next");
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        res.EnsureSuccessStatusCode();
+        return await res.Content.ReadFromJsonAsync<User>();
+    }
 }

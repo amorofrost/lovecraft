@@ -53,4 +53,10 @@ internal class FakeApiClient : ILovecraftApiClient
     {
         return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
     }
+
+    public Task<Lovecraft.Common.DataContracts.User?> GetNextProfileAsync()
+    {
+        // No random profile support in fake - return null by default
+        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+    }
 }

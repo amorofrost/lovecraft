@@ -10,5 +10,6 @@ namespace Lovecraft.WebAPI.Repositories
         Task<User?> GetByIdAsync(Guid id);
         Task<User?> GetByTelegramUserIdAsync(long telegramUserId);
         Task<User?> GetByTelegramUsernameAsync(string telegramUsername);
+        Task<User?> GetRandomAsync();
     }
 }

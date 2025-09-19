@@ -33,7 +33,8 @@ namespace Lovecraft.TelegramBot
             {
                 { "/start", HandleStartCmd },
                 { "/help", HandleHelpCmd },
-                { "/me", HandleMeCmd }
+                { "/me", HandleMeCmd },
+                { "/next", HandleNextCmd }
             };
         }
 
@@ -244,6 +245,26 @@ namespace Lovecraft.TelegramBot
             {
                 _logger.LogError(ex, "Error fetching user profile for /me command");
                 await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка при получении профиля. Попробуйте позже.", ct);
+            }
+        }
+
+        private async Task HandleNextCmd(Common.DataContracts.User member, Message msg, string arg, CancellationToken ct)
+        {
+            try
+            {
+                var next = await _apiClient.GetNextProfileAsync();
+                if (next == null)
+                {
+                    await _sender.SendMessageAsync(msg.Chat.Id, "Профили не найдены.", ct);
+                    return;
+                }
+
+                await _sender.SendProfileCardAsync(msg.Chat.Id, next, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching next profile for /next command");
+                await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка при получении следующего профиля. Попробуйте позже.", ct);
             }
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Lovecraft.Common.DataContracts;
 
@@ -114,6 +115,18 @@ namespace Lovecraft.WebAPI.Repositories
             }
 
             return Task.FromResult<User?>(null);
+        }
+
+        public Task<User?> GetRandomAsync()
+        {
+            // Snapshot keys to avoid holding collection locks and to have a stable selection set
+            var values = _store.Values.ToArray();
+            if (values.Length == 0)
+                return Task.FromResult<User?>(null);
+
+            // Use a cryptographically secure RNG to pick a random index
+            var idx = RandomNumberGenerator.GetInt32(values.Length);
+            return Task.FromResult<User?>(values[idx]);
         }
     }
 }

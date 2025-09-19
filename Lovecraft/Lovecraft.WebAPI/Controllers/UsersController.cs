@@ -84,5 +84,13 @@ namespace Lovecraft.WebAPI.Controllers
             if (user == null) return NotFound();
             return Ok(user);
         }
+
+        [HttpGet("next")]
+        public async Task<IActionResult> GetNextProfile()
+        {
+            var user = await _repo.GetRandomAsync();
+            if (user == null) return NotFound();
+            return Ok(user);
+        }
     }
 }

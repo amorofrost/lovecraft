@@ -10,5 +10,7 @@ public interface ILovecraftApiClient
     Task<User?> GetUserByIdAsync(Guid id);
     Task<User?> GetUserByTelegramUserIdAsync(long telegramUserId);
     Task<User?> GetUserByTelegramUsernameAsync(string username);
+
+    Task<User?> GetNextProfileAsync();
 }
 

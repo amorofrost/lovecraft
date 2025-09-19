@@ -46,5 +46,31 @@ namespace Lovecraft.UnitTests
             var bad2 = await controller.Create(new CreateUserRequest { Name = "Anna", AvatarUri = "" });
             Assert.IsInstanceOfType(bad2, typeof(BadRequestObjectResult));
         }
+
+        [TestMethod]
+        public async Task GetNextProfile_NoUsers_ReturnsNotFound()
+        {
+            var repo = new InMemoryUserRepository();
+            var controller = new UsersController(repo);
+
+            var result = await controller.GetNextProfile();
+            Assert.IsInstanceOfType(result, typeof(NotFoundResult));
+        }
+
+        [TestMethod]
+        public async Task GetNextProfile_WithUsers_ReturnsUser()
+        {
+            var repo = new InMemoryUserRepository();
+            var controller = new UsersController(repo);
+
+            var req = new CreateUserRequest { Name = "Zoe", AvatarUri = "https://avatar" };
+            var createdResult = await controller.Create(req) as CreatedAtActionResult;
+            Assert.IsNotNull(createdResult);
+
+            var result = await controller.GetNextProfile() as OkObjectResult;
+            Assert.IsNotNull(result);
+            var user = result!.Value as User;
+            Assert.IsNotNull(user);
+        }
     }
 }

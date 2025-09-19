@@ -2,9 +2,14 @@ namespace Lovecraft.UnitTests.Fakes;
 
 using Lovecraft.Common.Interfaces;
 
-internal class RecordingApiClient : ILovecraftApiClient
+internal class FakeNextApiClient : ILovecraftApiClient
 {
-    public Lovecraft.Common.DataContracts.CreateUserRequest? CreatedRequest;
+    private readonly Lovecraft.Common.DataContracts.User _next;
+
+    public FakeNextApiClient(Lovecraft.Common.DataContracts.User next)
+    {
+        _next = next;
+    }
 
     public Task<Lovecraft.Common.DataContracts.HealthInfo> GetHealthAsync()
     {
@@ -13,19 +18,7 @@ internal class RecordingApiClient : ILovecraftApiClient
 
     public Task<Lovecraft.Common.DataContracts.User> CreateUserAsync(Lovecraft.Common.DataContracts.CreateUserRequest req)
     {
-        CreatedRequest = req;
-        var u = new Lovecraft.Common.DataContracts.User
-        {
-            Id = System.Guid.NewGuid(),
-            Name = req.Name,
-            AvatarUri = req.AvatarUri,
-            TelegramUserId = req.TelegramUserId,
-            TelegramUsername = req.TelegramUsername,
-            TelegramAvatarFileId = req.TelegramAvatarFileId,
-            CreatedAt = System.DateTime.UtcNow,
-            Version = System.Guid.NewGuid().ToString()
-        };
-        return Task.FromResult(u);
+        throw new System.NotImplementedException();
     }
 
     public Task<Lovecraft.Common.DataContracts.User?> GetUserByIdAsync(System.Guid id)
@@ -35,7 +28,6 @@ internal class RecordingApiClient : ILovecraftApiClient
 
     public Task<Lovecraft.Common.DataContracts.User?> GetUserByTelegramUserIdAsync(long telegramUserId)
     {
-        // For registration tests, return null to indicate user not found
         return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
     }
 
@@ -46,6 +38,6 @@ internal class RecordingApiClient : ILovecraftApiClient
 
     public Task<Lovecraft.Common.DataContracts.User?> GetNextProfileAsync()
     {
-        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(_next);
     }
 }
