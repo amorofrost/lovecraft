@@ -152,6 +152,55 @@ namespace Lovecraft.WebAPI.Repositories
             return Task.FromResult<User?>(null);
         }
 
+        public Task<User?> AuthenticateAsync(string username, string password)
+        {
+            // Normalize username like controller does
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                return Task.FromResult<User?>(null);
+
+            var normalized = username.Trim().ToLowerInvariant();
+
+            if (!_loginUsernameIndex.TryGetValue(normalized, out var id))
+                return Task.FromResult<User?>(null);
+
+            if (!_store.TryGetValue(id, out var user) || string.IsNullOrWhiteSpace(user.PasswordHash))
+                return Task.FromResult<User?>(null);
+
+            // Stored format: {iterations}.{saltBase64}.{hashBase64}
+            var parts = user.PasswordHash.Split('.');
+            if (parts.Length != 3)
+                return Task.FromResult<User?>(null);
+
+            if (!int.TryParse(parts[0], out var iterations))
+                return Task.FromResult<User?>(null);
+
+            byte[] salt, expectedHash;
+            try
+            {
+                salt = Convert.FromBase64String(parts[1]);
+                expectedHash = Convert.FromBase64String(parts[2]);
+            }
+            catch
+            {
+                return Task.FromResult<User?>(null);
+            }
+
+            try
+            {
+                using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(password, salt, iterations, System.Security.Cryptography.HashAlgorithmName.SHA256);
+                var derived = pbkdf2.GetBytes(expectedHash.Length);
+                // Use constant-time comparison
+                if (CryptographicOperations.FixedTimeEquals(derived, expectedHash))
+                    return Task.FromResult<User?>(user);
+            }
+            catch
+            {
+                // Any failure => authentication failure
+            }
+
+            return Task.FromResult<User?>(null);
+        }
+
         public Task<User?> GetRandomAsync()
         {
             // Snapshot keys to avoid holding collection locks and to have a stable selection set

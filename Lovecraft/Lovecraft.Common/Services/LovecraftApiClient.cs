@@ -77,4 +77,16 @@ public class LovecraftApiClient : ILovecraftApiClient
         res.EnsureSuccessStatusCode();
         return await res.Content.ReadFromJsonAsync<User>();
     }
+
+    public async Task<User?> AuthenticateAsync(string username, string password)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)) return null;
+
+        var payload = new { Username = username, Password = password };
+        var res = await _http.PostAsJsonAsync("/api/users/authenticate", payload);
+        if (res.StatusCode == HttpStatusCode.Unauthorized) return null;
+        if (res.StatusCode == HttpStatusCode.BadRequest) return null;
+        res.EnsureSuccessStatusCode();
+        return await res.Content.ReadFromJsonAsync<User>();
+    }
 }

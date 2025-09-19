@@ -159,5 +159,29 @@ namespace Lovecraft.WebAPI.Controllers
 
             return Ok(new { available = true });
         }
+
+        // Authenticate by username/password. Returns 200 + user on success, 401 on failure.
+        [AllowAnonymous]
+        [HttpPost("authenticate")]
+        public async Task<IActionResult> Authenticate([FromBody] AuthenticateRequest req)
+        {
+            if (req == null)
+                return BadRequest("Request body is required");
+            if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
+                return BadRequest("Username and Password are required");
+
+            var user = await _repo.AuthenticateAsync(req.Username, req.Password);
+            if (user == null)
+                return Unauthorized(new { message = "Invalid credentials" });
+
+            return Ok(user);
+        }
+        
+        // Simple DTO for authentication requests
+        public class AuthenticateRequest
+        {
+            public string? Username { get; set; }
+            public string? Password { get; set; }
+        }
     }
 }
