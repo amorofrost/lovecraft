@@ -45,4 +45,9 @@ internal class FakeNextApiClient : ILovecraftApiClient
     {
         return Task.FromResult<Lovecraft.Common.DataContracts.User?>(_next);
     }
+
+    public Task<Lovecraft.Common.DataContracts.User?> AuthenticateAsync(string username, string password)
+    {
+        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+    }
 }

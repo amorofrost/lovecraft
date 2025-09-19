@@ -53,4 +53,9 @@ internal class RecordingApiClient : ILovecraftApiClient
     {
         return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
     }
+
+    public Task<Lovecraft.Common.DataContracts.User?> AuthenticateAsync(string username, string password)
+    {
+        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+    }
 }

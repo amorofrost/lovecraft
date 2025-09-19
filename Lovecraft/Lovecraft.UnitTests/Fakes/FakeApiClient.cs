@@ -64,4 +64,23 @@ internal class FakeApiClient : ILovecraftApiClient
         // No random profile support in fake - return null by default
         return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
     }
+
+    public Task<Lovecraft.Common.DataContracts.User?> AuthenticateAsync(string username, string password)
+    {
+        if (username == "testuser" && password == "testpass")
+        {
+            return Task.FromResult<Lovecraft.Common.DataContracts.User?>(new Lovecraft.Common.DataContracts.User
+            {
+                Id = System.Guid.NewGuid(),
+                Name = "test",
+                AvatarUri = "fileid",
+                CreatedAt = System.DateTime.UtcNow,
+                Version = System.Guid.NewGuid().ToString(),
+                TelegramUserId = 1,
+                TelegramUsername = "testuser",
+                TelegramAvatarFileId = "fileid"
+            });
+        }
+        return Task.FromResult<Lovecraft.Common.DataContracts.User?>(null);
+    }
 }
