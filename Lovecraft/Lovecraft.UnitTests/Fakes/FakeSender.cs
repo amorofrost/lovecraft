@@ -28,4 +28,11 @@ class FakeSender : IBotSender
         LastText = $"Profile card for {user.Name}";
         return Task.FromResult("fake_file_id");
     }
+
+    public Task AnswerCallbackQueryAsync(string callbackQueryId, string text, bool showAlert = false, CancellationToken cancellationToken = default)
+    {
+        // For testing, just record the last text as the answer
+        LastText = text;
+        return Task.CompletedTask;
+    }
 }

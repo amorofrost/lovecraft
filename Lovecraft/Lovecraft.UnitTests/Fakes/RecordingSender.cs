@@ -28,4 +28,11 @@ internal class RecordingSender : IBotSender
         Messages.Add($"Profile card for {user.Name}");
         return Task.FromResult("recorded_file_id");
     }
+
+    public Task AnswerCallbackQueryAsync(string callbackQueryId, string text, bool showAlert = false, CancellationToken cancellationToken = default)
+    {
+        // For testing, just record the last text as the answer
+        Messages.Add(text);
+        return Task.CompletedTask;
+    }
 }

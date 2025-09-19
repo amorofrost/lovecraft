@@ -76,5 +76,10 @@ namespace Lovecraft.TelegramBot
 
             return string.Empty;
         }
+
+        public Task AnswerCallbackQueryAsync(string callbackQueryId, string text, bool showAlert = false, CancellationToken cancellationToken = default)
+        {
+            return _bot.AnswerCallbackQuery(callbackQueryId, text, showAlert, cancellationToken: cancellationToken);
+        }
     }
 }

@@ -9,5 +9,7 @@ namespace Lovecraft.TelegramBot
         Task HandleMessageAsync(Message msg, CancellationToken ct);
 
         Task HandlePhotoAsync(Message msg, CancellationToken ct);
+
+        Task HandleCallbackAsync(CallbackQuery cb, CancellationToken ct);
     }
 }

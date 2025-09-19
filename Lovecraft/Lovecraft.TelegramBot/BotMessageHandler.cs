@@ -137,6 +137,17 @@ namespace Lovecraft.TelegramBot
             }
         }
 
+        public async Task HandleCallbackAsync(CallbackQuery cb, CancellationToken ct)
+        {
+            if (cb.From is null || string.IsNullOrWhiteSpace(cb.From.Username) || cb.Message is null || string.IsNullOrWhiteSpace(cb.Data))
+                return;
+
+            if (cb.Data.StartsWith("like:"))
+            {
+                await _sender.AnswerCallbackQueryAsync(cb.Id, "Liked! 👍 (?)", showAlert: false, cancellationToken: ct);
+            }
+        }
+
         private async Task HandleRegistrationAsync(Message msg, CancellationToken ct)
         {
             if (_registrations.TryGetValue(msg.From.Id, out var state) && state.Stage == RegistrationStage.WaitingName)
@@ -190,13 +201,18 @@ namespace Lovecraft.TelegramBot
                     return;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // If health check fails later we'll report; but proceed to offer registration
-                // log is not available here; send minimal info
+                _logger.LogError(ex, "Error checking existing user during /start");
             }
 
             // User not found -> start registration
+            if (msg.From is null)
+            {
+                await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка: не удалось определить пользователя Telegram.", ct);
+                return;
+            }
+
             _registrations[msg.From.Id] = new RegistrationState { Stage = RegistrationStage.WaitingName };
             await _sender.SendMessageAsync(msg.Chat.Id, "Пользователь не найден. Давайте создадим аккаунт. Пожалуйста, введите ваше имя:", ct);
             return;
@@ -222,22 +238,12 @@ namespace Lovecraft.TelegramBot
                     return;
                 }
 
-                // If we have a Telegram avatar file id, send it as a photo
-                if (!string.IsNullOrWhiteSpace(existing.TelegramAvatarFileId))
-                {
-                    await _sender.SendPhotoAsync(msg.Chat.Id, existing.TelegramAvatarFileId!, caption: existing.Name, cancellationToken: ct);
-                }
-                else
-                {
-                    // Fallback: send name as text
-                    await _sender.SendMessageAsync(msg.Chat.Id, $"Имя: {existing.Name}", ct);
-                }
-                return;
+                await _sender.SendProfileCardAsync(msg.Chat.Id, existing, ct);
             }
-            catch (System.Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "Error fetching user profile for /me command");
                 await _sender.SendMessageAsync(msg.Chat.Id, "Ошибка при получении профиля. Попробуйте позже.", ct);
-                return;
             }
         }
 

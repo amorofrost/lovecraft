@@ -63,7 +63,11 @@ public sealed class BotHostedService : BackgroundService
             }
             else if (update.Type == UpdateType.CallbackQuery)
             {
-                await HandleCallback(update.CallbackQuery!, ct);
+                var cb = update.CallbackQuery!;
+                if (cb.From is null || cb.Message is null || string.IsNullOrWhiteSpace(cb.Data))
+                    return;
+
+                await _handler.HandleCallbackAsync(cb, ct);
             }
             else
             {
@@ -78,15 +82,6 @@ public sealed class BotHostedService : BackgroundService
 
     private async Task HandleCallback(CallbackQuery cb, CancellationToken ct)
     {
-        if (cb.From is null || string.IsNullOrWhiteSpace(cb.From.Username) || cb.Message is null || string.IsNullOrWhiteSpace(cb.Data))
-            return;
-
-        if (cb.Data.StartsWith("like:"))
-        {
-            // TODO: handle like callback   
-        }
-        else if (cb.Data.StartsWith("foobar:"))
-        {
-        }
+        
     }
 }
