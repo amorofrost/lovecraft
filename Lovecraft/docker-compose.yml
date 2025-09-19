@@ -22,9 +22,11 @@ services:
     healthcheck:
       # Use HTTPS (port 5001). We allow insecure curl (-k) because the container
       # uses the server certificate from the `certs` volume. This healthcheck
-      # verifies Kestrel is accepting TLS connections on 5001. If your image
-      # mounts a CA and trusts it, remove -k and pass the CA path instead.
-      test: ["CMD-SHELL", "curl -k --cacert /app/certs/ca.crt --fail https://localhost:5001/ || exit 1"]
+      # verifies Kestrel is accepting TLS connections on 5001. The API is
+      # configured to require client certificates, so present the PFX client
+      # certificate here (use an empty password after the colon if it's
+      # empty). We call the /health endpoint which exists in the app.
+      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/client.pfx: --fail https://localhost:5001/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
