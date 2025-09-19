@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.TelegramBot", "Lo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.UnitTests", "Lovecraft.UnitTests\Lovecraft.UnitTests.csproj", "{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Blazor", "Lovecraft.Blazor\Lovecraft.Blazor.csproj", "{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Blazor.Tests", "Lovecraft.Blazor.Tests\Lovecraft.Blazor.Tests.csproj", "{A1B2C3D4-1111-2222-3333-444455556666}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +37,15 @@ Global
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Release|Any CPU.Build.0 = Release|Any CPU
+        
+		{A1B2C3D4-1111-2222-3333-444455556666}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-1111-2222-3333-444455556666}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-1111-2222-3333-444455556666}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-1111-2222-3333-444455556666}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,57 @@
+@page "/"
+@inject IHttpClientFactory HttpClientFactory
+
+<h1>Welcome to Lovecraft</h1>
+
+<p>This is a minimal Blazor Server shell. Use `Lovecraft.Common` from here.</p>
+
+<div>
+	<h3>WebAPI health</h3>
+	@if (loading)
+	{
+		<p>Loading...</p>
+	}
+	else if (error != null)
+	{
+		<p style="color:red">Error: @error</p>
+	}
+	else
+	{
+		<p>Status: @healthResponse</p>
+	}
+	<button @onclick="CallHealth">Refresh</button>
+</div>
+
+@code {
+	private bool loading = false;
+	private string? healthResponse;
+	private string? error;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await CallHealth();
+	}
+
+	private async Task CallHealth()
+	{
+		loading = true;
+		error = null;
+		try
+		{
+			var client = HttpClientFactory.CreateClient("webapi");
+			var resp = await client.GetAsync("health");
+			resp.EnsureSuccessStatusCode();
+			healthResponse = await resp.Content.ReadAsStringAsync();
+		}
+		catch (Exception ex)
+		{
+			error = ex.Message;
+			healthResponse = null;
+		}
+		finally
+		{
+			loading = false;
+			StateHasChanged();
+		}
+	}
+}

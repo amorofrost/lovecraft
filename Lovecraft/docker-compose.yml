@@ -58,6 +58,33 @@ services:
       timeout: 5s
       retries: 5
 
+  blazor:
+    build:
+      context: .
+      dockerfile: Lovecraft.Blazor/Dockerfile
+    image: lovecraft-blazor:local
+    container_name: lovecraft-blazor
+    networks:
+      - lovecraft-net
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - ASPNETCORE_URLS=https://+:5002
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/app/certs/server.pfx
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=
+      - Certificates__CaPath=/app/certs/ca.crt
+      - WebApi__BaseUrl=https://lovecraft-webapi:5001/
+      - ACCESS_CODE=${ACCESS_CODE}
+    restart: unless-stopped
+    healthcheck:
+      # Verify the Blazor Server app responds over HTTPS on 5002. Present the client pfx for mutual TLS if needed.
+      test: ["CMD-SHELL", "curl -k --cert-type P12 --cert /app/certs/client.pfx: --fail https://localhost:5002/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
 networks:
   lovecraft-net:
     driver: bridge
