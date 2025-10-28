@@ -1,4 +1,19 @@
 services:
+  bff:
+    build:
+      context: .
+      dockerfile: Lovecraft.BFF/Dockerfile
+    image: lovecraft-bff:local
+    container_name: lovecraft-bff
+    networks:
+      - lovecraft-net
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - ASPNETCORE_ENVIRONMENT=Development
+    restart: unless-stopped
+
   webapi:
     build:
       context: .

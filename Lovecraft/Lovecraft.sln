@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Blazor", "Lovecra
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Blazor.Tests", "Lovecraft.Blazor.Tests\Lovecraft.Blazor.Tests.csproj", "{A1B2C3D4-1111-2222-3333-444455556666}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.BFF", "Lovecraft.BFF\Lovecraft.BFF.csproj", "{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -46,6 +48,10 @@ Global
 		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
