@@ -4,6 +4,8 @@
 
 Lovecraft is the backend service for the AloeVera Harmony Meet platform, built with .NET 10, Azure Storage, and Docker.
 
+> **📦 Current Status**: Mock implementation with stub API endpoints. All data is in-memory. See [DOCKER.md](./Lovecraft/DOCKER.md) for quick start instructions.
+
 ---
 
 ## 🎯 Project Overview
@@ -28,11 +30,21 @@ Lovecraft is the backend service for the AloeVera Harmony Meet platform, built w
 
 ```
 Lovecraft/
+├── Lovecraft.sln             # Solution file
 ├── Lovecraft.Common/         # Shared DTOs, contracts, models
+│   ├── DTOs/                 # Data Transfer Objects
+│   ├── Enums/                # Enumerations
+│   └── Models/               # Response models
 ├── Lovecraft.Backend/        # Main API project
+│   ├── Controllers/          # REST API controllers
+│   ├── Services/             # Business logic services
+│   ├── MockData/             # Mock data store
+│   └── Program.cs            # Application entry point
 ├── Lovecraft.UnitTests/      # Unit tests
+├── Dockerfile                # Docker build configuration
+├── docker-compose.yml        # Docker Compose configuration
+├── DOCKER.md                 # Docker instructions
 ├── docs/                     # Technical documentation
-├── scripts/                  # Utility scripts
 └── README.md                 # This file
 ```
 
@@ -57,39 +69,30 @@ Comprehensive documentation is available in the `/docs` folder:
 
 - **.NET 10 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/10.0)
 - **Docker Desktop** - [Download](https://www.docker.com/products/docker-desktop)
-- **Azure Storage Account** (optional) - Or use mock data locally
 
-### 1. Clone Repository
+### Option 1: Docker Compose (Recommended)
 
 ```bash
-git clone <repository-url>
-cd lovecraft
+cd Lovecraft
+docker-compose up --build
 ```
 
-### 2. Build Solution
+### Option 2: .NET CLI
 
 ```bash
+cd Lovecraft
 dotnet build
+cd Lovecraft.Backend
+dotnet run
 ```
 
-### 3. Run with Docker
+### Access the API
 
-```bash
-# Build Docker image
-docker build -t lovecraft-backend -f Lovecraft.Backend/Dockerfile .
-
-# Run container (with mock data)
-docker run -p 5000:80 \
-  -e ASPNETCORE_ENVIRONMENT=Development \
-  -e USE_MOCK_DATA=true \
-  lovecraft-backend
-```
-
-### 4. Access API
-
-- **API**: http://localhost:5000/api/v1
-- **Swagger**: http://localhost:5000/swagger
+- **API**: http://localhost:5000
+- **Swagger UI**: http://localhost:5000/swagger
 - **Health Check**: http://localhost:5000/health
+
+**📖 For detailed instructions, see [DOCKER.md](./Lovecraft/DOCKER.md)**
 
 ---
 
