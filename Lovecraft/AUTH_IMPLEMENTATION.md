@@ -5,12 +5,14 @@
 ### Backend (.NET 10)
 
 #### 1. **Authentication DTOs** (`Lovecraft.Common/DTOs/Auth/AuthDtos.cs`)
-- `LoginRequestDto`, `RegisterRequestDto` (with username, email, name)
-- `AuthResponseDto`, `UserInfo` (with `emailVerified`, `authMethods`)
+- `LoginRequestDto`, `RegisterRequestDto` (with email, name - no username)
+- `AuthResponseDto`, `UserInfo` (email as login, name as display name, `emailVerified`, `authMethods`)
 - `RefreshTokenRequestDto`, `VerifyEmailRequestDto`
 - `ForgotPasswordRequestDto`, `ResetPasswordRequestDto`, `ChangePasswordRequestDto`
 - `OAuthCallbackDto`, `TelegramLoginRequestDto`, `LinkAuthMethodRequestDto`
 - `AuthMethodDto`
+
+**Simplified:** Email is used as the login identifier instead of separate username
 
 #### 2. **JWT Services** (`Lovecraft.Backend/Auth/`)
 - **JwtSettings.cs**: Configuration (15 min access token, 7 days refresh token)
@@ -84,7 +86,8 @@ Added `[Authorize]` attribute to all existing controllers:
 ### Frontend (React/TypeScript)
 
 #### 8. **Welcome.tsx Updates**
-- Added username and name fields to registration
+- Email as login identifier (no separate username field)
+- Helper text: "Your email will be used as your login"
 - Real-time password validation with visual feedback
 - Loading states with spinner
 - Error and success message displays
@@ -95,6 +98,8 @@ Added `[Authorize]` attribute to all existing controllers:
 - Commented API integration code ready to be uncommented
 
 **Features:**
+- Email-only registration (simplified)
+- Display name for user's preferred name
 - Password strength indicator
 - Email verification success message
 - OAuth placeholder buttons
@@ -116,7 +121,6 @@ Email Verified: Yes
 curl -X POST http://localhost:5000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "newuser",
     "email": "new@example.com",
     "password": "MyPass123!@#",
     "name": "New User",

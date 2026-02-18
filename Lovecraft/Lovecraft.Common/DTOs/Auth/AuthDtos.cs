@@ -8,7 +8,6 @@ public class LoginRequestDto
 
 public class RegisterRequestDto
 {
-    public string Username { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -30,7 +29,6 @@ public class UserInfo
 {
     public string Id { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-    public string Username { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool EmailVerified { get; set; }
     public List<string> AuthMethods { get; set; } = new();

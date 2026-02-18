@@ -37,7 +37,6 @@ public class AuthenticationTests
         // Arrange
         var request = new RegisterRequestDto
         {
-            Username = "newuser",
             Email = "newuser@example.com",
             Password = "Test123!@#",
             Name = "New User",
@@ -55,7 +54,6 @@ public class AuthenticationTests
         Assert.NotEmpty(result.AccessToken);
         Assert.NotEmpty(result.RefreshToken);
         Assert.Equal(request.Email, result.User.Email);
-        Assert.Equal(request.Username, result.User.Username);
         Assert.False(result.User.EmailVerified); // Email not verified yet
     }
 
@@ -150,10 +148,10 @@ public class AuthenticationTests
         // Arrange
         var userId = "test-user-id";
         var email = "test@example.com";
-        var username = "testuser";
+        var name = "Test User";
 
         // Act
-        var token = _jwtService.GenerateAccessToken(userId, email, username);
+        var token = _jwtService.GenerateAccessToken(userId, email, name);
         var principal = _jwtService.ValidateToken(token);
         var extractedUserId = _jwtService.GetUserIdFromToken(token);
 
@@ -185,7 +183,6 @@ public class AuthenticationTests
         // Register a new user
         var registerRequest = new RegisterRequestDto
         {
-            Username = "passwordtest",
             Email = "passwordtest@example.com",
             Password = "OldPass123!@#",
             Name = "Password Test",

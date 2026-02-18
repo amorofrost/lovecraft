@@ -35,7 +35,6 @@ public class MockAuthService : IAuthService
             var testUser = new MockUser
             {
                 Id = "test-user-001",
-                Username = "testuser",
                 Email = "test@example.com",
                 Name = "Test User",
                 PasswordHash = _passwordHasher.HashPassword("Test123!@#"),
@@ -43,8 +42,7 @@ public class MockAuthService : IAuthService
                 AuthMethods = new List<string> { "local" },
                 CreatedAt = DateTime.UtcNow
             };
-            _users[testUser.Email] = testUser;
-            _users[testUser.Username] = testUser;
+            _users[testUser.Email.ToLower()] = testUser;
         }
     }
 
@@ -59,19 +57,11 @@ public class MockAuthService : IAuthService
             return null;
         }
 
-        // Validate username doesn't exist
-        if (_users.ContainsKey(request.Username.ToLower()))
-        {
-            _logger.LogWarning("Registration failed: Username already exists {Username}", request.Username);
-            return null;
-        }
-
         // Create new user
         var userId = Guid.NewGuid().ToString();
         var user = new MockUser
         {
             Id = userId,
-            Username = request.Username,
             Email = request.Email,
             Name = request.Name,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
@@ -85,7 +75,6 @@ public class MockAuthService : IAuthService
         };
 
         _users[user.Email.ToLower()] = user;
-        _users[user.Username.ToLower()] = user;
 
         // Generate email verification token
         var verificationToken = Guid.NewGuid().ToString();
@@ -98,7 +87,7 @@ public class MockAuthService : IAuthService
         // For mock, just log the token
 
         // Generate tokens (but user can't use them until email verified)
-        var accessToken = _jwtService.GenerateAccessToken(userId, user.Email, user.Username);
+        var accessToken = _jwtService.GenerateAccessToken(userId, user.Email, user.Name);
         var refreshToken = _jwtService.GenerateRefreshToken();
         _refreshTokens[refreshToken] = userId;
 
@@ -110,7 +99,6 @@ public class MockAuthService : IAuthService
             {
                 Id = userId,
                 Email = user.Email,
-                Username = user.Username,
                 Name = user.Name,
                 EmailVerified = false,
                 AuthMethods = user.AuthMethods
@@ -146,7 +134,7 @@ public class MockAuthService : IAuthService
         }
 
         // Generate tokens
-        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Username);
+        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name);
         var refreshToken = _jwtService.GenerateRefreshToken();
         _refreshTokens[refreshToken] = user.Id;
 
@@ -160,7 +148,6 @@ public class MockAuthService : IAuthService
             {
                 Id = user.Id,
                 Email = user.Email,
-                Username = user.Username,
                 Name = user.Name,
                 EmailVerified = user.EmailVerified,
                 AuthMethods = user.AuthMethods
@@ -189,7 +176,7 @@ public class MockAuthService : IAuthService
         _refreshTokens.Remove(refreshToken);
 
         // Generate new tokens
-        var newAccessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Username);
+        var newAccessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name);
         var newRefreshToken = _jwtService.GenerateRefreshToken();
         _refreshTokens[newRefreshToken] = userId;
 
@@ -201,7 +188,6 @@ public class MockAuthService : IAuthService
             {
                 Id = user.Id,
                 Email = user.Email,
-                Username = user.Username,
                 Name = user.Name,
                 EmailVerified = user.EmailVerified,
                 AuthMethods = user.AuthMethods
@@ -329,7 +315,6 @@ public class MockAuthService : IAuthService
         {
             Id = user.Id,
             Email = user.Email,
-            Username = user.Username,
             Name = user.Name,
             EmailVerified = user.EmailVerified,
             AuthMethods = user.AuthMethods
@@ -379,7 +364,6 @@ public class MockAuthService : IAuthService
     private class MockUser
     {
         public string Id { get; set; } = string.Empty;
-        public string Username { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
