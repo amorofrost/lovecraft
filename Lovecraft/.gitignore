@@ -23,7 +23,3 @@ thumbs.db
 tmp-client.*
 certs/tmp-client.*
 
-
-# Local sample data for WebAPI (do not commit)
-Lovecraft.WebAPI/Resources/sample-users.json
-
