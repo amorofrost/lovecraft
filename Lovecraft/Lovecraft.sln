@@ -3,19 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36408.4
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.WebAPI", "Lovecraft.WebAPI\Lovecraft.WebAPI.csproj", "{2E85095E-DA6F-4F0A-9401-514F97821581}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Common", "Lovecraft.Common\Lovecraft.Common.csproj", "{E7C13A6D-C86A-4476-A315-93A082164C97}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.TelegramBot", "Lovecraft.TelegramBot\Lovecraft.TelegramBot.csproj", "{2F20D5C4-BD40-4F83-8107-FD3F663B25FF}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.UnitTests", "Lovecraft.UnitTests\Lovecraft.UnitTests.csproj", "{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Blazor", "Lovecraft.Blazor\Lovecraft.Blazor.csproj", "{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.Blazor.Tests", "Lovecraft.Blazor.Tests\Lovecraft.Blazor.Tests.csproj", "{A1B2C3D4-1111-2222-3333-444455556666}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lovecraft.BFF", "Lovecraft.BFF\Lovecraft.BFF.csproj", "{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,35 +13,14 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{2E85095E-DA6F-4F0A-9401-514F97821581}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2E85095E-DA6F-4F0A-9401-514F97821581}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2E85095E-DA6F-4F0A-9401-514F97821581}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2E85095E-DA6F-4F0A-9401-514F97821581}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E7C13A6D-C86A-4476-A315-93A082164C97}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E7C13A6D-C86A-4476-A315-93A082164C97}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E7C13A6D-C86A-4476-A315-93A082164C97}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E7C13A6D-C86A-4476-A315-93A082164C97}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2F20D5C4-BD40-4F83-8107-FD3F663B25FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2F20D5C4-BD40-4F83-8107-FD3F663B25FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2F20D5C4-BD40-4F83-8107-FD3F663B25FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2F20D5C4-BD40-4F83-8107-FD3F663B25FF}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3949ED25-72AE-4DEB-A23F-2CDF18AE7A6D}.Release|Any CPU.Build.0 = Release|Any CPU
-        
-		{A1B2C3D4-1111-2222-3333-444455556666}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-444455556666}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A1B2C3D4-1111-2222-3333-444455556666}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A1B2C3D4-1111-2222-3333-444455556666}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6F3A5B27-9C4B-4E2A-8F12-0A1D2C3E4B5F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BFF0BFF0-BFF0-BFF0-BFF0-BFF0BFF0BFF0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

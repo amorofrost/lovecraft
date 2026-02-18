@@ -1,6 +1,0 @@
-@Lovecraft.WebAPI_HostAddress = http://localhost:5194
-
-GET {{Lovecraft.WebAPI_HostAddress}}/health/
-Accept: application/json
-
-###
