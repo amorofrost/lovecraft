@@ -17,7 +17,15 @@ var jwtSettings = new JwtSettings
 };
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Serialize enums as camelCase strings so the frontend receives
+        // "concert", "male", etc. instead of integer values
+        options.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter(
+                System.Text.Json.JsonNamingPolicy.CamelCase));
+    });
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "AloeVera Harmony Meet API", Version = "v1", Description = "Authentication required - use /api/v1/auth endpoints to login" });

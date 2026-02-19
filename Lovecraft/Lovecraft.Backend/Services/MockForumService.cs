@@ -12,7 +12,9 @@ public class MockForumService : IForumService
 
     public Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
     {
-        // Return empty list for now - topics can be added later
-        return Task.FromResult(new List<ForumTopicDto>());
+        var topics = MockDataStore.ForumTopics
+            .Where(t => t.SectionId == sectionId)
+            .ToList();
+        return Task.FromResult(topics);
     }
 }

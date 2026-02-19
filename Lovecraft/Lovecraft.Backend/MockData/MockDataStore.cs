@@ -242,12 +242,32 @@ public static class MockDataStore
         },
     };
 
+    public static List<ForumTopicDto> ForumTopics { get; } = new()
+    {
+        // general
+        new() { Id = "t1", SectionId = "general", Title = "Какая ваша любимая песня AloeVera?", Content = "Делитесь любимыми треками!", AuthorId = "1", AuthorName = "Анна", IsPinned = true, ReplyCount = 24, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 23, 9, 15, 0) },
+        new() { Id = "t2", SectionId = "general", Title = "Новый альбом — ваши впечатления", Content = "Обсуждаем новый альбом группы", AuthorId = "2", AuthorName = "Дмитрий", IsPinned = true, ReplyCount = 42, CreatedAt = new DateTime(2024, 2, 21), UpdatedAt = new DateTime(2024, 2, 23, 11, 30, 0) },
+        new() { Id = "t3", SectionId = "general", Title = "Кто едет на летний фестиваль?", Content = "Планируем поездку вместе", AuthorId = "3", AuthorName = "Елена", ReplyCount = 18, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 22, 16, 45, 0) },
+        new() { Id = "t4", SectionId = "general", Title = "Текст последней песни — разбор", Content = "Глубокий анализ текстов и метафор", AuthorId = "4", AuthorName = "Мария", ReplyCount = 31, CreatedAt = new DateTime(2024, 2, 21), UpdatedAt = new DateTime(2024, 2, 23, 10, 0, 0) },
+        // music
+        new() { Id = "t5", SectionId = "music", Title = "Каверы на AloeVera — делимся", Content = "Скидывайте свои каверы!", AuthorId = "1", AuthorName = "Александр", ReplyCount = 15, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 22, 20, 15, 0) },
+        new() { Id = "t6", SectionId = "music", Title = "Аккорды и табы для гитары", Content = "Собираем аккорды ко всем песням", AuthorId = "2", AuthorName = "Дмитрий", IsPinned = true, ReplyCount = 8, CreatedAt = new DateTime(2024, 2, 18), UpdatedAt = new DateTime(2024, 2, 21, 14, 20, 0) },
+        new() { Id = "t7", SectionId = "music", Title = "Плейлисты похожих исполнителей", Content = "Если вам нравится AloeVera, послушайте...", AuthorId = "3", AuthorName = "София", ReplyCount = 22, CreatedAt = new DateTime(2024, 2, 19), UpdatedAt = new DateTime(2024, 2, 22, 18, 0, 0) },
+        // cities
+        new() { Id = "t8", SectionId = "cities", Title = "Москва — встречи фанатов", Content = "Организуем встречи в Москве", AuthorId = "1", AuthorName = "Анна", ReplyCount = 35, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 23, 8, 0, 0) },
+        new() { Id = "t9", SectionId = "cities", Title = "Санкт-Петербург — кто тут?", Content = "Питерские фанаты, объединяемся!", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 19, CreatedAt = new DateTime(2024, 2, 19), UpdatedAt = new DateTime(2024, 2, 22, 14, 20, 0) },
+        new() { Id = "t10", SectionId = "cities", Title = "Новосибирск — ищем компанию на концерт", Content = "Ищем попутчиков", AuthorId = "3", AuthorName = "Елена", ReplyCount = 7, CreatedAt = new DateTime(2024, 2, 18), UpdatedAt = new DateTime(2024, 2, 21, 12, 0, 0) },
+        // offtopic
+        new() { Id = "t11", SectionId = "offtopic", Title = "Кто смотрел новый фильм?", Content = "Обсуждаем кино и сериалы", AuthorId = "1", AuthorName = "Алексей", ReplyCount = 12, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 22, 20, 15, 0) },
+        new() { Id = "t12", SectionId = "offtopic", Title = "Рекомендации книг", Content = "Что почитать?", AuthorId = "4", AuthorName = "Мария", ReplyCount = 9, CreatedAt = new DateTime(2024, 2, 19), UpdatedAt = new DateTime(2024, 2, 21, 18, 30, 0) },
+    };
+
     public static List<ForumSectionDto> ForumSections { get; } = new()
     {
-        new() { Id = "general", Name = "Backend Mock: Общий", Description = "Общие обсуждения", TopicCount = 12 },
-        new() { Id = "music", Name = "Backend Mock: Музыка", Description = "Обсуждение песен и альбомов", TopicCount = 8 },
-        new() { Id = "cities", Name = "Backend Mock: Города", Description = "Региональные темы", TopicCount = 5 },
-        new() { Id = "offtopic", Name = "Backend Mock: Офтопик", Description = "Все остальное", TopicCount = 15 },
+        new() { Id = "general", Name = "💬 Общие обсуждения", Description = "Свободное общение на любые темы", TopicCount = 4 },
+        new() { Id = "music", Name = "🎵 Музыка и творчество", Description = "Разбор песен, каверы, творчество", TopicCount = 3 },
+        new() { Id = "cities", Name = "🏙️ По городам", Description = "Общение по городам и регионам", TopicCount = 3 },
+        new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2 },
     };
 
     public static List<LikeDto> Likes { get; set; } = new();
