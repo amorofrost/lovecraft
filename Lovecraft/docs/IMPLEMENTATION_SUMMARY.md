@@ -135,13 +135,25 @@ All endpoints return data in the format:
 
 ### Mock Data
 
-Matches the frontend mock data:
+Matches the frontend mock data (centralized in `src/data/` on the frontend):
 - 4 Users (Anna, Dmitry, Elena, Maria)
-- 4 Events (Concert, Meetup, Festival, Yachting)
+- 10 Events (Concert, Meetup, Festival, Yachting, etc.)
 - 4 Store Items (T-shirt, Vinyl, Poster, Hoodie)
 - 3 Blog Posts
-- 4 Forum Sections
+- 4 Forum Sections with 12 Topics (General, Music, Cities, Offtopic)
 - 3 AloeVera Songs
+
+### Enum Serialization
+
+All C# enums are serialized as camelCase strings in JSON responses. Configured in `Program.cs`:
+```csharp
+builder.Services.AddControllers()
+    .AddJsonOptions(options => {
+        options.JsonSerializerOptions.Converters.Add(
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    });
+```
+Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonBinary"`
 
 ### Configuration
 
@@ -210,14 +222,16 @@ dotnet test
 5. Add input validation (FluentValidation)
 6. Add error handling middleware
 7. Add logging (Serilog)
+8. Add chat and songs endpoints (frontend currently falls back to mock data for these)
 
 ### Frontend Integration
-1. ~~Auth endpoints connected to backend~~ ✅ Done — Welcome.tsx uses `authApi`
-2. **Implement `AuthContext`** — store and refresh JWT tokens (most critical)
-3. **Add protected routes** — redirect unauthenticated users
-4. Wire remaining pages (Friends, AloeVera, Talks) to backend API
-5. Add loading states for API calls
-6. Add error handling with toast notifications
+1. ~~Auth endpoints connected to backend~~ ✅ Done — `Welcome.tsx` uses `authApi`
+2. ~~Implement token storage~~ ✅ Done — `localStorage` via `apiClient.setAccessToken()`
+3. ~~Add protected routes~~ ✅ Done — `ProtectedRoute` wraps all content routes in `App.tsx`
+4. ~~Wire remaining pages to backend API~~ ✅ Done — all pages use `useEffect` + API services
+5. ~~Add loading states for API calls~~ ✅ Done — all pages show spinner while loading
+6. **Implement token refresh** — replace localStorage-only pattern with proper `AuthContext` + refresh token flow
+7. Add user-visible error handling with toast notifications
 
 ### Advanced Features
 1. OAuth integration (Google, Facebook, VK)
@@ -230,18 +244,19 @@ dotnet test
 ## Notes (Current State)
 
 - JWT authentication is fully operational with MockAuthService
+- All content endpoints require `[Authorize]` — clients must include a valid Bearer token
 - All data is in-memory — persists only while backend process is running
 - Test user pre-seeded: `test@example.com` / `Test123!@#`
 - CORS allows localhost:8080 and localhost:5173 with credentials
 - Access token: 15 min; Refresh token: 7 days (HttpOnly cookie)
+- Enums serialize as camelCase strings in all API responses
 - No rate limiting yet
 - No logging to external systems
 
-This is a **working stub** ready for:
-1. Frontend integration testing
-2. Backend implementation of real storage
-3. Docker deployment
-4. CI/CD setup
+This is a **working stub** connected to a fully wired frontend:
+1. Full-stack Docker Compose workflow tested and running
+2. All frontend pages tested against backend (events, forum, store, blog, matching, users)
+3. Next: replace in-memory services with Azure Storage
 
 ## Files Created
 

@@ -4,7 +4,7 @@
 
 Lovecraft is the backend service for the AloeVera Harmony Meet platform, built with .NET 10, Azure Storage, and Docker.
 
-> **📦 Current Status**: Working mock implementation with JWT authentication. All REST API endpoints are running, JWT auth (login/register/refresh/email-verify) is fully implemented, all data is in-memory (no Azure Storage yet). See [DOCKER.md](./Lovecraft/docs/DOCKER.md) for quick start instructions.
+> **📦 Current Status**: Working mock implementation with JWT authentication. All REST API endpoints are running and connected to the frontend. JWT auth is fully implemented, enums serialize as camelCase strings, all content endpoints require authentication (`[Authorize]`), and the full stack runs end-to-end in Docker. All data is in-memory (no Azure Storage yet). See [DOCKER.md](./Lovecraft/docs/DOCKER.md) for quick start instructions.
 
 ---
 
@@ -224,17 +224,17 @@ git push origin feature/add-user-search
 - **JWT Authentication**: register, login, logout, token refresh, email verification, password reset, change password
 - Password hashing (PBKDF2 + salt)
 - All mock services with in-memory data
+- `[Authorize]` enforced on all content controllers (Events, Store, Blog, Forum, Users, Matching)
+- **Enum serialization**: all C# enums serialize as camelCase strings (e.g., `"concert"`, `"male"`, `"nonBinary"`) for frontend compatibility
+- **Forum topics**: `MockDataStore` now contains 12 detailed forum topics across 4 sections; `MockForumService` filters by `sectionId`
 - CORS configured for frontend (localhost:8080, localhost:5173)
 - Swagger UI at `/swagger`
 - Health check at `/health`
-- Docker + docker-compose support
+- Docker + docker-compose support (full-stack tested end-to-end)
 - **22 unit tests** (16 auth + 6 service tests) — all passing
-- Frontend API service layer (`src/services/api/` in the web app)
-- Login/register connected from frontend to backend
-
-### 🚧 In Progress
-- Frontend AuthContext (token storage, protected routes)
-- Connecting remaining frontend pages to backend API
+- Frontend API service layer fully implemented for all domains
+- All frontend pages wired to backend (events, store, blog, forum, matching, users)
+- Frontend token stored in `localStorage`; protected routes guard all content pages
 
 ### 📋 Planned (Backend)
 - Azure Table Storage integration (replace in-memory mock services)
