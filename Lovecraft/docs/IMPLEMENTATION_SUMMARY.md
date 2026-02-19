@@ -87,6 +87,9 @@ All endpoints return data in the format:
 #### Forum (`/api/v1/forum`)
 - `GET /api/v1/forum/sections` - List forum sections
 - `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section
+- `GET /api/v1/forum/topics/{topicId}` - Get topic detail (title, content, author, pin status)
+- `GET /api/v1/forum/topics/{topicId}/replies` - Get all replies for a topic
+- `POST /api/v1/forum/topics/{topicId}/replies` - Post a reply (`{ content }` body)
 
 ### DTOs Created
 
@@ -114,10 +117,10 @@ All endpoints return data in the format:
 
 **Forum DTOs:**
 - `ForumSectionDto` - Forum section
-- `ForumTopicDto` - Forum topic
-- `ForumReplyDto` - Forum reply
+- `ForumTopicDto` - Forum topic (includes `AuthorAvatar?`)
+- `ForumReplyDto` - Forum reply (includes `Likes`, `AuthorAvatar?`)
 - `CreateTopicRequestDto` - Create topic request
-- `CreateReplyRequestDto` - Create reply request
+- `CreateReplyRequestDto` - Create reply request (`Content` property)
 
 **Common Models:**
 - `ApiResponse<T>` - Standard API response wrapper
@@ -140,7 +143,7 @@ Matches the frontend mock data (centralized in `src/data/` on the frontend):
 - 10 Events (Concert, Meetup, Festival, Yachting, etc.)
 - 4 Store Items (T-shirt, Vinyl, Poster, Hoodie)
 - 3 Blog Posts
-- 4 Forum Sections with 12 Topics (General, Music, Cities, Offtopic)
+- 4 Forum Sections with 12 Topics (General, Music, Cities, Offtopic) and 25 Replies
 - 3 AloeVera Songs
 
 ### Enum Serialization

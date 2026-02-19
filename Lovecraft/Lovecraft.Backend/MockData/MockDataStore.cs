@@ -270,6 +270,47 @@ public static class MockDataStore
         new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2 },
     };
 
+    public static List<ForumReplyDto> ForumReplies { get; } = new()
+    {
+        // t1 — Какая ваша любимая песня AloeVera?
+        new() { Id = "r1", TopicId = "t1", AuthorId = "2", AuthorName = "Дмитрий", Content = "Однозначно \"На краю\"! Мурашки каждый раз.", CreatedAt = new DateTime(2024, 2, 20, 13, 10, 0), Likes = 12 },
+        new() { Id = "r2", TopicId = "t1", AuthorId = "3", AuthorName = "Елена", Content = "А мне \"Розовый закат\" больше всего зашёл. Атмосфера потрясающая.", CreatedAt = new DateTime(2024, 2, 20, 15, 30, 0), Likes = 8 },
+        new() { Id = "r3", TopicId = "t1", AuthorId = "4", AuthorName = "Мария", Content = "Согласна с Анной! \"Сладкая жизнь\" — шедевр. Особенно припев.", CreatedAt = new DateTime(2024, 2, 21, 9, 0, 0), Likes = 5 },
+        new() { Id = "r4", TopicId = "t1", AuthorName = "Алексей", Content = "Для меня это \"Ночной город\". Слушаю на повторе уже месяц.", CreatedAt = new DateTime(2024, 2, 22, 18, 45, 0), Likes = 15 },
+        new() { Id = "r5", TopicId = "t1", AuthorName = "София", Content = "Сложно выбрать одну! Но если надо — \"Между нами\".", CreatedAt = new DateTime(2024, 2, 23, 9, 15, 0), Likes = 3 },
+        // t2 — Новый альбом
+        new() { Id = "r6", TopicId = "t2", AuthorId = "1", AuthorName = "Анна", Content = "Послушала три раза подряд! Каждый трек — огонь 🔥", CreatedAt = new DateTime(2024, 2, 22, 9, 30, 0), Likes = 20 },
+        new() { Id = "r7", TopicId = "t2", AuthorId = "3", AuthorName = "Елена", Content = "Продакшн на высоте. Звук стал более зрелым.", CreatedAt = new DateTime(2024, 2, 22, 11, 0, 0), Likes = 14 },
+        new() { Id = "r8", TopicId = "t2", AuthorName = "Алексей", Content = "Третий трек — мой фаворит. Необычная аранжировка!", CreatedAt = new DateTime(2024, 2, 23, 11, 30, 0), Likes = 7 },
+        // t3 — Летний фестиваль
+        new() { Id = "r9", TopicId = "t3", AuthorId = "4", AuthorName = "Мария", Content = "Я еду! Уже купила билет 🎉", CreatedAt = new DateTime(2024, 2, 19, 12, 0, 0), Likes = 6 },
+        new() { Id = "r10", TopicId = "t3", AuthorId = "2", AuthorName = "Дмитрий", Content = "Тоже планирую. Можно снять жильё вместе?", CreatedAt = new DateTime(2024, 2, 20, 8, 30, 0), Likes = 4 },
+        // t4 — Текст последней песни
+        new() { Id = "r11", TopicId = "t4", AuthorName = "София", Content = "Мне кажется, второй куплет — про принятие себя.", CreatedAt = new DateTime(2024, 2, 21, 16, 0, 0), Likes = 11 },
+        new() { Id = "r12", TopicId = "t4", AuthorName = "Алексей", Content = "А припев — отсылка к их ранним работам!", CreatedAt = new DateTime(2024, 2, 22, 10, 0, 0), Likes = 9 },
+        // t5 — Каверы
+        new() { Id = "r13", TopicId = "t5", AuthorId = "2", AuthorName = "Дмитрий", Content = "Вот мой кавер на гитаре: [ссылка]. Не судите строго 😅", CreatedAt = new DateTime(2024, 2, 18, 15, 0, 0), Likes = 18 },
+        new() { Id = "r14", TopicId = "t5", AuthorId = "1", AuthorName = "Анна", Content = "Круто! А я пою — может запишем коллаб?", CreatedAt = new DateTime(2024, 2, 19, 9, 0, 0), Likes = 10 },
+        // t6 — Аккорды
+        new() { Id = "r15", TopicId = "t6", AuthorName = "Александр", Content = "\"Сладкая жизнь\": Am - F - C - G, каподастр на 2-м ладу.", CreatedAt = new DateTime(2024, 2, 15, 12, 0, 0), Likes = 22 },
+        // t7 — Похожие исполнители
+        new() { Id = "r16", TopicId = "t7", AuthorId = "3", AuthorName = "Елена", Content = "Очень похожий вайб у группы \"Лунный свет\"!", CreatedAt = new DateTime(2024, 2, 20, 14, 0, 0), Likes = 7 },
+        new() { Id = "r17", TopicId = "t7", AuthorId = "4", AuthorName = "Мария", Content = "Советую послушать \"Тени\" — та же атмосфера.", CreatedAt = new DateTime(2024, 2, 22, 18, 0, 0), Likes = 5 },
+        // t8 — Москва
+        new() { Id = "r18", TopicId = "t8", AuthorName = "Алексей", Content = "Я за! Предлагаю в эту субботу в центре.", CreatedAt = new DateTime(2024, 2, 17, 14, 0, 0), Likes = 8 },
+        new() { Id = "r19", TopicId = "t8", AuthorId = "2", AuthorName = "Дмитрий", Content = "Может в парке Горького?", CreatedAt = new DateTime(2024, 2, 18, 9, 0, 0), Likes = 12 },
+        // t9 — Петербург
+        new() { Id = "r20", TopicId = "t9", AuthorName = "София", Content = "Я из Питера! Можем встретиться на Невском.", CreatedAt = new DateTime(2024, 2, 18, 12, 0, 0), Likes = 6 },
+        // t10 — Новосибирск
+        new() { Id = "r21", TopicId = "t10", AuthorId = "4", AuthorName = "Мария", Content = "Я тоже иду! Давайте встретимся у входа.", CreatedAt = new DateTime(2024, 2, 19, 14, 0, 0), Likes = 3 },
+        // t11 — Фильм
+        new() { Id = "r22", TopicId = "t11", AuthorId = "1", AuthorName = "Анна", Content = "Да, отличный фильм! Концовка неожиданная.", CreatedAt = new DateTime(2024, 2, 20, 20, 0, 0), Likes = 4 },
+        new() { Id = "r23", TopicId = "t11", AuthorId = "2", AuthorName = "Дмитрий", Content = "Не понравился, если честно. Ожидал большего.", CreatedAt = new DateTime(2024, 2, 21, 10, 0, 0), Likes = 2 },
+        // t12 — Книги
+        new() { Id = "r24", TopicId = "t12", AuthorName = "София", Content = "Советую \"Маленький принц\" — вечная классика.", CreatedAt = new DateTime(2024, 2, 19, 14, 0, 0), Likes = 8 },
+        new() { Id = "r25", TopicId = "t12", AuthorId = "3", AuthorName = "Елена", Content = "\"1984\" Оруэлла — очень актуально сейчас.", CreatedAt = new DateTime(2024, 2, 20, 9, 0, 0), Likes = 6 },
+    };
+
     public static List<LikeDto> Likes { get; set; } = new();
     public static List<MatchDto> Matches { get; set; } = new();
 

@@ -46,4 +46,7 @@ public interface IForumService
 {
     Task<List<ForumSectionDto>> GetSectionsAsync();
     Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId);
+    Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
+    Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
+    Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content);
 }

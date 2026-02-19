@@ -226,7 +226,7 @@ git push origin feature/add-user-search
 - All mock services with in-memory data
 - `[Authorize]` enforced on all content controllers (Events, Store, Blog, Forum, Users, Matching)
 - **Enum serialization**: all C# enums serialize as camelCase strings (e.g., `"concert"`, `"male"`, `"nonBinary"`) for frontend compatibility
-- **Forum topics**: `MockDataStore` now contains 12 detailed forum topics across 4 sections; `MockForumService` filters by `sectionId`
+- **Forum topics & replies**: `MockDataStore` now contains 12 topics and 25 replies; full topic detail and reply CRUD endpoints implemented
 - CORS configured for frontend (localhost:8080, localhost:5173)
 - Swagger UI at `/swagger`
 - Health check at `/health`

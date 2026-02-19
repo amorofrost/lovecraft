@@ -16,6 +16,7 @@ public class ForumTopicDto
     public string Content { get; set; } = string.Empty;
     public string AuthorId { get; set; } = string.Empty;
     public string AuthorName { get; set; } = string.Empty;
+    public string? AuthorAvatar { get; set; }
     public bool IsPinned { get; set; }
     public bool IsLocked { get; set; }
     public int ReplyCount { get; set; }
@@ -29,8 +30,10 @@ public class ForumReplyDto
     public string TopicId { get; set; } = string.Empty;
     public string AuthorId { get; set; } = string.Empty;
     public string AuthorName { get; set; } = string.Empty;
+    public string? AuthorAvatar { get; set; }
     public string Content { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+    public int Likes { get; set; }
 }
 
 public class CreateTopicRequestDto

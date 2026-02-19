@@ -55,4 +55,62 @@ public class ForumController : ControllerBase
             return StatusCode(500, ApiResponse<List<ForumTopicDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get topics"));
         }
     }
+
+    /// <summary>
+    /// Get a single topic by ID
+    /// </summary>
+    [HttpGet("topics/{topicId}")]
+    public async Task<ActionResult<ApiResponse<ForumTopicDto>>> GetTopic(string topicId)
+    {
+        try
+        {
+            var topic = await _forumService.GetTopicByIdAsync(topicId);
+            if (topic == null)
+                return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+            return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(topic));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting topic {TopicId}", topicId);
+            return StatusCode(500, ApiResponse<ForumTopicDto>.ErrorResponse("INTERNAL_ERROR", "Failed to get topic"));
+        }
+    }
+
+    /// <summary>
+    /// Get all replies for a topic
+    /// </summary>
+    [HttpGet("topics/{topicId}/replies")]
+    public async Task<ActionResult<ApiResponse<List<ForumReplyDto>>>> GetReplies(string topicId)
+    {
+        try
+        {
+            var replies = await _forumService.GetRepliesAsync(topicId);
+            return Ok(ApiResponse<List<ForumReplyDto>>.SuccessResponse(replies));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting replies for topic {TopicId}", topicId);
+            return StatusCode(500, ApiResponse<List<ForumReplyDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get replies"));
+        }
+    }
+
+    /// <summary>
+    /// Post a reply to a topic
+    /// </summary>
+    [HttpPost("topics/{topicId}/replies")]
+    public async Task<ActionResult<ApiResponse<ForumReplyDto>>> CreateReply(string topicId, [FromBody] CreateReplyRequestDto request)
+    {
+        try
+        {
+            const string currentUserId = "current-user";
+            const string currentUserName = "Вы";
+            var reply = await _forumService.CreateReplyAsync(topicId, currentUserId, currentUserName, request.Content);
+            return Ok(ApiResponse<ForumReplyDto>.SuccessResponse(reply));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating reply for topic {TopicId}", topicId);
+            return StatusCode(500, ApiResponse<ForumReplyDto>.ErrorResponse("INTERNAL_ERROR", "Failed to create reply"));
+        }
+    }
 }
