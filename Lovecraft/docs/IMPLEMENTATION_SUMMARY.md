@@ -2,7 +2,9 @@
 
 ## What Was Created
 
-A complete .NET 10 backend stub implementation with REST API endpoints and mock data.
+A complete .NET 10 backend stub implementation with REST API endpoints, mock data, and full JWT authentication.
+
+> This document covers the initial stub implementation. JWT auth was added subsequently — see [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for those details.
 
 ### Solution Structure
 
@@ -198,34 +200,41 @@ dotnet test
 
 ## What's Next
 
+> **Note**: JWT authentication has since been implemented. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for details.
+
 ### Immediate Next Steps (Backend)
-1. Add JWT authentication
-2. Integrate Azure Table Storage
-3. Integrate Azure Blob Storage
-4. Add input validation (FluentValidation)
-5. Add error handling middleware
-6. Add logging (Serilog)
+1. ~~Add JWT authentication~~ ✅ Done — see `Auth/` directory
+2. Integrate Azure Table Storage (replace mock services)
+3. Integrate Azure Blob Storage (image uploads)
+4. Add email service (SMTP/SendGrid for verification and password reset)
+5. Add input validation (FluentValidation)
+6. Add error handling middleware
+7. Add logging (Serilog)
 
 ### Frontend Integration
-1. Update frontend to call backend APIs instead of using mock data
-2. Add authentication flow
-3. Add loading states
-4. Add error handling
+1. ~~Auth endpoints connected to backend~~ ✅ Done — Welcome.tsx uses `authApi`
+2. **Implement `AuthContext`** — store and refresh JWT tokens (most critical)
+3. **Add protected routes** — redirect unauthenticated users
+4. Wire remaining pages (Friends, AloeVera, Talks) to backend API
+5. Add loading states for API calls
+6. Add error handling with toast notifications
 
 ### Advanced Features
-1. SignalR for real-time messaging
-2. Project Orleans for scalability
-3. Redis cache
-4. Rate limiting
-5. Azure deployment
+1. OAuth integration (Google, Facebook, VK)
+2. Telegram bot authentication
+3. SignalR for real-time messaging
+4. Rate limiting and account lockout
+5. Redis cache
+6. Azure deployment
 
-## Notes
+## Notes (Current State)
 
-- All authentication is currently hardcoded (`current-user`)
-- All data is in-memory and not persisted
-- No validation on inputs
-- CORS is wide open (for development)
-- No rate limiting
+- JWT authentication is fully operational with MockAuthService
+- All data is in-memory — persists only while backend process is running
+- Test user pre-seeded: `test@example.com` / `Test123!@#`
+- CORS allows localhost:8080 and localhost:5173 with credentials
+- Access token: 15 min; Refresh token: 7 days (HttpOnly cookie)
+- No rate limiting yet
 - No logging to external systems
 
 This is a **working stub** ready for:

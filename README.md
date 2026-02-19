@@ -4,7 +4,7 @@
 
 Lovecraft is the backend service for the AloeVera Harmony Meet platform, built with .NET 10, Azure Storage, and Docker.
 
-> **📦 Current Status**: Mock implementation with stub API endpoints. All data is in-memory. See [DOCKER.md](./Lovecraft/DOCKER.md) for quick start instructions.
+> **📦 Current Status**: Working mock implementation with JWT authentication. All REST API endpoints are running, JWT auth (login/register/refresh/email-verify) is fully implemented, all data is in-memory (no Azure Storage yet). See [DOCKER.md](./Lovecraft/docs/DOCKER.md) for quick start instructions.
 
 ---
 
@@ -29,37 +29,42 @@ Lovecraft is the backend service for the AloeVera Harmony Meet platform, built w
 ## 📁 Repository Structure
 
 ```
-Lovecraft/
-├── Lovecraft.sln             # Solution file
-├── Lovecraft.Common/         # Shared DTOs, contracts, models
-│   ├── DTOs/                 # Data Transfer Objects
-│   ├── Enums/                # Enumerations
-│   └── Models/               # Response models
-├── Lovecraft.Backend/        # Main API project
-│   ├── Controllers/          # REST API controllers
-│   ├── Services/             # Business logic services
-│   ├── MockData/             # Mock data store
-│   └── Program.cs            # Application entry point
-├── Lovecraft.UnitTests/      # Unit tests
-├── Dockerfile                # Docker build configuration
-├── docker-compose.yml        # Docker Compose configuration
-├── DOCKER.md                 # Docker instructions
-├── docs/                     # Technical documentation
-└── README.md                 # This file
+lovecraft/
+├── README.md                 # This file
+└── Lovecraft/
+    ├── Lovecraft.sln         # Solution file
+    ├── Lovecraft.Common/     # Shared DTOs, enums, models
+    │   ├── DTOs/             # Auth, Users, Events, Matching, Store, Blog, Forum, Chat DTOs
+    │   ├── Enums/            # All enumerations
+    │   └── Models/           # ApiResponse<T>
+    ├── Lovecraft.Backend/    # Main API project
+    │   ├── Auth/             # JwtService, PasswordHasher, JwtSettings
+    │   ├── Controllers/V1/   # AuthController + all resource controllers
+    │   ├── Services/         # IServices.cs + Mock*Service implementations
+    │   ├── MockData/         # MockDataStore.cs — in-memory seed data
+    │   └── Program.cs        # Application startup
+    ├── Lovecraft.UnitTests/  # xUnit tests (22 tests)
+    ├── Dockerfile            # Multi-stage Docker build
+    ├── docker-compose.yml    # Docker Compose
+    └── docs/                 # Technical documentation
 ```
 
 ---
 
 ## 📚 Documentation
 
-Comprehensive documentation is available in the `/docs` folder:
+Comprehensive documentation is available in the `Lovecraft/docs/` folder:
 
-- **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - System architecture and design
-- **[AZURE_STORAGE.md](./docs/AZURE_STORAGE.md)** - Data schema and storage patterns
-- **[API.md](./docs/API.md)** - Complete API specification _(to be created)_
-- **[AUTHENTICATION.md](./docs/AUTHENTICATION.md)** - Auth design _(to be created)_
-- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** - Local setup guide _(to be created)_
-- **[DEPLOYMENT.md](./docs/DEPLOYMENT.md)** - Azure deployment guide _(to be created)_
+- **[QUICKSTART.md](./Lovecraft/docs/QUICKSTART.md)** - 30-second start guide
+- **[DOCKER.md](./Lovecraft/docs/DOCKER.md)** - Docker setup and commands
+- **[IMPLEMENTATION_SUMMARY.md](./Lovecraft/docs/IMPLEMENTATION_SUMMARY.md)** - What's implemented
+- **[AUTHENTICATION.md](./Lovecraft/docs/AUTHENTICATION.md)** - Auth design and flows
+- **[AUTH_IMPLEMENTATION.md](./Lovecraft/docs/AUTH_IMPLEMENTATION.md)** - Auth implementation details
+- **[AUTH_FLOWS.md](./Lovecraft/docs/AUTH_FLOWS.md)** - Authentication flow diagrams
+- **[AUTH_DECISIONS.md](./Lovecraft/docs/AUTH_DECISIONS.md)** - Auth design decisions
+- **[API_TESTING.md](./Lovecraft/docs/API_TESTING.md)** - API testing with curl/Swagger
+- **[ARCHITECTURE.md](./Lovecraft/docs/ARCHITECTURE.md)** - System architecture
+- **[AZURE_STORAGE.md](./Lovecraft/docs/AZURE_STORAGE.md)** - Data schema and storage patterns
 
 ---
 
@@ -92,7 +97,7 @@ dotnet run
 - **Swagger UI**: http://localhost:5000/swagger
 - **Health Check**: http://localhost:5000/health
 
-**📖 For detailed instructions, see [DOCKER.md](./Lovecraft/DOCKER.md)**
+**📖 For detailed instructions, see [DOCKER.md](./Lovecraft/docs/DOCKER.md)**
 
 ---
 
@@ -213,25 +218,33 @@ git push origin feature/add-user-search
 
 ## 🏗️ Implementation Status
 
-### ✅ Completed
-- Project structure created
-- Documentation written
+### ✅ Completed (Mock Implementation)
+- Project structure: `Lovecraft.Common`, `Lovecraft.Backend`, `Lovecraft.UnitTests`
+- All REST API controllers: Auth, Users, Events, Matching, Store, Blog, Forum
+- **JWT Authentication**: register, login, logout, token refresh, email verification, password reset, change password
+- Password hashing (PBKDF2 + salt)
+- All mock services with in-memory data
+- CORS configured for frontend (localhost:8080, localhost:5173)
+- Swagger UI at `/swagger`
+- Health check at `/health`
+- Docker + docker-compose support
+- **22 unit tests** (16 auth + 6 service tests) — all passing
+- Frontend API service layer (`src/services/api/` in the web app)
+- Login/register connected from frontend to backend
 
 ### 🚧 In Progress
-- Phase 1: Foundation setup
+- Frontend AuthContext (token storage, protected routes)
+- Connecting remaining frontend pages to backend API
 
-### 📋 Planned
-- Phase 2: Authentication
-- Phase 3: User Management
-- Phase 4: Matching System
-- Phase 5: Events
-- Phase 6: Messaging
-- Phase 7: Community Features
-- Phase 8: Store Integration
-- Phase 9: Frontend Integration
-- Phase 10: Deployment
-- Phase 11: Real-time Messaging
-- Phase 12: Optimization
+### 📋 Planned (Backend)
+- Azure Table Storage integration (replace in-memory mock services)
+- Azure Blob Storage (image uploads)
+- Email service (SMTP/SendGrid for verification and password reset)
+- OAuth integration (Google, Facebook, VK)
+- Telegram bot authentication
+- Real-time messaging (SignalR)
+- Rate limiting and account lockout
+- Azure deployment
 
 See [BACKEND_PLAN.md](../aloevera-harmony-meet/docs/BACKEND_PLAN.md) for detailed roadmap.
 

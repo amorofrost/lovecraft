@@ -32,43 +32,65 @@ Open http://localhost:5000/swagger (or check console for port)
 ### Using curl
 
 ```bash
-# Health check
+# Health check (public)
 curl http://localhost:5000/health
 
-# Get users
-curl http://localhost:5000/api/v1/users
+# Login and capture token
+TOKEN=$(curl -s -X POST http://localhost:5000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"Test123!@#"}' \
+  | jq -r '.data.accessToken')
 
-# Get events
-curl http://localhost:5000/api/v1/events
+# Get users (auth required)
+curl http://localhost:5000/api/v1/users \
+  -H "Authorization: Bearer $TOKEN"
 
-# Get blog posts
-curl http://localhost:5000/api/v1/blog
+# Get events (auth required)
+curl http://localhost:5000/api/v1/events \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get blog posts (auth required)
+curl http://localhost:5000/api/v1/blog \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## What's Working
 
-✅ All REST API endpoints  
-✅ Mock data (matches frontend)  
-✅ Swagger documentation  
-✅ Docker support  
-✅ Unit tests (6 tests, all passing)  
-✅ CORS enabled for frontend  
+✅ All REST API endpoints (Users, Events, Matching, Store, Blog, Forum)  
+✅ **JWT Authentication** — register, login, logout, refresh, email verify, password reset  
+✅ Password hashing (PBKDF2 + salt, 100k iterations)  
+✅ Mock data (prefixed with "Backend Mock:" in titles)  
+✅ Swagger documentation with Authorize button  
+✅ Docker support with health checks  
+✅ 22 unit tests, all passing  
+✅ CORS configured for frontend  
+✅ Frontend API service layer connected (auth endpoints wired in Welcome.tsx)  
 
 ## What's NOT Working Yet
 
-❌ Authentication (JWT)  
-❌ Azure Storage  
-❌ Data persistence  
-❌ Input validation  
-❌ Real-time messaging  
+❌ Azure Storage — all data is in-memory (resets on restart)  
+❌ Email delivery — verification tokens are logged to console only  
+❌ Real-time messaging (SignalR)  
+❌ OAuth (Google, Facebook, VK)  
+❌ Telegram authentication  
+❌ Frontend AuthContext — token returned from login is not yet stored  
+❌ Frontend protected routes  
+
+## Test Credentials
+
+```
+Email:    test@example.com
+Password: Test123!@#
+```
 
 ## Next Steps
 
-1. **Frontend Integration**: Update the React app to call these APIs
-2. **Authentication**: Implement JWT auth
-3. **Azure Storage**: Replace mock services with real storage
-4. **Validation**: Add FluentValidation
-5. **Logging**: Add Serilog
+1. **Frontend**: Implement `AuthContext` to store and refresh JWT tokens
+2. **Frontend**: Add protected route wrapper
+3. **Frontend**: Wire remaining pages (Friends, AloeVera, Talks) to backend API
+4. **Backend**: Integrate Azure Table Storage (replace mock services)
+5. **Backend**: Add email service (SMTP/SendGrid) for verification emails
+6. **Backend**: OAuth integration
 
 ## Documentation
 

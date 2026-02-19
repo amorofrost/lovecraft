@@ -101,46 +101,62 @@ Once running, check Swagger UI at http://localhost:5000/swagger for full API doc
 ### Testing with curl
 
 ```bash
-# Health check
+# Health check (public)
 curl http://localhost:5000/health
 
-# Get users
-curl http://localhost:5000/api/v1/users
+# Login to get access token
+TOKEN=$(curl -s -X POST http://localhost:5000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"Test123!@#"}' \
+  | jq -r '.data.accessToken')
 
-# Get events
-curl http://localhost:5000/api/v1/events
+# Get users (requires auth)
+curl http://localhost:5000/api/v1/users \
+  -H "Authorization: Bearer $TOKEN"
 
-# Get blog posts
-curl http://localhost:5000/api/v1/blog
+# Get events (requires auth)
+curl http://localhost:5000/api/v1/events \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get blog posts (requires auth)
+curl http://localhost:5000/api/v1/blog \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+> **Note**: All `/api/v1/*` endpoints require a valid JWT Bearer token. Use Swagger UI for easier interactive testing — it has a built-in Authorize button.
 
 ### Current Status
 
-**This is a MOCK implementation** - All data is hardcoded and in-memory. No actual database is used yet.
+**Working mock implementation** — All data is in-memory. JWT authentication is fully operational.
 
 **Current Features**:
-- ✅ REST API with stub implementations
+- ✅ REST API with all controllers (Auth, Users, Events, Matching, Store, Blog, Forum)
+- ✅ JWT Authentication — register, login, logout, refresh, email verify, password reset
+- ✅ Password hashing (PBKDF2 + salt)
 - ✅ Swagger/OpenAPI documentation
-- ✅ Mock data (matches frontend mock data)
-- ✅ CORS enabled for frontend
-- ✅ Docker support
-- ✅ Health check endpoint
+- ✅ CORS configured for frontend (localhost:8080, localhost:5173)
+- ✅ Docker support with health checks
+- ✅ 22 unit tests passing
 
 **Not Yet Implemented**:
-- ❌ Authentication/Authorization (JWT)
-- ❌ Azure Storage integration
-- ❌ Data persistence
+- ❌ Azure Storage integration (data is in-memory, resets on restart)
+- ❌ Real email delivery (verification tokens logged to console only)
 - ❌ Real-time messaging (SignalR)
-- ❌ Input validation
-- ❌ Error handling middleware
-- ❌ Logging to Application Insights
-- ❌ Unit tests
+- ❌ OAuth (Google, Facebook, VK)
+- ❌ Telegram bot authentication
+- ❌ Rate limiting / account lockout
+
+### Test Credentials
+
+```
+Email:    test@example.com
+Password: Test123!@#
+```
+
+This user is pre-seeded with `EmailVerified = true` so you can log in immediately.
 
 ### Next Steps
 
-See the main [README.md](../README.md) and documentation in the `docs/` folder for:
-- Backend implementation plan
-- Architecture overview
-- Azure Storage schema
-- Authentication design
-- Deployment guide
+See the main [README.md](../../README.md) and:
+- [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) — auth details
+- [AZURE_STORAGE.md](./AZURE_STORAGE.md) — storage schema for when Azure is integrated
