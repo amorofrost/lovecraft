@@ -1,0 +1,119 @@
+using System.Text.Json;
+using Azure;
+using Azure.Data.Tables;
+using Lovecraft.Backend.Storage;
+using Lovecraft.Backend.Storage.Entities;
+using Lovecraft.Common.DTOs.Users;
+using Lovecraft.Common.Enums;
+
+namespace Lovecraft.Backend.Services.Azure;
+
+public class AzureUserService : IUserService
+{
+    private readonly TableClient _usersTable;
+    private readonly ILogger<AzureUserService> _logger;
+
+    public AzureUserService(TableServiceClient tableServiceClient, ILogger<AzureUserService> logger)
+    {
+        _logger = logger;
+        _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
+        _usersTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
+    }
+
+    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
+    {
+        var results = new List<UserDto>();
+        await foreach (var entity in _usersTable.QueryAsync<UserEntity>())
+        {
+            results.Add(ToDto(entity));
+        }
+        return results.Skip(skip).Take(take).ToList();
+    }
+
+    public async Task<UserDto?> GetUserByIdAsync(string userId)
+    {
+        try
+        {
+            var response = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            return ToDto(response.Value);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task<UserDto> UpdateUserAsync(string userId, UserDto dto)
+    {
+        try
+        {
+            var response = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            var entity = response.Value;
+
+            entity.Name = dto.Name;
+            entity.Age = dto.Age;
+            entity.Bio = dto.Bio;
+            entity.Location = dto.Location;
+            entity.Gender = dto.Gender.ToString();
+            entity.ProfileImage = dto.ProfileImage;
+            entity.ImagesJson = JsonSerializer.Serialize(dto.Images ?? new List<string>());
+            entity.IsOnline = dto.IsOnline;
+            entity.PreferencesJson = JsonSerializer.Serialize(dto.Preferences);
+            entity.SettingsJson = JsonSerializer.Serialize(dto.Settings);
+            entity.FavoriteSongJson = dto.FavoriteSong != null
+                ? JsonSerializer.Serialize(dto.FavoriteSong)
+                : string.Empty;
+            entity.UpdatedAt = DateTime.UtcNow;
+
+            await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+            return ToDto(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return dto;
+        }
+    }
+
+    private static UserDto ToDto(UserEntity entity)
+    {
+        Enum.TryParse<Gender>(entity.Gender, out var gender);
+
+        UserPreferencesDto prefs;
+        try { prefs = JsonSerializer.Deserialize<UserPreferencesDto>(entity.PreferencesJson) ?? new UserPreferencesDto(); }
+        catch { prefs = new UserPreferencesDto(); }
+
+        UserSettingsDto settings;
+        try { settings = JsonSerializer.Deserialize<UserSettingsDto>(entity.SettingsJson) ?? new UserSettingsDto(); }
+        catch { settings = new UserSettingsDto(); }
+
+        List<string> images;
+        try { images = JsonSerializer.Deserialize<List<string>>(entity.ImagesJson) ?? new List<string>(); }
+        catch { images = new List<string>(); }
+
+        AloeVeraSongDto? song = null;
+        if (!string.IsNullOrEmpty(entity.FavoriteSongJson))
+        {
+            try { song = JsonSerializer.Deserialize<AloeVeraSongDto>(entity.FavoriteSongJson); }
+            catch { }
+        }
+
+        return new UserDto
+        {
+            Id = entity.RowKey,
+            Name = entity.Name,
+            Age = entity.Age,
+            Bio = entity.Bio,
+            Location = entity.Location,
+            Gender = gender,
+            ProfileImage = entity.ProfileImage,
+            Images = images,
+            LastSeen = entity.LastSeen,
+            IsOnline = entity.IsOnline,
+            Preferences = prefs,
+            Settings = settings,
+            FavoriteSong = song
+        };
+    }
+}

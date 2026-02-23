@@ -1,8 +1,10 @@
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Auth;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Azure.Data.Tables;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,13 +74,31 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
-builder.Services.AddSingleton<IAuthService, MockAuthService>();
-builder.Services.AddSingleton<IUserService, MockUserService>();
-builder.Services.AddSingleton<IEventService, MockEventService>();
-builder.Services.AddSingleton<IMatchingService, MockMatchingService>();
-builder.Services.AddSingleton<IStoreService, MockStoreService>();
-builder.Services.AddSingleton<IBlogService, MockBlogService>();
-builder.Services.AddSingleton<IForumService, MockForumService>();
+
+var useAzure = builder.Configuration.GetValue<bool>("USE_AZURE_STORAGE");
+if (useAzure)
+{
+    var connectionString = builder.Configuration["AZURE_STORAGE_CONNECTION_STRING"]
+        ?? throw new InvalidOperationException("AZURE_STORAGE_CONNECTION_STRING not set");
+    builder.Services.AddSingleton(new TableServiceClient(connectionString));
+    builder.Services.AddSingleton<IAuthService, AzureAuthService>();
+    builder.Services.AddSingleton<IUserService, AzureUserService>();
+    builder.Services.AddSingleton<IEventService, AzureEventService>();
+    builder.Services.AddSingleton<IMatchingService, AzureMatchingService>();
+    builder.Services.AddSingleton<IStoreService, AzureStoreService>();
+    builder.Services.AddSingleton<IBlogService, AzureBlogService>();
+    builder.Services.AddSingleton<IForumService, AzureForumService>();
+}
+else
+{
+    builder.Services.AddSingleton<IAuthService, MockAuthService>();
+    builder.Services.AddSingleton<IUserService, MockUserService>();
+    builder.Services.AddSingleton<IEventService, MockEventService>();
+    builder.Services.AddSingleton<IMatchingService, MockMatchingService>();
+    builder.Services.AddSingleton<IStoreService, MockStoreService>();
+    builder.Services.AddSingleton<IBlogService, MockBlogService>();
+    builder.Services.AddSingleton<IForumService, MockForumService>();
+}
 
 var app = builder.Build();
 

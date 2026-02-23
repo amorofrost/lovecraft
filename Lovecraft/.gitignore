@@ -23,3 +23,6 @@ thumbs.db
 tmp-client.*
 certs/tmp-client.*
 
+# Ignore ASP.NET Core data protection keys
+**/.aspnet-keys
+

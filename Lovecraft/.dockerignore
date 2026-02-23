@@ -1,6 +1,8 @@
 **/.classpath
 **/.dockerignore
 **/.env
+**/.aspnet-keys
+**/.dotnet
 **/.git
 **/.gitignore
 **/.project
