@@ -1,6 +1,8 @@
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
+using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Auth;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -71,6 +73,7 @@ builder.Services.AddCors(options =>
 });
 
 // Register services
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
@@ -83,11 +86,27 @@ if (useAzure)
     builder.Services.AddSingleton(new TableServiceClient(connectionString));
     builder.Services.AddSingleton<IAuthService, AzureAuthService>();
     builder.Services.AddSingleton<IUserService, AzureUserService>();
-    builder.Services.AddSingleton<IEventService, AzureEventService>();
     builder.Services.AddSingleton<IMatchingService, AzureMatchingService>();
-    builder.Services.AddSingleton<IStoreService, AzureStoreService>();
-    builder.Services.AddSingleton<IBlogService, AzureBlogService>();
-    builder.Services.AddSingleton<IForumService, AzureForumService>();
+    builder.Services.AddSingleton<IEventService>(sp => new CachingEventService(
+        new AzureEventService(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<AzureEventService>>()),
+        sp.GetRequiredService<IMemoryCache>()));
+    builder.Services.AddSingleton<IStoreService>(sp => new CachingStoreService(
+        new AzureStoreService(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<AzureStoreService>>()),
+        sp.GetRequiredService<IMemoryCache>()));
+    builder.Services.AddSingleton<IBlogService>(sp => new CachingBlogService(
+        new AzureBlogService(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<AzureBlogService>>()),
+        sp.GetRequiredService<IMemoryCache>()));
+    builder.Services.AddSingleton<IForumService>(sp => new CachingForumService(
+        new AzureForumService(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<AzureForumService>>()),
+        sp.GetRequiredService<IMemoryCache>()));
 }
 else
 {
