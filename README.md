@@ -305,7 +305,7 @@ For questions or issues:
 
 ## 📄 License
 
-- **[QUICKSTART.md](./LICENSE)** - MIT License
+- **[MIT LICENSE](./LICENSE)** 
 
 ---
 
