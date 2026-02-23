@@ -20,6 +20,9 @@ RUN dotnet publish "Lovecraft.Backend.csproj" -c Release -o /app/publish /p:UseA
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 

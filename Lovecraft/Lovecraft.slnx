@@ -2,4 +2,5 @@
   <Project Path="Lovecraft.Backend/Lovecraft.Backend.csproj" />
   <Project Path="Lovecraft.Common/Lovecraft.Common.csproj" />
   <Project Path="Lovecraft.UnitTests/Lovecraft.UnitTests.csproj" />
+  <Project Path="Lovecraft.Tools.Seeder/Lovecraft.Tools.Seeder.csproj" />
 </Solution>
