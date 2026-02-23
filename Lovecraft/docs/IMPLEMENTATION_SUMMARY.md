@@ -2,49 +2,34 @@
 
 ## What Was Created
 
-A complete .NET 10 backend stub implementation with REST API endpoints, mock data, and full JWT authentication.
+A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM behind an nginx proxy.
 
-> This document covers the initial stub implementation. JWT auth was added subsequently — see [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for those details.
+> This document covers the initial stub implementation. JWT auth was added subsequently — see [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md). Azure Storage integration and Docker deployment were completed February 23, 2026.
 
 ### Solution Structure
 
 ```
-Lovecraft.sln
+Lovecraft.slnx
 ├── Lovecraft.Common/           # Shared library (DTOs, Enums, Models)
-│   ├── DTOs/
-│   │   ├── Auth/              # Authentication DTOs
-│   │   ├── Blog/              # Blog post DTOs
-│   │   ├── Chats/             # Chat and message DTOs
-│   │   ├── Events/            # Event DTOs
-│   │   ├── Forum/             # Forum section/topic DTOs
-│   │   ├── Matching/          # Like and match DTOs
-│   │   ├── Store/             # Store item DTOs
-│   │   └── Users/             # User DTOs
+│   ├── DTOs/                  # Auth, Blog, Chats, Events, Forum, Matching, Store, Users
 │   ├── Enums/                 # All enumerations
-│   └── Models/                # API response models
+│   └── Models/                # ApiResponse<T>
 │
 ├── Lovecraft.Backend/         # ASP.NET Core Web API
-│   ├── Controllers/V1/        # REST API controllers
-│   │   ├── UsersController
-│   │   ├── EventsController
-│   │   ├── MatchingController
-│   │   ├── StoreController
-│   │   ├── BlogController
-│   │   └── ForumController
-│   ├── Services/              # Service interfaces and implementations
-│   │   ├── IServices.cs       # Service interfaces
-│   │   ├── MockUserService.cs
-│   │   ├── MockEventService.cs
-│   │   ├── MockMatchingService.cs
-│   │   ├── MockStoreService.cs
-│   │   ├── MockBlogService.cs
-│   │   └── MockForumService.cs
-│   ├── MockData/              # Mock data store
-│   │   └── MockDataStore.cs   # In-memory mock data
-│   └── Program.cs             # Application startup
+│   ├── Controllers/V1/        # REST API controllers (Auth, Users, Events, Matching, Store, Blog, Forum)
+│   ├── Services/              # IServices.cs + Mock*Service + Azure/*Service implementations
+│   │   ├── MockUserService.cs, MockEventService.cs, ...  (USE_AZURE_STORAGE=false)
+│   │   └── Azure/AzureAuthService.cs, AzureUserService.cs, ...  (USE_AZURE_STORAGE=true)
+│   ├── Storage/               # Azure Table Storage layer
+│   │   ├── TableNames.cs      # 15 table name constants
+│   │   └── Entities/          # 14 entity classes (UserEntity, EventEntity, etc.)
+│   ├── MockData/              # MockDataStore.cs — in-memory seed data
+│   └── Program.cs             # Startup, DI, mode switch (USE_AZURE_STORAGE)
 │
-└── Lovecraft.UnitTests/       # xUnit tests
-    └── ServiceTests.cs        # Service unit tests
+├── Lovecraft.Tools.Seeder/    # CLI tool: seeds Azure Table Storage from MockDataStore
+│   └── Program.cs             # Reads .env, resets + seeds all 15 tables
+│
+└── Lovecraft.UnitTests/       # xUnit tests (22 tests)
 ```
 
 ### API Endpoints Implemented
@@ -218,23 +203,21 @@ dotnet test
 > **Note**: JWT authentication has since been implemented. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for details.
 
 ### Immediate Next Steps (Backend)
-1. ~~Add JWT authentication~~ ✅ Done — see `Auth/` directory
-2. Integrate Azure Table Storage (replace mock services)
+1. ~~Add JWT authentication~~ ✅ Done
+2. ~~Integrate Azure Table Storage~~ ✅ Done — 7 Azure services, 14 entities, seeder tool
 3. Integrate Azure Blob Storage (image uploads)
 4. Add email service (SMTP/SendGrid for verification and password reset)
-5. Add input validation (FluentValidation)
-6. Add error handling middleware
+5. Add chat and songs endpoints (frontend currently falls back to mock data for these)
+6. Add input validation (FluentValidation)
 7. Add logging (Serilog)
-8. Add chat and songs endpoints (frontend currently falls back to mock data for these)
 
 ### Frontend Integration
-1. ~~Auth endpoints connected to backend~~ ✅ Done — `Welcome.tsx` uses `authApi`
-2. ~~Implement token storage~~ ✅ Done — `localStorage` via `apiClient.setAccessToken()`
-3. ~~Add protected routes~~ ✅ Done — `ProtectedRoute` wraps all content routes in `App.tsx`
-4. ~~Wire remaining pages to backend API~~ ✅ Done — all pages use `useEffect` + API services
-5. ~~Add loading states for API calls~~ ✅ Done — all pages show spinner while loading
-6. **Implement token refresh** — replace localStorage-only pattern with proper `AuthContext` + refresh token flow
-7. Add user-visible error handling with toast notifications
+1. ~~Auth endpoints connected to backend~~ ✅ Done
+2. ~~Implement token storage + protected routes~~ ✅ Done
+3. ~~Wire all pages to backend API~~ ✅ Done
+4. ~~Docker deployment~~ ✅ Done — nginx proxy on Azure VM
+5. **Implement token refresh** — replace localStorage-only pattern with proper `AuthContext` + refresh token flow
+6. Add user-visible error handling with toast notifications
 
 ### Advanced Features
 1. OAuth integration (Google, Facebook, VK)
@@ -246,20 +229,15 @@ dotnet test
 
 ## Notes (Current State)
 
-- JWT authentication is fully operational with MockAuthService
-- All content endpoints require `[Authorize]` — clients must include a valid Bearer token
-- All data is in-memory — persists only while backend process is running
-- Test user pre-seeded: `test@example.com` / `Test123!@#`
-- CORS allows localhost:8080 and localhost:5173 with credentials
+- JWT authentication fully operational; all content endpoints require `[Authorize]`
+- **Azure Table Storage** active when `USE_AZURE_STORAGE=true` in `.env`; falls back to in-memory mock services when false
+- **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate all 15 Azure tables
+- Test credentials after seeding: `test@example.com` / `Test123!@#`; mock users `user1@mock.local`–`user4@mock.local` / `Seed123!@#`
+- CORS allows localhost:8080, localhost:5173, and the Azure VM origin
 - Access token: 15 min; Refresh token: 7 days (HttpOnly cookie)
 - Enums serialize as camelCase strings in all API responses
-- No rate limiting yet
-- No logging to external systems
-
-This is a **working stub** connected to a fully wired frontend:
-1. Full-stack Docker Compose workflow tested and running
-2. All frontend pages tested against backend (events, forum, store, blog, matching, users)
-3. Next: replace in-memory services with Azure Storage
+- No rate limiting, no external logging, no email service yet
+- **Deployed on Azure VM**: nginx proxies `/api/` on port 8080 to backend container; only port 8080 needs to be open
 
 ## Files Created
 

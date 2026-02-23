@@ -4,7 +4,7 @@
 
 Lovecraft is the backend service for the AloeVera Harmony Meet platform, built with .NET 10, Azure Storage, and Docker.
 
-> **📦 Current Status**: Working mock implementation with JWT authentication. All REST API endpoints are running and connected to the frontend. JWT auth is fully implemented, enums serialize as camelCase strings, all content endpoints require authentication (`[Authorize]`), and the full stack runs end-to-end in Docker. All data is in-memory (no Azure Storage yet). See [DOCKER.md](./Lovecraft/docs/DOCKER.md) for quick start instructions.
+> **📦 Current Status**: Full-stack deployed on Azure VM. JWT auth, Azure Table Storage integration, and Docker Compose with nginx proxy are all operational. All REST API endpoints running, data persists across restarts. See [DOCKER.md](./Lovecraft/docs/DOCKER.md) for quick start instructions.
 
 ---
 
@@ -218,33 +218,30 @@ git push origin feature/add-user-search
 
 ## 🏗️ Implementation Status
 
-### ✅ Completed (Mock Implementation)
-- Project structure: `Lovecraft.Common`, `Lovecraft.Backend`, `Lovecraft.UnitTests`
+### ✅ Completed
+- Project structure: `Lovecraft.Common`, `Lovecraft.Backend`, `Lovecraft.UnitTests`, `Lovecraft.Tools.Seeder`
 - All REST API controllers: Auth, Users, Events, Matching, Store, Blog, Forum
 - **JWT Authentication**: register, login, logout, token refresh, email verification, password reset, change password
 - Password hashing (PBKDF2 + salt)
-- All mock services with in-memory data
+- **Azure Table Storage integration**: 7 Azure service implementations, 14 entity classes, 15 table constants; mode switch via `USE_AZURE_STORAGE` env var
+- **`Lovecraft.Tools.Seeder`**: CLI tool that seeds all 15 Azure tables from mock data (users with hashed passwords, events, store, blog, forum)
 - `[Authorize]` enforced on all content controllers (Events, Store, Blog, Forum, Users, Matching)
-- **Enum serialization**: all C# enums serialize as camelCase strings (e.g., `"concert"`, `"male"`, `"nonBinary"`) for frontend compatibility
-- **Forum topics & replies**: `MockDataStore` now contains 12 topics and 25 replies; full topic detail and reply CRUD endpoints implemented
+- **Enum serialization**: all C# enums serialize as camelCase strings (e.g., `"concert"`, `"male"`, `"nonBinary"`)
+- Forum topics & replies: 12 topics and 25 replies; full topic detail and reply CRUD endpoints
 - CORS configured for frontend (localhost:8080, localhost:5173)
-- Swagger UI at `/swagger`
-- Health check at `/health`
-- Docker + docker-compose support (full-stack tested end-to-end)
+- Swagger UI at `/swagger`; health check at `/health`
+- **Docker + nginx proxy**: frontend container proxies `/api/` to backend; only port 8080 needs to be exposed; deployed on Azure VM
 - **22 unit tests** (16 auth + 6 service tests) — all passing
-- Frontend API service layer fully implemented for all domains
-- All frontend pages wired to backend (events, store, blog, forum, matching, users)
-- Frontend token stored in `localStorage`; protected routes guard all content pages
+- Frontend API service layer fully implemented for all domains; all pages wired to backend
 
-### 📋 Planned (Backend)
-- Azure Table Storage integration (replace in-memory mock services)
-- Azure Blob Storage (image uploads)
-- Email service (SMTP/SendGrid for verification and password reset)
+### 📋 Planned
+- Azure Blob Storage (image uploads — images currently Unsplash URLs)
+- Email service (SMTP/SendGrid — tokens currently logged to console)
 - OAuth integration (Google, Facebook, VK)
 - Telegram bot authentication
 - Real-time messaging (SignalR)
+- Chat and songs endpoints (frontend currently uses mock data for these)
 - Rate limiting and account lockout
-- Azure deployment
 
 See [BACKEND_PLAN.md](../aloevera-harmony-meet/docs/BACKEND_PLAN.md) for detailed roadmap.
 
