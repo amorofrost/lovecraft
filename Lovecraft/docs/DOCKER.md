@@ -132,11 +132,12 @@ curl http://localhost:5000/api/v1/blog \
 **Current Features**:
 - ✅ REST API with all controllers (Auth, Users, Events, Matching, Store, Blog, Forum)
 - ✅ JWT Authentication — register, login, logout, refresh, email verify, password reset
+- ✅ **Token refresh** — accepts token in request body (HTTP) or HttpOnly cookie (HTTPS); rotates token pair on use
 - ✅ Password hashing (PBKDF2 + salt)
 - ✅ Swagger/OpenAPI documentation
 - ✅ CORS configured for frontend (localhost:8080, localhost:5173)
 - ✅ Docker support with health checks
-- ✅ 22 unit tests passing
+- ✅ 35 unit tests passing
 
 **Not Yet Implemented**:
 - ❌ Azure Storage integration (data is in-memory, resets on restart)

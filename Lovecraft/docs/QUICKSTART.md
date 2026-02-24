@@ -58,11 +58,12 @@ curl http://localhost:5000/api/v1/blog \
 
 ✅ All REST API endpoints (Users, Events, Matching, Store, Blog, Forum)  
 ✅ **JWT Authentication** — register, login, logout, refresh, email verify, password reset  
+✅ **Token refresh** — `POST /api/v1/auth/refresh` accepts token in request body or HttpOnly cookie; issues rotated token pair  
 ✅ Password hashing (PBKDF2 + salt, 100k iterations)  
 ✅ Mock data (prefixed with "Backend Mock:" in titles)  
 ✅ Swagger documentation with Authorize button  
 ✅ Docker support with health checks  
-✅ 22 unit tests, all passing  
+✅ 35 unit tests, all passing  
 ✅ CORS configured for frontend  
 ✅ Frontend API service layer connected (auth endpoints wired in Welcome.tsx)  
 

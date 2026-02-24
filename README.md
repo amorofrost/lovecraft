@@ -231,8 +231,10 @@ git push origin feature/add-user-search
 - CORS configured for frontend (localhost:8080, localhost:5173)
 - Swagger UI at `/swagger`; health check at `/health`
 - **Docker + nginx proxy**: frontend container proxies `/api/` to backend; only port 8080 needs to be exposed; deployed on Azure VM
-- **22 unit tests** (16 auth + 6 service tests) — all passing
+- **Token refresh endpoint** (`POST /api/v1/auth/refresh`): accepts refresh token in request body (localStorage flow) or HttpOnly cookie (HTTPS flow); issues new rotated access + refresh token pair; `Secure` cookie flag is conditional on `Request.IsHttps` so it works over HTTP too
+- **35 unit tests** (16 auth + 6 service + 13 refresh-token tests) — all passing
 - Frontend API service layer fully implemented for all domains; all pages wired to backend
+- **Silent token refresh in frontend**: `apiClient` retries any 401 response after refreshing; concurrent 401s are deduplicated; `ProtectedRoute` proactively refreshes tokens near expiry (<5 min)
 
 ### 📋 Planned
 - Azure Blob Storage (image uploads — images currently Unsplash URLs)

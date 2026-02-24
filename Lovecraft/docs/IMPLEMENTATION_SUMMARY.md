@@ -29,7 +29,7 @@ Lovecraft.slnx
 ├── Lovecraft.Tools.Seeder/    # CLI tool: seeds Azure Table Storage from MockDataStore
 │   └── Program.cs             # Reads .env, resets + seeds all 15 tables
 │
-└── Lovecraft.UnitTests/       # xUnit tests (22 tests)
+└── Lovecraft.UnitTests/       # xUnit tests (35 tests)
 ```
 
 ### API Endpoints Implemented
@@ -167,9 +167,17 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Testing
 
-- 6 unit tests created (all passing)
-- Tests cover all service methods
-- `dotnet test` runs successfully
+- **35 unit tests** — all passing
+  - 16 authentication tests (`AuthenticationTests.cs`)
+  - 6 service tests (`ServiceTests.cs`)
+  - **13 refresh token tests** (`RefreshTokenTests.cs`) — added February 24, 2026
+    - Happy-path: new access token, rotated refresh token, preserved user identity, valid JWT signature, future expiry
+    - Token rotation / replay: old token rejected after use, chained refreshes work
+    - Invalid / unknown tokens: unknown token returns null, empty string returns null
+    - Revocation: single-token revocation, revoke-all-user-tokens, isolation between users
+    - `JwtService.GenerateRefreshToken`: uniqueness, base64 encoding, sufficient entropy
+- Tests run with `dotnet test`
+- `[Collection("AuthTests")]` serialises `AuthenticationTests` and `RefreshTokenTests` to prevent races on `MockAuthService` static state
 
 ## How to Use
 
