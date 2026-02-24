@@ -305,7 +305,7 @@ For questions or issues:
 
 ## 📄 License
 
-[Your license here]
+- **[MIT LICENSE](./LICENSE)** 
 
 ---
 
