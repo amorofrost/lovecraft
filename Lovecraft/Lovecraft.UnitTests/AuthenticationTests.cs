@@ -6,6 +6,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lovecraft.UnitTests;
 
+// MockAuthService uses static dictionaries shared across instances.
+// The [Collection] attribute serialises this class with RefreshTokenTests
+// so the two classes never race on that shared state.
+[Collection("AuthTests")]
 public class AuthenticationTests
 {
     private readonly IJwtService _jwtService;

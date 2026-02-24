@@ -115,16 +115,23 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Refresh access token using refresh token
+    /// Refresh access token using refresh token.
+    /// Accepts the token from the request body (localStorage flow) or an HttpOnly cookie.
     /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
-    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> RefreshToken()
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> RefreshToken(
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)]
+        RefreshTokenRequestDto? request)
     {
         try
         {
-            var refreshToken = Request.Cookies["refreshToken"];
-            
+            // Prefer the token supplied in the request body (works over HTTP);
+            // fall back to the HttpOnly cookie (works over HTTPS).
+            var refreshToken = request?.RefreshToken;
+            if (string.IsNullOrEmpty(refreshToken))
+                refreshToken = Request.Cookies["refreshToken"];
+
             if (string.IsNullOrEmpty(refreshToken))
             {
                 return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResponse(
@@ -369,8 +376,10 @@ public class AuthController : ControllerBase
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true, // HTTPS only
-            SameSite = SameSiteMode.Strict,
+            // Only set the Secure flag when the connection is already HTTPS.
+            // This allows the cookie mechanism to work in HTTP dev/staging environments.
+            Secure = Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
             Expires = DateTimeOffset.UtcNow.AddDays(7)
         };
 
