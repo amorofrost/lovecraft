@@ -4,6 +4,12 @@
 
 This document describes the authentication and authorization architecture for the multi-client AloeVera Harmony Meet platform.
 
+> **Implementation Status (March 2026)**
+> - ✅ **Implemented**: Username/Password auth, JWT access + refresh tokens (15 min / 7 days), PBKDF2 password hashing, token rotation, silent refresh (frontend), proactive refresh in `ProtectedRoute`, `[Authorize]` on all content endpoints
+> - 🔜 **Planned**: OAuth 2.0 (Google/Facebook/VK), Telegram Mini App auth, account linking, session management, 2FA
+>
+> Sections below marked **[PLANNED]** describe designed-but-not-yet-built functionality.
+
 ---
 
 ## 🎯 Overview
@@ -110,7 +116,7 @@ User (Single Identity)
    - Password meets requirements (min 8 chars, number, special char)
 3. System creates user account:
    - Generate UserId (GUID)
-   - Hash password with BCrypt (12 rounds)
+   - Hash password with PBKDF2 + random salt (see `PasswordHasher.cs`)
    - Generate email verification token
    - Send verification email
 4. **User must verify email before accessing the system**
@@ -143,7 +149,7 @@ POST /api/v1/auth/forgot-password
 POST /api/v1/auth/reset-password
 ```
 
-### 2. OAuth 2.0 (Google, Facebook, VK)
+### 2. OAuth 2.0 (Google, Facebook, VK) **[PLANNED]**
 
 **Registration/Login Flow:**
 
@@ -184,7 +190,7 @@ DELETE /api/v1/auth/oauth/{provider}/unlink     # Unlink OAuth provider
 - VK OAuth 2.0
 - (Extensible for future providers)
 
-### 3. Telegram Mini App Authentication
+### 3. Telegram Mini App Authentication **[PLANNED]**
 
 **Registration/Login Flow:**
 
@@ -349,10 +355,10 @@ Client stores new tokens
 
 ### Password Security
 
-- **Hashing Algorithm:** BCrypt with cost factor 12
-- **Salt:** Random 128-bit salt per password
-- **Validation:** Check against common passwords list
-- **History:** Optional - prevent reuse of last 5 passwords
+- **Hashing Algorithm:** PBKDF2 with random salt (implemented in `Lovecraft.Backend/Auth/PasswordHasher.cs`)
+- **Salt:** Random salt generated per password
+- **Validation:** Minimum requirements enforced (8+ chars, uppercase, lowercase, digit, special char)
+- **History:** Not implemented
 
 ### Token Security
 
@@ -708,25 +714,25 @@ Based on requirements, the following decisions have been finalized:
 
 ## 🔐 Security Checklist
 
-- [ ] Passwords hashed with BCrypt (cost 12)
-- [ ] JWT tokens signed and validated
-- [ ] Refresh tokens stored hashed in database
-- [ ] Refresh token rotation implemented
-- [ ] Rate limiting on auth endpoints
-- [ ] Account lockout after failed attempts
-- [ ] OAuth state parameter validation
-- [ ] Telegram initData signature verification
-- [ ] HTTPS only in production
-- [ ] HttpOnly cookies for refresh tokens
-- [ ] CORS properly configured
-- [ ] Secrets stored in Azure Key Vault
-- [ ] Input validation on all endpoints
-- [ ] SQL injection prevention (N/A - NoSQL)
-- [ ] XSS prevention
-- [ ] CSRF protection
+- [x] Passwords hashed with PBKDF2 + random salt
+- [x] JWT tokens signed and validated
+- [x] Refresh tokens stored in database (Azure Table Storage)
+- [x] Refresh token rotation implemented (one-time use, rotates on each refresh)
+- [ ] Rate limiting on auth endpoints — not implemented
+- [ ] Account lockout after failed attempts — not implemented
+- [ ] OAuth state parameter validation — [PLANNED] with OAuth integration
+- [ ] Telegram initData signature verification — [PLANNED] with Telegram integration
+- [x] HTTPS in production (Azure VM with nginx)
+- [x] HttpOnly cookie support for refresh tokens (conditional on `Request.IsHttps`; web client uses localStorage flow)
+- [x] CORS properly configured (localhost:8080, localhost:5173, Azure VM origin)
+- [ ] Secrets stored in Azure Key Vault — using env vars / `.env` file currently
+- [x] Input validation on all auth endpoints
+- [x] SQL injection prevention (N/A - NoSQL / Azure Table Storage)
+- [ ] XSS prevention — N/A server-side; frontend uses React (auto-escapes)
+- [x] CSRF protection — N/A for token-based auth (no cookies on GET requests)
 
 ---
 
-**Document Version:** 1.1  
-**Last Updated:** 2026-02-18  
-**Status:** ✅ Finalized - Ready for Implementation
+**Document Version:** 1.2
+**Last Updated:** 2026-03-15
+**Status:** Phase 1 (Username/Password + JWT) ✅ Implemented. Phases 2–4 (OAuth, Telegram, 2FA) are design documentation for future implementation.

@@ -4,7 +4,7 @@
 
 A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM behind an nginx proxy.
 
-> This document covers the initial stub implementation. JWT auth was added subsequently — see [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md). Azure Storage integration and Docker deployment were completed February 23, 2026.
+> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. Last updated March 15, 2026.
 
 ### Solution Structure
 
@@ -224,8 +224,9 @@ dotnet test
 2. ~~Implement token storage + protected routes~~ ✅ Done
 3. ~~Wire all pages to backend API~~ ✅ Done
 4. ~~Docker deployment~~ ✅ Done — nginx proxy on Azure VM
-5. **Implement token refresh** — replace localStorage-only pattern with proper `AuthContext` + refresh token flow
-6. Add user-visible error handling with toast notifications
+5. ~~Token refresh~~ ✅ Done — silent refresh in `apiClient` (401 deduplication), proactive refresh in `ProtectedRoute` (<5 min expiry)
+6. ~~User-visible error handling~~ ✅ Done — sonner toasts via `showApiError` (`src/lib/apiError.ts`); success toasts on auth/save/reply
+7. ~~Form validation~~ ✅ Done — react-hook-form + Zod on all auth, profile, and forum reply forms (`src/lib/validators.ts`)
 
 ### Advanced Features
 1. OAuth integration (Google, Facebook, VK)
