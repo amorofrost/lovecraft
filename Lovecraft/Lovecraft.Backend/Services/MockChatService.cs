@@ -92,7 +92,12 @@ public class MockChatService : IChatService
             Type = MessageType.Text
         };
 
-        MockDataStore.Messages.GetValueOrDefault(chatId)?.Add(msg);
+        if (!MockDataStore.Messages.TryGetValue(chatId, out var msgList))
+        {
+            msgList = new List<Lovecraft.Common.DTOs.Chats.MessageDto>();
+            MockDataStore.Messages[chatId] = msgList;
+        }
+        msgList.Add(msg);
 
         // Update UserChats index for both participants
         foreach (var participantId in chat.Participants)
