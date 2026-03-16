@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using System.Security.Claims;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
@@ -99,16 +100,50 @@ public class ForumController : ControllerBase
     }
 
     /// <summary>
+    /// Create a new topic in a section
+    /// </summary>
+    [HttpPost("sections/{sectionId}/topics")]
+    public async Task<IActionResult> CreateTopic(
+        string sectionId, [FromBody] CreateTopicRequestDto request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse(
+                "VALIDATION_ERROR", "Validation failed"));
+
+        var authorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var authorName = User.FindFirst(ClaimTypes.Name)?.Value;
+
+        try
+        {
+            var result = await _forumService.CreateTopicAsync(
+                sectionId, authorId!, authorName!, request.Title, request.Content);
+            return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(result));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse(
+                "NOT_FOUND", "Section not found"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating topic in section {SectionId}", sectionId);
+            return StatusCode(500, ApiResponse<ForumTopicDto>.ErrorResponse(
+                "INTERNAL_ERROR", "An error occurred while creating the topic"));
+        }
+    }
+
+    /// <summary>
     /// Post a reply to a topic
     /// </summary>
     [HttpPost("topics/{topicId}/replies")]
     public async Task<ActionResult<ApiResponse<ForumReplyDto>>> CreateReply(string topicId, [FromBody] CreateReplyRequestDto request)
     {
+        var authorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var authorName = User.FindFirst(ClaimTypes.Name)?.Value;
+
         try
         {
-            const string currentUserId = "current-user";
-            const string currentUserName = "Вы";
-            var reply = await _forumService.CreateReplyAsync(topicId, currentUserId, currentUserName, request.Content);
+            var reply = await _forumService.CreateReplyAsync(topicId, authorId!, authorName!, request.Content);
             await _hubContext.Clients.Group($"topic-{topicId}").SendAsync("ReplyPosted", reply, topicId);
             return Ok(ApiResponse<ForumReplyDto>.SuccessResponse(reply));
         }

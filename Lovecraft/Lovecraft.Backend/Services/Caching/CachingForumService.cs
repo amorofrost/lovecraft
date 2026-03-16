@@ -99,7 +99,9 @@ public class CachingForumService : IForumService
     public async Task<ForumTopicDto> CreateTopicAsync(
         string sectionId, string authorId, string authorName, string title, string content)
     {
-        // TODO(Task 6): invalidate TopicsKey(sectionId) and SectionsKey after creation
-        return await _inner.CreateTopicAsync(sectionId, authorId, authorName, title, content);
+        var result = await _inner.CreateTopicAsync(sectionId, authorId, authorName, title, content);
+        _cache.Remove(TopicsKey(sectionId));
+        _cache.Remove(SectionsKey);
+        return result;
     }
 }
