@@ -52,6 +52,12 @@ public interface IForumService
     Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
     Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content);
     Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName);
+    Task<ForumTopicDto> CreateTopicAsync(
+        string sectionId,
+        string authorId,
+        string authorName,
+        string title,
+        string content);
 }
 
 public interface IChatService
