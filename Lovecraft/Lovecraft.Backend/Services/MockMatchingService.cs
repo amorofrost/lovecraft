@@ -56,7 +56,6 @@ public class MockMatchingService : IMatchingService
                 CreatedAt = DateTime.UtcNow
             };
 
-            MockDataStore.Matches.Add(match);
             await _chatService.GetOrCreateChatAsync(fromUserId, toUserId);
 
             return new LikeResponseDto
@@ -92,9 +91,26 @@ public class MockMatchingService : IMatchingService
 
     public Task<List<MatchDto>> GetMatchesAsync(string userId)
     {
-        var matches = MockDataStore.Matches
-            .Where(m => m.Users.Contains(userId))
+        // Compute from intersection: users I liked AND who liked me back
+        var likedUserIds = MockDataStore.Likes
+            .Where(l => l.FromUserId == userId)
+            .Select(l => l.ToUserId)
+            .ToHashSet();
+
+        var matches = MockDataStore.Likes
+            .Where(l => l.ToUserId == userId && likedUserIds.Contains(l.FromUserId))
+            .Select(l =>
+            {
+                var sorted = new[] { userId, l.FromUserId }.OrderBy(x => x).ToArray();
+                return new MatchDto
+                {
+                    Id = $"{sorted[0]}_{sorted[1]}",
+                    Users = new List<string> { userId, l.FromUserId },
+                    CreatedAt = l.CreatedAt
+                };
+            })
             .ToList();
+
         return Task.FromResult(matches);
     }
 }

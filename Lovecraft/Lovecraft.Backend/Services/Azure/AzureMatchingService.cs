@@ -10,7 +10,6 @@ public class AzureMatchingService : IMatchingService
 {
     private readonly TableClient _likesTable;
     private readonly TableClient _likesReceivedTable;
-    private readonly TableClient _matchesTable;
     private readonly IChatService _chatService;
     private readonly ILogger<AzureMatchingService> _logger;
 
@@ -20,12 +19,10 @@ public class AzureMatchingService : IMatchingService
         _logger = logger;
         _likesTable = tableServiceClient.GetTableClient(TableNames.Likes);
         _likesReceivedTable = tableServiceClient.GetTableClient(TableNames.LikesReceived);
-        _matchesTable = tableServiceClient.GetTableClient(TableNames.Matches);
 
         Task.WhenAll(
             _likesTable.CreateIfNotExistsAsync(),
-            _likesReceivedTable.CreateIfNotExistsAsync(),
-            _matchesTable.CreateIfNotExistsAsync()
+            _likesReceivedTable.CreateIfNotExistsAsync()
         ).GetAwaiter().GetResult();
     }
 
@@ -46,7 +43,7 @@ public class AzureMatchingService : IMatchingService
             var existingLike = (await _likesTable.GetEntityAsync<LikeEntity>(fromUserId, toUserId)).Value;
             return new LikeResponseDto
             {
-                Like = ToLikeDto(existingLike),
+                Like = ToSentLikeDto(existingLike),
                 IsMatch = existingLike.IsMatch
             };
         }
@@ -93,55 +90,10 @@ public class AzureMatchingService : IMatchingService
         MatchDto? matchDto = null;
         if (isMutual)
         {
-            // Update the reverse like to also mark as match
-            try
-            {
-                var reverseLikeResponse = await _likesTable.GetEntityAsync<LikeEntity>(toUserId, fromUserId);
-                var reverseLike = reverseLikeResponse.Value;
-                reverseLike.IsMatch = true;
-                await _likesTable.UpdateEntityAsync(reverseLike, reverseLike.ETag);
-            }
-            catch (RequestFailedException) { }
-
-            try
-            {
-                var reverseReceivedResponse = await _likesReceivedTable.GetEntityAsync<LikeEntity>(fromUserId, toUserId);
-                var reverseReceived = reverseReceivedResponse.Value;
-                reverseReceived.IsMatch = true;
-                await _likesReceivedTable.UpdateEntityAsync(reverseReceived, reverseReceived.ETag);
-            }
-            catch (RequestFailedException) { }
-
-            var matchId = Guid.NewGuid().ToString();
-            var chatId = Guid.NewGuid().ToString();
-
-            var matchForFrom = new MatchEntity
-            {
-                PartitionKey = fromUserId,
-                RowKey = matchId,
-                MatchId = matchId,
-                OtherUserId = toUserId,
-                CreatedAt = now,
-                ChatId = chatId
-            };
-            var matchForTo = new MatchEntity
-            {
-                PartitionKey = toUserId,
-                RowKey = matchId,
-                MatchId = matchId,
-                OtherUserId = fromUserId,
-                CreatedAt = now,
-                ChatId = chatId
-            };
-
-            await Task.WhenAll(
-                _matchesTable.UpsertEntityAsync(matchForFrom),
-                _matchesTable.UpsertEntityAsync(matchForTo)
-            );
-
+            var sorted = new[] { fromUserId, toUserId }.OrderBy(x => x).ToArray();
             matchDto = new MatchDto
             {
-                Id = matchId,
+                Id = $"{sorted[0]}_{sorted[1]}",
                 Users = new List<string> { fromUserId, toUserId },
                 CreatedAt = now
             };
@@ -152,7 +104,7 @@ public class AzureMatchingService : IMatchingService
 
         return new LikeResponseDto
         {
-            Like = ToLikeDto(likeEntity),
+            Like = ToSentLikeDto(likeEntity),
             IsMatch = isMutual,
             Match = matchDto
         };
@@ -161,10 +113,11 @@ public class AzureMatchingService : IMatchingService
     public async Task<List<LikeDto>> GetSentLikesAsync(string userId)
     {
         var results = new List<LikeDto>();
+        // likes table: PK = fromUserId, RK = toUserId
         await foreach (var entity in _likesTable.QueryAsync<LikeEntity>(
             filter: $"PartitionKey eq '{userId}'"))
         {
-            results.Add(ToLikeDto(entity));
+            results.Add(ToSentLikeDto(entity));
         }
         return results;
     }
@@ -172,36 +125,57 @@ public class AzureMatchingService : IMatchingService
     public async Task<List<LikeDto>> GetReceivedLikesAsync(string userId)
     {
         var results = new List<LikeDto>();
+        // likesreceived table: PK = toUserId (recipient), RK = fromUserId (sender)
         await foreach (var entity in _likesReceivedTable.QueryAsync<LikeEntity>(
             filter: $"PartitionKey eq '{userId}'"))
         {
-            results.Add(ToLikeDto(entity));
+            results.Add(ToReceivedLikeDto(entity));
         }
         return results;
     }
 
     public async Task<List<MatchDto>> GetMatchesAsync(string userId)
     {
-        var results = new List<MatchDto>();
-        await foreach (var entity in _matchesTable.QueryAsync<MatchEntity>(
-            filter: $"PartitionKey eq '{userId}'"))
+        // A match = userId liked otherUser AND otherUser liked userId
+        // Compute from intersection: liked (likes PK=userId) ∩ likedBy (likesreceived PK=userId)
+        var likedUserIds = new HashSet<string>();
+        await foreach (var e in _likesTable.QueryAsync<LikeEntity>(filter: $"PartitionKey eq '{userId}'"))
+            likedUserIds.Add(e.RowKey);
+
+        var matches = new List<MatchDto>();
+        await foreach (var e in _likesReceivedTable.QueryAsync<LikeEntity>(filter: $"PartitionKey eq '{userId}'"))
         {
-            results.Add(new MatchDto
+            var otherUserId = e.RowKey; // RK = sender in likesreceived
+            if (!likedUserIds.Contains(otherUserId)) continue;
+
+            var sorted = new[] { userId, otherUserId }.OrderBy(x => x).ToArray();
+            matches.Add(new MatchDto
             {
-                Id = entity.MatchId,
-                Users = new List<string> { userId, entity.OtherUserId },
-                CreatedAt = entity.CreatedAt
+                Id = $"{sorted[0]}_{sorted[1]}",
+                Users = new List<string> { userId, otherUserId },
+                CreatedAt = e.CreatedAt > DateTime.MinValue ? e.CreatedAt : DateTime.UtcNow
             });
         }
-        return results;
+        return matches;
     }
 
-    private static LikeDto ToLikeDto(LikeEntity entity) => new LikeDto
+    // likes table: PK = fromUserId, RK = toUserId — derive authoritatively from PK/RK
+    private static LikeDto ToSentLikeDto(LikeEntity entity) => new LikeDto
     {
-        Id = entity.LikeId,
-        FromUserId = entity.FromUserId,
-        ToUserId = entity.ToUserId,
-        CreatedAt = entity.CreatedAt,
+        Id = string.IsNullOrEmpty(entity.LikeId) ? $"{entity.PartitionKey}_{entity.RowKey}" : entity.LikeId,
+        FromUserId = entity.PartitionKey,
+        ToUserId = entity.RowKey,
+        CreatedAt = entity.CreatedAt > DateTime.MinValue ? entity.CreatedAt : DateTime.UtcNow,
+        IsMatch = entity.IsMatch
+    };
+
+    // likesreceived table: PK = toUserId (recipient), RK = fromUserId (sender)
+    private static LikeDto ToReceivedLikeDto(LikeEntity entity) => new LikeDto
+    {
+        Id = string.IsNullOrEmpty(entity.LikeId) ? $"{entity.RowKey}_{entity.PartitionKey}" : entity.LikeId,
+        FromUserId = entity.RowKey,
+        ToUserId = entity.PartitionKey,
+        CreatedAt = entity.CreatedAt > DateTime.MinValue ? entity.CreatedAt : DateTime.UtcNow,
         IsMatch = entity.IsMatch
     };
 }
