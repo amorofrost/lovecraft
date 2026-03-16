@@ -312,6 +312,15 @@ public static class MockDataStore
         new() { Id = "r25", TopicId = "t12", AuthorId = "3", AuthorName = "Елена", Content = "\"1984\" Оруэлла — очень актуально сейчас.", CreatedAt = new DateTime(2024, 2, 20, 9, 0, 0), Likes = 6 },
     };
 
+    // Hidden section for event discussions (not shown in forum section list)
+    public static ForumSectionDto EventsForumSection { get; } = new()
+    {
+        Id = "events",
+        Name = "Events",
+        Description = "Event discussion threads",
+        TopicCount = 0
+    };
+
     public static List<LikeDto> Likes { get; set; } = new();
     public static List<MatchDto> Matches { get; set; } = new();
 

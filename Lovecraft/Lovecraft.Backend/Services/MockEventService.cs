@@ -40,6 +40,9 @@ public class MockEventService : IEventService
 
     public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
     {
-        throw new NotImplementedException();
+        var evt = MockDataStore.Events.FirstOrDefault(e => e.Id == eventId);
+        if (evt != null)
+            evt.ForumTopicId = forumTopicId;
+        return Task.CompletedTask;
     }
 }
