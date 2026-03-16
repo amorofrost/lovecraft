@@ -207,10 +207,72 @@ public class AzureForumService : IForumService
         };
     }
 
-    public Task<ForumTopicDto> CreateTopicAsync(
+    public async Task<ForumTopicDto> CreateTopicAsync(
         string sectionId, string authorId, string authorName, string title, string content)
     {
-        throw new NotImplementedException();
+        // 1. Verify section exists
+        ForumSectionEntity sectionEntity;
+        try
+        {
+            var sectionResponse = await _sectionsTable.GetEntityAsync<ForumSectionEntity>("FORUM", sectionId);
+            sectionEntity = sectionResponse.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            throw new KeyNotFoundException($"Section '{sectionId}' not found.");
+        }
+
+        // 2. Create topic
+        var topicId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow;
+
+        var topicEntity = new ForumTopicEntity
+        {
+            PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
+            RowKey = topicId,
+            SectionId = sectionId,
+            Title = title,
+            Content = content,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            AuthorAvatar = string.Empty,
+            IsPinned = false,
+            IsLocked = false,
+            ReplyCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        await _topicsTable.AddEntityAsync(topicEntity);
+
+        // 3. Create topic index entry
+        var indexEntity = new ForumTopicIndexEntity
+        {
+            PartitionKey = "TOPICINDEX",
+            RowKey = topicId,
+            SectionId = sectionId
+        };
+        await _topicIndexTable.AddEntityAsync(indexEntity);
+
+        // 4. Increment TopicCount on the section (read-merge-upsert)
+        sectionEntity.TopicCount++;
+        await _sectionsTable.UpdateEntityAsync(sectionEntity, sectionEntity.ETag, TableUpdateMode.Merge);
+
+        // 5. Return DTO
+        return new ForumTopicDto
+        {
+            Id = topicId,
+            SectionId = sectionId,
+            Title = title,
+            Content = content,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            AuthorAvatar = null,
+            IsPinned = false,
+            IsLocked = false,
+            ReplyCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
     }
 
     private static ForumReplyDto ToReplyDto(ForumReplyEntity entity) => new ForumReplyDto
