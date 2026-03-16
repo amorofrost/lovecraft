@@ -4,7 +4,7 @@
 
 A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM behind an nginx proxy.
 
-> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. Last updated March 15, 2026.
+> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. Last updated March 16, 2026.
 
 ### Solution Structure
 
@@ -21,7 +21,7 @@ Lovecraft.slnx
 │   │   ├── MockUserService.cs, MockEventService.cs, ...  (USE_AZURE_STORAGE=false)
 │   │   └── Azure/AzureAuthService.cs, AzureUserService.cs, ...  (USE_AZURE_STORAGE=true)
 │   ├── Storage/               # Azure Table Storage layer
-│   │   ├── TableNames.cs      # 18 table name constants
+│   │   ├── TableNames.cs      # 18 table name properties; optional AZURE_TABLE_PREFIX for isolated datasets
 │   │   └── Entities/          # 17 entity classes (UserEntity, EventEntity, ChatEntity, etc.)
 │   ├── Hubs/                  # SignalR hubs
 │   │   └── ChatHub.cs         # Real-time chat hub (JWT auth, JoinChat/JoinTopic/SendMessage)
@@ -29,9 +29,9 @@ Lovecraft.slnx
 │   └── Program.cs             # Startup, DI, mode switch (USE_AZURE_STORAGE), SignalR
 │
 ├── Lovecraft.Tools.Seeder/    # CLI tool: seeds Azure Table Storage from MockDataStore
-│   └── Program.cs             # Reads .env, resets + seeds all 15 tables
+│   └── Program.cs             # Reads .env, seeds users/events/store/blog/forum + like edges; respects AZURE_TABLE_PREFIX
 │
-└── Lovecraft.UnitTests/       # xUnit tests (53 tests)
+└── Lovecraft.UnitTests/       # xUnit tests (81 tests)
 ```
 
 ### API Endpoints Implemented
@@ -88,8 +88,9 @@ All endpoints return data in the format:
 - `JoinChat(chatId)` — join a private chat group (validates access)
 - `JoinTopic(topicId)` — join a forum topic group (no auth check — public topics)
 - `LeaveGroup(groupId)` — leave any group
-- `SendMessage(chatId, content)` — send real-time message; broadcasts to group via `Clients.OthersInGroup`
-- Server → client events: `MessageReceived(message, chatId)`, `ReplyPosted(reply, topicId)`
+- `SendMessage(chatId, content)` — validates access, persists message, broadcasts `MessageReceived` to `Clients.OthersInGroup` (sender excluded)
+- Server → client events: `MessageReceived(message)`, `ReplyPosted(reply, topicId)`
+- `MessageReceived` is also broadcast by `ChatsController.SendMessage` (REST path) via `IHubContext<ChatHub>.Clients.Group()` — both paths trigger real-time delivery
 - Auth: JWT Bearer token passed as `?access_token=` query string
 
 ### DTOs Created
@@ -183,7 +184,7 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Testing
 
-- **53 unit tests** — all passing
+- **81 unit tests** — all passing
   - 16 authentication tests (`AuthenticationTests.cs`)
   - 6 service tests (`ServiceTests.cs`)
   - **13 refresh token tests** (`RefreshTokenTests.cs`) — added February 24, 2026
@@ -196,6 +197,12 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
     - `MockChatService`: GetChats filters by participant, GetOrCreateChat idempotency, GetMessages pagination, SendMessage persistence, ValidateAccess, UserChats index updated on send
     - Hub access paths: JoinChat validates access, SendMessage validates access, JoinTopic allows any authenticated user, SendMessage persists and returns DTO, direct REST fallback route
     - `[Collection("ChatTests")]` serialises tests to prevent races on `MockDataStore` static state
+  - **13 matching tests** (`MatchingTests.cs`) — added March 16, 2026
+    - One-way like → not a match; mutual like → IsMatch=true, Match object returned, chat auto-created
+    - Duplicate like → returns existing like, no second chat created
+    - GetSentLikes / GetReceivedLikes filtering correctness
+    - GetMatches: only mutual likes, excludes one-way, deterministic match ID from both sides
+    - `IDisposable` resets `MockDataStore.Likes` before/after each test for isolation
 - Tests run with `dotnet test`
 - `[Collection("AuthTests")]` serialises `AuthenticationTests` and `RefreshTokenTests` to prevent races on `MockAuthService` static state
 
@@ -262,8 +269,11 @@ dotnet test
 - JWT authentication fully operational; all content endpoints require `[Authorize]`
 - **Azure Table Storage** active when `USE_AZURE_STORAGE=true` in `.env`; falls back to in-memory mock services when false
 - **SignalR** at `/hubs/chat` — JWT passed as `?access_token=` query string; nginx `/hubs/` location block proxies WebSocket upgrade
-- **Chat tables**: `chats` (PK="CHAT"), `userchats` (PK=userId index), `messages` (PK=chatId, RK=invertedTicks_{id})
-- **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate all 15 Azure tables (chat tables populated dynamically at runtime, not by seeder)
+- **Matching**: all controllers extract the caller's ID via `User.FindFirst(ClaimTypes.NameIdentifier)` — `"current-user"` placeholder is gone. Matches are computed at query time as the intersection of the `likes` and `likesreceived` tables; there is no dedicated `matches` table. A 1-on-1 chat is auto-created when a mutual like is detected (both mock and Azure paths).
+- **Chat tables**: `chats` (PK="CHAT"), `userchats` (PK=userId index), `messages` (PK=chatId, RK=invertedTicks_{id}); tables are created by `AzureChatService` constructor via `CreateIfNotExistsAsync()` on first startup
+- **Real-time delivery**: `ChatsController.SendMessage` broadcasts `MessageReceived` to `IHubContext<ChatHub>.Clients.Group($"chat-{id}")` after persisting each REST message, ensuring recipients receive live updates without using the hub's `SendMessage` method directly
+- **Table prefix**: set `AZURE_TABLE_PREFIX` env var (e.g. `dev_`) to use isolated table sets for separate test datasets; respected by both the backend and the Seeder tool
+- **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate users, events, store, blog, forum, and like edges (sent, received, and mutual scenarios). Set `AZURE_TABLE_PREFIX` to seed into a prefixed namespace.
 - Test credentials after seeding: `test@example.com` / `Test123!@#`; mock users `user1@mock.local`–`user4@mock.local` / `Seed123!@#`
 - CORS allows localhost:8080, localhost:5173, and the Azure VM origin
 - Access token: 15 min; Refresh token: 7 days (HttpOnly cookie)
