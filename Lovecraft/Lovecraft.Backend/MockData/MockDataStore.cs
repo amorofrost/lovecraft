@@ -4,6 +4,7 @@ using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.DTOs.Store;
 using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.MockData;
@@ -313,6 +314,36 @@ public static class MockDataStore
 
     public static List<LikeDto> Likes { get; set; } = new();
     public static List<MatchDto> Matches { get; set; } = new();
+
+    // ---- Chats ----
+    public static List<ChatDto> Chats { get; } = new()
+    {
+        new ChatDto
+        {
+            Id = "chat-1",
+            Type = ChatType.Private,
+            Participants = new List<string> { "current-user", "user-anna" },
+            CreatedAt = DateTime.UtcNow.AddDays(-5)
+        }
+    };
+
+    // UserChats index: one entry per participant per chat
+    public static Dictionary<string, List<(string ChatId, string OtherUserId, string LastContent, DateTime LastAt)>> UserChats { get; } = new()
+    {
+        ["current-user"] = new() { ("chat-1", "user-anna", "Привет!", DateTime.UtcNow.AddMinutes(-30)) },
+        ["user-anna"]    = new() { ("chat-1", "current-user", "Привет!", DateTime.UtcNow.AddMinutes(-30)) }
+    };
+
+    // Messages: keyed by chatId
+    public static Dictionary<string, List<Lovecraft.Common.DTOs.Chats.MessageDto>> Messages { get; } = new()
+    {
+        ["chat-1"] = new()
+        {
+            new Lovecraft.Common.DTOs.Chats.MessageDto { Id = "msg-1", ChatId = "chat-1", SenderId = "user-anna",    Content = "Привет!",        Timestamp = DateTime.UtcNow.AddHours(-2),   Read = true,  Type = MessageType.Text },
+            new Lovecraft.Common.DTOs.Chats.MessageDto { Id = "msg-2", ChatId = "chat-1", SenderId = "current-user", Content = "Привет, Анна!", Timestamp = DateTime.UtcNow.AddMinutes(-90), Read = true,  Type = MessageType.Text },
+            new Lovecraft.Common.DTOs.Chats.MessageDto { Id = "msg-3", ChatId = "chat-1", SenderId = "user-anna",    Content = "Как дела?",     Timestamp = DateTime.UtcNow.AddMinutes(-30), Read = false, Type = MessageType.Text }
+        }
+    };
 
     // Current user ID for mock authentication
     public const string CurrentUserId = "current-user";
