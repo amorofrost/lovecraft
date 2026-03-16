@@ -1,8 +1,10 @@
+using Lovecraft.Backend.Hubs;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 
 namespace Lovecraft.Backend.Controllers.V1;
@@ -13,10 +15,12 @@ namespace Lovecraft.Backend.Controllers.V1;
 public class ChatsController : ControllerBase
 {
     private readonly IChatService _chatService;
+    private readonly IHubContext<ChatHub> _hubContext;
 
-    public ChatsController(IChatService chatService)
+    public ChatsController(IChatService chatService, IHubContext<ChatHub> hubContext)
     {
         _chatService = chatService;
+        _hubContext = hubContext;
     }
 
     private string CurrentUserId =>
@@ -62,6 +66,11 @@ public class ChatsController : ControllerBase
             return Forbid();
 
         var message = await _chatService.SendMessageAsync(id, CurrentUserId, request.Content);
+
+        // Push to all connected members of this chat group in real time.
+        // The sender receives it too; the frontend deduplicates by message ID.
+        await _hubContext.Clients.Group($"chat-{id}").SendAsync("MessageReceived", message);
+
         return Ok(ApiResponse<MessageDto>.SuccessResponse(message));
     }
 }
