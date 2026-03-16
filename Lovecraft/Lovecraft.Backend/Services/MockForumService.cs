@@ -69,7 +69,7 @@ public class MockForumService : IForumService
             Id = Guid.NewGuid().ToString(),
             SectionId = sectionId,
             Title = title,
-            Content = content.Length > 100 ? content[..100] : content,
+            Content = content,
             AuthorId = authorId,
             AuthorName = authorName,
             AuthorAvatar = null,
