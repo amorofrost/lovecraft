@@ -4,9 +4,11 @@ using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Auth;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Azure.Data.Tables;
+// TODO (Task 8): Add "using Lovecraft.Backend.Hubs;" once ChatHub is created
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +32,7 @@ builder.Services.AddControllers()
             new System.Text.Json.Serialization.JsonStringEnumConverter(
                 System.Text.Json.JsonNamingPolicy.CamelCase));
     });
+builder.Services.AddSignalR();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "AloeVera Harmony Meet API", Version = "v1", Description = "Authentication required - use /api/v1/auth endpoints to login" });
@@ -55,6 +58,19 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings.Audience,
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -107,6 +123,8 @@ if (useAzure)
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<ILogger<AzureForumService>>()),
         sp.GetRequiredService<IMemoryCache>()));
+    // TODO (Task 12): Uncomment once AzureChatService is implemented
+    // builder.Services.AddSingleton<IChatService, AzureChatService>();
 }
 else
 {
@@ -117,6 +135,7 @@ else
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
     builder.Services.AddSingleton<IForumService, MockForumService>();
+    builder.Services.AddSingleton<IChatService, MockChatService>();
 }
 
 var app = builder.Build();
@@ -140,6 +159,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+// TODO (Task 8): Uncomment once ChatHub is created in Lovecraft.Backend.Hubs
+// app.MapHub<ChatHub>("/hubs/chat");
 
 // Health check endpoint (public)
 app.MapGet("/health", () => Results.Ok(new
