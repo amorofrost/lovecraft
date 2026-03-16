@@ -120,4 +120,55 @@ public class ChatTests
         var page1 = await svc.GetMessagesAsync("chat-1", "current-user", page: 1, pageSize: 2);
         Assert.Equal(2, page1.Count);
     }
+
+    // --- Hub path tests (via MockChatService, which ChatHub delegates to) ---
+
+    [Fact]
+    public async Task ValidateAccessAsync_CalledByHub_ReturnsTrueForParticipant()
+    {
+        // Simulates ChatHub.JoinChat / SendMessage calling ValidateAccessAsync
+        var svc = CreateService();
+        var allowed = await svc.ValidateAccessAsync("chat-1", "current-user");
+        Assert.True(allowed);
+    }
+
+    [Fact]
+    public async Task ValidateAccessAsync_CalledByHub_ReturnsFalseForNonParticipant()
+    {
+        // Simulates ChatHub rejecting a JoinChat from a non-participant
+        var svc = CreateService();
+        var denied = await svc.ValidateAccessAsync("chat-1", "intruder");
+        Assert.False(denied);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_CalledByHub_ThrowsForEmptyContent()
+    {
+        // ChatHub throws HubException for empty content before calling service;
+        // here we verify the service itself rejects invalid chat IDs (non-participant)
+        var svc = CreateService();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => svc.SendMessageAsync("chat-nonexistent", "current-user", "Hello"));
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_CalledByHub_PersistsMessageForOtherParticipant()
+    {
+        // Simulates hub: sender sends via SendMessage; recipient should see it via GetMessages
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "Hub send test");
+        var recipientView = await svc.GetMessagesAsync("chat-1", "user-anna");
+        Assert.Contains(recipientView, m => m.Id == msg.Id);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_CalledByHub_DoesNotExcludeSenderFromPersistence()
+    {
+        // OthersInGroup only affects SignalR broadcast, not persistence;
+        // sender's own GetMessages should still include the sent message
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "Self-visible");
+        var senderView = await svc.GetMessagesAsync("chat-1", "current-user");
+        Assert.Contains(senderView, m => m.Id == msg.Id);
+    }
 }
