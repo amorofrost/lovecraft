@@ -18,6 +18,12 @@ public class AzureChatService : IChatService
         _chatsTable    = tableService.GetTableClient(TableNames.Chats);
         _userChatsTable = tableService.GetTableClient(TableNames.UserChats);
         _messagesTable = tableService.GetTableClient(TableNames.Messages);
+
+        Task.WhenAll(
+            _chatsTable.CreateIfNotExistsAsync(),
+            _userChatsTable.CreateIfNotExistsAsync(),
+            _messagesTable.CreateIfNotExistsAsync()
+        ).GetAwaiter().GetResult();
     }
 
     public async Task<List<ChatDto>> GetChatsAsync(string userId)

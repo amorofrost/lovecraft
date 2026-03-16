@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
@@ -20,15 +21,19 @@ public class MatchingController : ControllerBase
         _logger = logger;
     }
 
+    private string? CurrentUserId =>
+        User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
     /// <summary>
     /// Send a like to another user
     /// </summary>
     [HttpPost("likes")]
     public async Task<ActionResult<ApiResponse<LikeResponseDto>>> CreateLike([FromBody] CreateLikeRequestDto request)
     {
+        var currentUserId = CurrentUserId;
+        if (currentUserId == null) return Unauthorized();
         try
         {
-            const string currentUserId = "current-user";
             var result = await _matchingService.CreateLikeAsync(currentUserId, request.ToUserId);
             return Ok(ApiResponse<LikeResponseDto>.SuccessResponse(result));
         }
@@ -45,9 +50,10 @@ public class MatchingController : ControllerBase
     [HttpGet("likes/sent")]
     public async Task<ActionResult<ApiResponse<List<LikeDto>>>> GetSentLikes()
     {
+        var currentUserId = CurrentUserId;
+        if (currentUserId == null) return Unauthorized();
         try
         {
-            const string currentUserId = "current-user";
             var likes = await _matchingService.GetSentLikesAsync(currentUserId);
             return Ok(ApiResponse<List<LikeDto>>.SuccessResponse(likes));
         }
@@ -64,9 +70,10 @@ public class MatchingController : ControllerBase
     [HttpGet("likes/received")]
     public async Task<ActionResult<ApiResponse<List<LikeDto>>>> GetReceivedLikes()
     {
+        var currentUserId = CurrentUserId;
+        if (currentUserId == null) return Unauthorized();
         try
         {
-            const string currentUserId = "current-user";
             var likes = await _matchingService.GetReceivedLikesAsync(currentUserId);
             return Ok(ApiResponse<List<LikeDto>>.SuccessResponse(likes));
         }
@@ -83,9 +90,10 @@ public class MatchingController : ControllerBase
     [HttpGet("matches")]
     public async Task<ActionResult<ApiResponse<List<MatchDto>>>> GetMatches()
     {
+        var currentUserId = CurrentUserId;
+        if (currentUserId == null) return Unauthorized();
         try
         {
-            const string currentUserId = "current-user";
             var matches = await _matchingService.GetMatchesAsync(currentUserId);
             return Ok(ApiResponse<List<MatchDto>>.SuccessResponse(matches));
         }

@@ -22,9 +22,16 @@ var connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECT
         "AZURE_STORAGE_CONNECTION_STRING not set. " +
         "Add it to a .env file in the solution root or export it as an environment variable.");
 
+// Optional table name prefix (e.g. "dev_", "test2_")
+// Set AZURE_TABLE_PREFIX in .env or environment to isolate table sets
+var tablePrefix = Environment.GetEnvironmentVariable("AZURE_TABLE_PREFIX") ?? string.Empty;
+Lovecraft.Backend.Storage.TableNames.Prefix = tablePrefix;
+
 // ─── Connect ──────────────────────────────────────────────────────────────────
 
 Console.WriteLine("Connecting to Azure Table Storage...\n");
+if (!string.IsNullOrEmpty(tablePrefix))
+    Console.WriteLine($"Table prefix: \"{tablePrefix}\"\n");
 var service = new TableServiceClient(connectionString);
 
 // ─── Reset all 15 tables (create if needed, then wipe all entities) ───────────
@@ -250,8 +257,42 @@ foreach (var reply in MockDataStore.ForumReplies)
 }
 Console.WriteLine($"  [forumreplies]  {MockDataStore.ForumReplies.Count} replies");
 
-// Remaining tables (refreshtokens, authtokens, likes, likesreceived, matches) stay empty
-Console.WriteLine($"  [refreshtokens / authtokens / likes / likesreceived / matches] empty (ready to use)");
+// Likes + LikesReceived
+// Scenarios:
+//   test-user-001 → "1" (Anna)      sent only
+//   test-user-001 ↔ "2" (Dmitry)    mutual match
+//   "1" (Anna)    → test-user-001   received only
+//   "3" (Elena)   → test-user-001   received only
+//   "1" (Anna)    ↔ "9" (Maria)     mutual match
+//   "3" (Elena)   → "2" (Dmitry)    sent only (no reciprocation)
+var likesTable         = service.GetTableClient(TableNames.Likes);
+var likesReceivedTable = service.GetTableClient(TableNames.LikesReceived);
+
+var likeEdges = new[]
+{
+    //                fromUserId       toUserId         isMatch
+    (from: "test-user-001", to: "1",             mutual: false),
+    (from: "test-user-001", to: "2",             mutual: true),
+    (from: "2",             to: "test-user-001", mutual: true),
+    (from: "1",             to: "test-user-001", mutual: false),
+    (from: "3",             to: "test-user-001", mutual: false),
+    (from: "1",             to: "9",             mutual: true),
+    (from: "9",             to: "1",             mutual: true),
+    (from: "3",             to: "2",             mutual: false),
+};
+
+var likesSeedTime = DateTime.UtcNow;
+foreach (var (from, to, mutual) in likeEdges)
+{
+    var likeId = $"{from}_{to}";
+    await SeedLikeAsync(likesTable, likesReceivedTable, likeId, from, to, mutual, likesSeedTime);
+}
+
+Console.WriteLine($"  [likes]         {likeEdges.Length} rows");
+Console.WriteLine($"  [likesreceived] {likeEdges.Length} rows");
+
+// Remaining tables (refreshtokens, authtokens, matches) stay empty
+Console.WriteLine($"  [refreshtokens / authtokens / matches] empty (ready to use)");
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
@@ -261,6 +302,44 @@ foreach (var (id, email, pw) in seededUsers)
     Console.WriteLine($"  {email,-38} password: {pw}   (id: {id})");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+static async Task SeedLikeAsync(
+    TableClient likesTable,
+    TableClient likesReceivedTable,
+    string likeId,
+    string fromUserId,
+    string toUserId,
+    bool isMatch,
+    DateTime createdAt)
+{
+    // likes table:         PK = fromUserId, RK = toUserId
+    var likeEntity = new LikeEntity
+    {
+        PartitionKey = fromUserId,
+        RowKey       = toUserId,
+        LikeId       = likeId,
+        FromUserId   = fromUserId,
+        ToUserId     = toUserId,
+        CreatedAt    = createdAt,
+        IsMatch      = isMatch,
+    };
+
+    // likesreceived table: PK = toUserId (recipient), RK = fromUserId (sender)
+    var receivedEntity = new LikeEntity
+    {
+        PartitionKey = toUserId,
+        RowKey       = fromUserId,
+        LikeId       = likeId,
+        FromUserId   = fromUserId,
+        ToUserId     = toUserId,
+        CreatedAt    = createdAt,
+        IsMatch      = isMatch,
+    };
+
+    await Task.WhenAll(
+        likesTable.UpsertEntityAsync(likeEntity),
+        likesReceivedTable.UpsertEntityAsync(receivedEntity));
+}
 
 static async Task ResetTableAsync(TableServiceClient service, string name)
 {

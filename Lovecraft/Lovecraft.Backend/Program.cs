@@ -12,6 +12,10 @@ using Lovecraft.Backend.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Table prefix — must be set before any Azure service is constructed
+Lovecraft.Backend.Storage.TableNames.Prefix =
+    builder.Configuration["AZURE_TABLE_PREFIX"] ?? string.Empty;
+
 // JWT Settings
 var jwtSettings = new JwtSettings
 {
