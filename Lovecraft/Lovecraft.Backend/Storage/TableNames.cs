@@ -17,4 +17,7 @@ public static class TableNames
     public const string ForumTopics = "forumtopics";
     public const string ForumTopicIndex = "forumtopicindex";
     public const string ForumReplies = "forumreplies";
+    public const string Chats = "chats";
+    public const string UserChats = "userchats";
+    public const string Messages = "messages";
 }

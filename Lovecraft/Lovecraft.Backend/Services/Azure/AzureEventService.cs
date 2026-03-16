@@ -75,6 +75,11 @@ public class AzureEventService : IEventService
         }
     }
 
+    public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
+    {
+        throw new NotImplementedException();
+    }
+
     private async Task<List<string>> GetAttendeeIdsAsync(string eventId)
     {
         var attendees = new List<string>();

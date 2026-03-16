@@ -17,6 +17,7 @@ public class EventDto
     public decimal? Price { get; set; }
     public string Organizer { get; set; } = string.Empty;
     public bool IsSecret { get; set; }
+    public string? ForumTopicId { get; set; }
 }
 
 public class EventRegistrationRequestDto

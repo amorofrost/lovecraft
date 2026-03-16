@@ -92,4 +92,7 @@ public class CachingForumService : IForumService
 
         return result;
     }
+
+    public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
+        => _inner.CreateEventTopicAsync(eventId, eventName);
 }

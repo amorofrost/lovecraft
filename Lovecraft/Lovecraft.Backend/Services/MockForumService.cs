@@ -56,4 +56,9 @@ public class MockForumService : IForumService
 
         return Task.FromResult(reply);
     }
+
+    public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
+    {
+        throw new NotImplementedException();
+    }
 }

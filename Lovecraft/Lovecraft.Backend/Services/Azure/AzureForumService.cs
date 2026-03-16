@@ -158,6 +158,11 @@ public class AzureForumService : IForumService
         UpdatedAt = entity.UpdatedAt
     };
 
+    public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
+    {
+        throw new NotImplementedException();
+    }
+
     private static ForumReplyDto ToReplyDto(ForumReplyEntity entity) => new ForumReplyDto
     {
         Id = entity.ReplyId,

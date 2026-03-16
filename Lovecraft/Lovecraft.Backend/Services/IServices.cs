@@ -4,6 +4,7 @@ using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.DTOs.Store;
 using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.DTOs.Chats;
 
 namespace Lovecraft.Backend.Services;
 
@@ -20,6 +21,7 @@ public interface IEventService
     Task<EventDto?> GetEventByIdAsync(string eventId);
     Task<bool> RegisterForEventAsync(string userId, string eventId);
     Task<bool> UnregisterFromEventAsync(string userId, string eventId);
+    Task SetForumTopicIdAsync(string eventId, string forumTopicId);
 }
 
 public interface IMatchingService
@@ -49,4 +51,14 @@ public interface IForumService
     Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
     Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
     Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content);
+    Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName);
+}
+
+public interface IChatService
+{
+    Task<List<ChatDto>> GetChatsAsync(string userId);
+    Task<ChatDto> GetOrCreateChatAsync(string userId, string targetUserId);
+    Task<List<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50);
+    Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content);
+    Task<bool> ValidateAccessAsync(string chatId, string userId);
 }

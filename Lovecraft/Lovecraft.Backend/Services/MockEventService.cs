@@ -37,4 +37,9 @@ public class MockEventService : IEventService
         }
         return Task.FromResult(false);
     }
+
+    public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
+    {
+        throw new NotImplementedException();
+    }
 }
