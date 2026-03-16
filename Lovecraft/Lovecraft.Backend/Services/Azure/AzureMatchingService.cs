@@ -11,10 +11,12 @@ public class AzureMatchingService : IMatchingService
     private readonly TableClient _likesTable;
     private readonly TableClient _likesReceivedTable;
     private readonly TableClient _matchesTable;
+    private readonly IChatService _chatService;
     private readonly ILogger<AzureMatchingService> _logger;
 
-    public AzureMatchingService(TableServiceClient tableServiceClient, ILogger<AzureMatchingService> logger)
+    public AzureMatchingService(TableServiceClient tableServiceClient, IChatService chatService, ILogger<AzureMatchingService> logger)
     {
+        _chatService = chatService;
         _logger = logger;
         _likesTable = tableServiceClient.GetTableClient(TableNames.Likes);
         _likesReceivedTable = tableServiceClient.GetTableClient(TableNames.LikesReceived);
@@ -144,6 +146,7 @@ public class AzureMatchingService : IMatchingService
                 CreatedAt = now
             };
 
+            await _chatService.GetOrCreateChatAsync(fromUserId, toUserId);
             _logger.LogInformation("Match created between {From} and {To}", fromUserId, toUserId);
         }
 
