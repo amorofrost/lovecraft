@@ -40,7 +40,7 @@ public class ServiceTests
     public async Task MatchingService_CreateLike_CreatesLike()
     {
         // Arrange
-        var service = new MockMatchingService();
+        var service = new MockMatchingService(new MockChatService());
         var fromUserId = "user1";
         var toUserId = "user2";
 
