@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Azure.Data.Tables;
-// TODO (Task 8): Add "using Lovecraft.Backend.Hubs;" once ChatHub is created
+using Lovecraft.Backend.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -159,8 +159,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-// TODO (Task 8): Uncomment once ChatHub is created in Lovecraft.Backend.Hubs
-// app.MapHub<ChatHub>("/hubs/chat");
+app.MapHub<ChatHub>("/hubs/chat");
 
 // Health check endpoint (public)
 app.MapGet("/health", () => Results.Ok(new
