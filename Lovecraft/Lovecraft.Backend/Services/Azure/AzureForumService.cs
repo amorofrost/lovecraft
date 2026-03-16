@@ -207,6 +207,12 @@ public class AzureForumService : IForumService
         };
     }
 
+    public Task<ForumTopicDto> CreateTopicAsync(
+        string sectionId, string authorId, string authorName, string title, string content)
+    {
+        throw new NotImplementedException();
+    }
+
     private static ForumReplyDto ToReplyDto(ForumReplyEntity entity) => new ForumReplyDto
     {
         Id = entity.ReplyId,

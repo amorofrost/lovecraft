@@ -14,6 +14,7 @@ public class MockForumService : IForumService
     {
         var topics = MockDataStore.ForumTopics
             .Where(t => t.SectionId == sectionId)
+            .OrderByDescending(t => t.IsPinned)
             .ToList();
         return Task.FromResult(topics);
     }
@@ -55,6 +56,33 @@ public class MockForumService : IForumService
         }
 
         return Task.FromResult(reply);
+    }
+
+    public Task<ForumTopicDto> CreateTopicAsync(
+        string sectionId, string authorId, string authorName, string title, string content)
+    {
+        var section = MockDataStore.ForumSections.FirstOrDefault(s => s.Id == sectionId)
+            ?? throw new KeyNotFoundException($"Section '{sectionId}' not found.");
+
+        var topic = new ForumTopicDto
+        {
+            Id = Guid.NewGuid().ToString(),
+            SectionId = sectionId,
+            Title = title,
+            Content = content.Length > 100 ? content[..100] : content,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            AuthorAvatar = null,
+            IsPinned = false,
+            IsLocked = false,
+            ReplyCount = 0,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        MockDataStore.ForumTopics.Add(topic);
+        section.TopicCount++;
+        return Task.FromResult(topic);
     }
 
     public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)

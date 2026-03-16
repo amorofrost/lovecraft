@@ -95,4 +95,10 @@ public class CachingForumService : IForumService
 
     public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
         => _inner.CreateEventTopicAsync(eventId, eventName);
+
+    public async Task<ForumTopicDto> CreateTopicAsync(
+        string sectionId, string authorId, string authorName, string title, string content)
+    {
+        return await _inner.CreateTopicAsync(sectionId, authorId, authorName, title, content);
+    }
 }
