@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Lovecraft.Common.DTOs.Forum;
 
 public class ForumSectionDto
@@ -38,8 +40,12 @@ public class ForumReplyDto
 
 public class CreateTopicRequestDto
 {
-    public string SectionId { get; set; } = string.Empty;
+    [Required]
+    [StringLength(100, MinimumLength = 5)]
     public string Title { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(5000, MinimumLength = 10)]
     public string Content { get; set; } = string.Empty;
 }
 
