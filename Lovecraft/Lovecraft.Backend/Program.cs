@@ -123,8 +123,7 @@ if (useAzure)
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<ILogger<AzureForumService>>()),
         sp.GetRequiredService<IMemoryCache>()));
-    // TODO (Task 12): Uncomment once AzureChatService is implemented
-    // builder.Services.AddSingleton<IChatService, AzureChatService>();
+    builder.Services.AddSingleton<IChatService, AzureChatService>();
 }
 else
 {
