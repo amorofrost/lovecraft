@@ -158,9 +158,53 @@ public class AzureForumService : IForumService
         UpdatedAt = entity.UpdatedAt
     };
 
-    public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
+    public async Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
     {
-        throw new NotImplementedException();
+        var topicId = $"event-topic-{eventId}";
+        var now = DateTime.UtcNow;
+        const string sectionId = "events";
+
+        var topicEntity = new ForumTopicEntity
+        {
+            PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
+            RowKey = topicId,
+            SectionId = sectionId,
+            Title = eventName,
+            Content = $"Обсуждение события: {eventName}",
+            AuthorId = "system",
+            AuthorName = "AloeVera",
+            AuthorAvatar = string.Empty,
+            IsPinned = false,
+            IsLocked = false,
+            ReplyCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        await _topicsTable.UpsertEntityAsync(topicEntity);
+
+        // Upsert index entry so GetTopicByIdAsync can resolve this topic
+        var indexEntity = new ForumTopicIndexEntity
+        {
+            PartitionKey = "TOPICINDEX",
+            RowKey = topicId,
+            SectionId = sectionId
+        };
+        await _topicIndexTable.UpsertEntityAsync(indexEntity);
+
+        return new ForumTopicDto
+        {
+            Id = topicId,
+            SectionId = sectionId,
+            Title = eventName,
+            Content = $"Обсуждение события: {eventName}",
+            AuthorId = "system",
+            AuthorName = "AloeVera",
+            CreatedAt = now,
+            UpdatedAt = now,
+            ReplyCount = 0,
+            IsPinned = false
+        };
     }
 
     private static ForumReplyDto ToReplyDto(ForumReplyEntity entity) => new ForumReplyDto
