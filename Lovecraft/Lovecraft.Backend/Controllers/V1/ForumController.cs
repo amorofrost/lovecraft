@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Hubs;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -12,11 +14,13 @@ namespace Lovecraft.Backend.Controllers.V1;
 public class ForumController : ControllerBase
 {
     private readonly IForumService _forumService;
+    private readonly IHubContext<ChatHub> _hubContext;
     private readonly ILogger<ForumController> _logger;
 
-    public ForumController(IForumService forumService, ILogger<ForumController> logger)
+    public ForumController(IForumService forumService, IHubContext<ChatHub> hubContext, ILogger<ForumController> logger)
     {
         _forumService = forumService;
+        _hubContext = hubContext;
         _logger = logger;
     }
 
@@ -105,6 +109,7 @@ public class ForumController : ControllerBase
             const string currentUserId = "current-user";
             const string currentUserName = "Вы";
             var reply = await _forumService.CreateReplyAsync(topicId, currentUserId, currentUserName, request.Content);
+            await _hubContext.Clients.Group($"topic-{topicId}").SendAsync("ReplyPosted", reply, topicId);
             return Ok(ApiResponse<ForumReplyDto>.SuccessResponse(reply));
         }
         catch (Exception ex)
