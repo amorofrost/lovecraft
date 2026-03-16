@@ -1,6 +1,6 @@
 # Chat Architecture
 
-> Added March 15, 2026. Covers both the REST chat API and the SignalR real-time layer.
+> Added March 15, 2026. Updated March 16, 2026. Covers both the REST chat API and the SignalR real-time layer.
 
 ---
 
@@ -35,14 +35,16 @@ The frontend uses the REST layer for initial data load (chat list, message histo
 | `JoinChat` | `chatId: string` | Validates that the calling user is a participant via `IChatService.ValidateAccessAsync` |
 | `JoinTopic` | `topicId: string` | No access check — forum topics are public |
 | `LeaveGroup` | `groupId: string` | Removes caller from any hub group |
-| `SendMessage` | `chatId, content: string` | Validates access, persists via `IChatService.SendMessageAsync`, broadcasts `MessageReceived` to `Clients.OthersInGroup` (sender does NOT receive the echo) |
+| `SendMessage` | `chatId, content: string` | Validates access, persists via `IChatService.SendMessageAsync`, broadcasts `MessageReceived` to `Clients.OthersInGroup` (sender excluded from hub echo) |
 
 ### Server → Client events
 
 | Event | Payload | Emitted by |
 |---|---|---|
-| `MessageReceived` | `(MessageDto message, string chatId)` | `ChatHub.SendMessage` |
+| `MessageReceived` | `MessageDto` | `ChatsController.SendMessage` via `IHubContext<ChatHub>.Clients.Group($"chat-{id}")` (REST path — all group members including sender receive it); also by `ChatHub.SendMessage` via `Clients.OthersInGroup` (hub path — sender excluded) |
 | `ReplyPosted` | `(ForumReplyDto reply, string topicId)` | `ForumController.CreateReply` (via `IHubContext<ChatHub>`) |
+
+> **Message delivery flow (REST path, which the frontend uses):** Client sends `POST /api/v1/chats/{id}/messages` → controller persists via `IChatService` → broadcasts `MessageReceived` to the full group via `IHubContext`. The sender receives the event too; the frontend deduplicates by message ID to prevent double-display.
 
 ---
 
@@ -55,7 +57,7 @@ All require `Authorization: Bearer <token>`.
 | `GET` | `/api/v1/chats` | — | List user's chats (filtered by participant) |
 | `POST` | `/api/v1/chats` | `{ targetUserId }` | Get existing or create new private chat |
 | `GET` | `/api/v1/chats/{id}/messages` | — | Paginated messages (`?page=1&pageSize=50`) |
-| `POST` | `/api/v1/chats/{id}/messages` | `{ content }` | REST fallback send (no real-time broadcast) |
+| `POST` | `/api/v1/chats/{id}/messages` | `{ content }` | Persist message and broadcast `MessageReceived` to all group members via `IHubContext<ChatHub>` |
 
 ---
 
@@ -173,6 +175,14 @@ See `src/services/signalr/chatConnection.ts` and `src/hooks/useChatSignalR.ts` i
 - `chatConnection` — module-level singleton; no-op in mock mode
 - `useChatSignalR(type, id)` — React hook that joins a hub group on mount and leaves on unmount
 - `onEvent(event, handler)` — returns a cleanup function; use as `return onEvent(...)` inside `useEffect`
+
+---
+
+## Auto-Creation on Mutual Like
+
+When two users like each other, a 1-on-1 chat is created automatically — the user does not need to tap "Start chat" first. Both `MockMatchingService` and `AzureMatchingService` call `IChatService.GetOrCreateChatAsync(fromUserId, toUserId)` inside `CreateLikeAsync` when a mutual match is detected.
+
+`GetOrCreateChatAsync` is idempotent — calling it multiple times for the same pair returns the same chat ID, so duplicate chats are never created.
 
 ---
 
