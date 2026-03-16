@@ -56,4 +56,23 @@ public class MockForumService : IForumService
 
         return Task.FromResult(reply);
     }
+
+    public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
+    {
+        var topic = new ForumTopicDto
+        {
+            Id = $"event-topic-{eventId}",
+            SectionId = "events",
+            Title = eventName,
+            Content = $"Обсуждение события: {eventName}",
+            AuthorId = "system",
+            AuthorName = "AloeVera",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            ReplyCount = 0,
+            IsPinned = false
+        };
+        MockDataStore.ForumTopics.Add(topic);
+        return Task.FromResult(topic);
+    }
 }

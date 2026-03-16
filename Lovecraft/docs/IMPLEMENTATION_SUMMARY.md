@@ -21,15 +21,17 @@ Lovecraft.slnx
 │   │   ├── MockUserService.cs, MockEventService.cs, ...  (USE_AZURE_STORAGE=false)
 │   │   └── Azure/AzureAuthService.cs, AzureUserService.cs, ...  (USE_AZURE_STORAGE=true)
 │   ├── Storage/               # Azure Table Storage layer
-│   │   ├── TableNames.cs      # 15 table name constants
-│   │   └── Entities/          # 14 entity classes (UserEntity, EventEntity, etc.)
+│   │   ├── TableNames.cs      # 18 table name constants
+│   │   └── Entities/          # 17 entity classes (UserEntity, EventEntity, ChatEntity, etc.)
+│   ├── Hubs/                  # SignalR hubs
+│   │   └── ChatHub.cs         # Real-time chat hub (JWT auth, JoinChat/JoinTopic/SendMessage)
 │   ├── MockData/              # MockDataStore.cs — in-memory seed data
-│   └── Program.cs             # Startup, DI, mode switch (USE_AZURE_STORAGE)
+│   └── Program.cs             # Startup, DI, mode switch (USE_AZURE_STORAGE), SignalR
 │
 ├── Lovecraft.Tools.Seeder/    # CLI tool: seeds Azure Table Storage from MockDataStore
 │   └── Program.cs             # Reads .env, resets + seeds all 15 tables
 │
-└── Lovecraft.UnitTests/       # xUnit tests (35 tests)
+└── Lovecraft.UnitTests/       # xUnit tests (53 tests)
 ```
 
 ### API Endpoints Implemented
@@ -75,6 +77,20 @@ All endpoints return data in the format:
 - `GET /api/v1/forum/topics/{topicId}` - Get topic detail (title, content, author, pin status)
 - `GET /api/v1/forum/topics/{topicId}/replies` - Get all replies for a topic
 - `POST /api/v1/forum/topics/{topicId}/replies` - Post a reply (`{ content }` body)
+
+#### Chats (`/api/v1/chats`)
+- `GET /api/v1/chats` - List user's chats
+- `GET /api/v1/chats/{id}/messages` - Get paginated messages (`?page=1&pageSize=50`)
+- `POST /api/v1/chats` - Get or create private chat (`{ targetUserId }` body)
+- `POST /api/v1/chats/{id}/messages` - Send message via REST (`{ content }` body)
+
+#### SignalR Hub (`/hubs/chat`)
+- `JoinChat(chatId)` — join a private chat group (validates access)
+- `JoinTopic(topicId)` — join a forum topic group (no auth check — public topics)
+- `LeaveGroup(groupId)` — leave any group
+- `SendMessage(chatId, content)` — send real-time message; broadcasts to group via `Clients.OthersInGroup`
+- Server → client events: `MessageReceived(message, chatId)`, `ReplyPosted(reply, topicId)`
+- Auth: JWT Bearer token passed as `?access_token=` query string
 
 ### DTOs Created
 
@@ -167,7 +183,7 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Testing
 
-- **35 unit tests** — all passing
+- **53 unit tests** — all passing
   - 16 authentication tests (`AuthenticationTests.cs`)
   - 6 service tests (`ServiceTests.cs`)
   - **13 refresh token tests** (`RefreshTokenTests.cs`) — added February 24, 2026
@@ -176,6 +192,10 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
     - Invalid / unknown tokens: unknown token returns null, empty string returns null
     - Revocation: single-token revocation, revoke-all-user-tokens, isolation between users
     - `JwtService.GenerateRefreshToken`: uniqueness, base64 encoding, sufficient entropy
+  - **18 chat tests** (`ChatTests.cs`) — added March 15, 2026
+    - `MockChatService`: GetChats filters by participant, GetOrCreateChat idempotency, GetMessages pagination, SendMessage persistence, ValidateAccess, UserChats index updated on send
+    - Hub access paths: JoinChat validates access, SendMessage validates access, JoinTopic allows any authenticated user, SendMessage persists and returns DTO, direct REST fallback route
+    - `[Collection("ChatTests")]` serialises tests to prevent races on `MockDataStore` static state
 - Tests run with `dotnet test`
 - `[Collection("AuthTests")]` serialises `AuthenticationTests` and `RefreshTokenTests` to prevent races on `MockAuthService` static state
 
@@ -212,12 +232,13 @@ dotnet test
 
 ### Immediate Next Steps (Backend)
 1. ~~Add JWT authentication~~ ✅ Done
-2. ~~Integrate Azure Table Storage~~ ✅ Done — 7 Azure services, 14 entities, seeder tool
-3. Integrate Azure Blob Storage (image uploads)
-4. Add email service (SMTP/SendGrid for verification and password reset)
-5. Add chat and songs endpoints (frontend currently falls back to mock data for these)
-6. Add input validation (FluentValidation)
-7. Add logging (Serilog)
+2. ~~Integrate Azure Table Storage~~ ✅ Done — 8 Azure services, 17 entities, seeder tool
+3. ~~Add chat endpoints~~ ✅ Done — REST + SignalR, 3 new tables, 18 new unit tests
+4. Integrate Azure Blob Storage (image uploads)
+5. Add email service (SMTP/SendGrid for verification and password reset)
+6. Add songs endpoint (frontend currently falls back to mock data)
+7. Add input validation (FluentValidation)
+8. Add logging (Serilog)
 
 ### Frontend Integration
 1. ~~Auth endpoints connected to backend~~ ✅ Done
@@ -231,7 +252,7 @@ dotnet test
 ### Advanced Features
 1. OAuth integration (Google, Facebook, VK)
 2. Telegram bot authentication
-3. SignalR for real-time messaging
+3. ~~SignalR for real-time messaging~~ ✅ Done (basic send/receive; typing indicators and online presence are future work)
 4. Rate limiting and account lockout
 5. Redis cache
 6. Azure deployment
@@ -240,7 +261,9 @@ dotnet test
 
 - JWT authentication fully operational; all content endpoints require `[Authorize]`
 - **Azure Table Storage** active when `USE_AZURE_STORAGE=true` in `.env`; falls back to in-memory mock services when false
-- **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate all 15 Azure tables
+- **SignalR** at `/hubs/chat` — JWT passed as `?access_token=` query string; nginx `/hubs/` location block proxies WebSocket upgrade
+- **Chat tables**: `chats` (PK="CHAT"), `userchats` (PK=userId index), `messages` (PK=chatId, RK=invertedTicks_{id})
+- **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate all 15 Azure tables (chat tables populated dynamically at runtime, not by seeder)
 - Test credentials after seeding: `test@example.com` / `Test123!@#`; mock users `user1@mock.local`–`user4@mock.local` / `Seed123!@#`
 - CORS allows localhost:8080, localhost:5173, and the Azure VM origin
 - Access token: 15 min; Refresh token: 7 days (HttpOnly cookie)

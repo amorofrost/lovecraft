@@ -22,4 +22,5 @@ public class EventEntity : ITableEntity
     public double? Price { get; set; }
     public string Organizer { get; set; } = string.Empty;
     public bool IsSecret { get; set; }
+    public string? ForumTopicId { get; set; }
 }

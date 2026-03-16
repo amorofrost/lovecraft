@@ -75,6 +75,21 @@ public class AzureEventService : IEventService
         }
     }
 
+    public async Task SetForumTopicIdAsync(string eventId, string forumTopicId)
+    {
+        try
+        {
+            var response = await _eventsTable.GetEntityAsync<EventEntity>("EVENTS", eventId);
+            var entity = response.Value;
+            entity.ForumTopicId = forumTopicId;
+            await _eventsTable.UpdateEntityAsync(entity, entity.ETag);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // Event not found — no-op
+        }
+    }
+
     private async Task<List<string>> GetAttendeeIdsAsync(string eventId)
     {
         var attendees = new List<string>();

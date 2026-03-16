@@ -37,4 +37,12 @@ public class MockEventService : IEventService
         }
         return Task.FromResult(false);
     }
+
+    public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
+    {
+        var evt = MockDataStore.Events.FirstOrDefault(e => e.Id == eventId);
+        if (evt != null)
+            evt.ForumTopicId = forumTopicId;
+        return Task.CompletedTask;
+    }
 }

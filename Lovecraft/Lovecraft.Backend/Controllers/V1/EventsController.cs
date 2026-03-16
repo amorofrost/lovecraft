@@ -12,11 +12,13 @@ namespace Lovecraft.Backend.Controllers.V1;
 public class EventsController : ControllerBase
 {
     private readonly IEventService _eventService;
+    private readonly IForumService _forumService;
     private readonly ILogger<EventsController> _logger;
 
-    public EventsController(IEventService eventService, ILogger<EventsController> logger)
+    public EventsController(IEventService eventService, IForumService forumService, ILogger<EventsController> logger)
     {
         _eventService = eventService;
+        _forumService = forumService;
         _logger = logger;
     }
 
@@ -51,6 +53,14 @@ public class EventsController : ControllerBase
             {
                 return NotFound(ApiResponse<EventDto>.ErrorResponse("NOT_FOUND", "Event not found"));
             }
+
+            if (string.IsNullOrEmpty(eventDto.ForumTopicId))
+            {
+                var topic = await _forumService.CreateEventTopicAsync(id, eventDto.Title);
+                await _eventService.SetForumTopicIdAsync(id, topic.Id);
+                eventDto.ForumTopicId = topic.Id;
+            }
+
             return Ok(ApiResponse<EventDto>.SuccessResponse(eventDto));
         }
         catch (Exception ex)

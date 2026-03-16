@@ -5,7 +5,14 @@ namespace Lovecraft.Backend.Services;
 
 public class MockMatchingService : IMatchingService
 {
-    public Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
+    private readonly IChatService _chatService;
+
+    public MockMatchingService(IChatService chatService)
+    {
+        _chatService = chatService;
+    }
+
+    public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
     {
         // Check if like already exists
         var existingLike = MockDataStore.Likes.FirstOrDefault(l =>
@@ -13,11 +20,11 @@ public class MockMatchingService : IMatchingService
 
         if (existingLike != null)
         {
-            return Task.FromResult(new LikeResponseDto
+            return new LikeResponseDto
             {
                 Like = existingLike,
                 IsMatch = existingLike.IsMatch
-            });
+            };
         }
 
         // Create new like
@@ -38,7 +45,7 @@ public class MockMatchingService : IMatchingService
 
         if (reverseLike != null)
         {
-            // It's a match!
+            // It's a match! Auto-create the 1:1 chat
             like.IsMatch = true;
             reverseLike.IsMatch = true;
 
@@ -50,20 +57,21 @@ public class MockMatchingService : IMatchingService
             };
 
             MockDataStore.Matches.Add(match);
+            await _chatService.GetOrCreateChatAsync(fromUserId, toUserId);
 
-            return Task.FromResult(new LikeResponseDto
+            return new LikeResponseDto
             {
                 Like = like,
                 IsMatch = true,
                 Match = match
-            });
+            };
         }
 
-        return Task.FromResult(new LikeResponseDto
+        return new LikeResponseDto
         {
             Like = like,
             IsMatch = false
-        });
+        };
     }
 
     public Task<List<LikeDto>> GetSentLikesAsync(string userId)

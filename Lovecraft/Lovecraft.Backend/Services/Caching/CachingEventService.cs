@@ -67,4 +67,7 @@ public class CachingEventService : IEventService
         _cache.Remove(EventKey(eventId));
         return result;
     }
+
+    public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
+        => _inner.SetForumTopicIdAsync(eventId, forumTopicId);
 }

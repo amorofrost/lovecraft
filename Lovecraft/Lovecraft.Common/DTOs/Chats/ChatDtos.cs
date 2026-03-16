@@ -38,3 +38,8 @@ public class CreateChatRequestDto
     public List<string> ParticipantIds { get; set; } = new();
     public string? EventId { get; set; }
 }
+
+public class CreatePrivateChatRequestDto
+{
+    public string TargetUserId { get; set; } = string.Empty;
+}
