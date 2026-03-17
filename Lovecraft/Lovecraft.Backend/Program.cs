@@ -98,6 +98,12 @@ builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 
+var sendGridKey = builder.Configuration["SENDGRID_API_KEY"];
+if (!string.IsNullOrEmpty(sendGridKey))
+    builder.Services.AddSingleton<IEmailService, SendGridEmailService>();
+else
+    builder.Services.AddSingleton<IEmailService, NullEmailService>();
+
 var useAzure = builder.Configuration.GetValue<bool>("USE_AZURE_STORAGE");
 if (useAzure)
 {
