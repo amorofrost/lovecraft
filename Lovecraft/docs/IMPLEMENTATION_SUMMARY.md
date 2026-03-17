@@ -74,6 +74,7 @@ All endpoints return data in the format:
 #### Forum (`/api/v1/forum`)
 - `GET /api/v1/forum/sections` - List forum sections
 - `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section
+- `POST /api/v1/forum/sections/{sectionId}/topics` - Create topic in section
 - `GET /api/v1/forum/topics/{topicId}` - Get topic detail (title, content, author, pin status)
 - `GET /api/v1/forum/topics/{topicId}/replies` - Get all replies for a topic
 - `POST /api/v1/forum/topics/{topicId}/replies` - Post a reply (`{ content }` body)
