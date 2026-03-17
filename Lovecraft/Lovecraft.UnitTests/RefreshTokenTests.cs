@@ -32,7 +32,8 @@ public class RefreshTokenTests
 
         _jwtService  = new JwtService(jwtSettings, NullLogger<JwtService>.Instance);
         _authService = new MockAuthService(_jwtService, new PasswordHasher(),
-                                           NullLogger<MockAuthService>.Instance);
+                                           NullLogger<MockAuthService>.Instance,
+                                           new NullEmailService(NullLogger<NullEmailService>.Instance));
     }
 
     /// <summary>

@@ -8,6 +8,7 @@ public class MockAuthService : IAuthService
     private readonly IJwtService _jwtService;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<MockAuthService> _logger;
+    private readonly IEmailService _emailService;
 
     // Mock in-memory storage
     private static readonly Dictionary<string, MockUser> _users = new();
@@ -18,11 +19,13 @@ public class MockAuthService : IAuthService
     public MockAuthService(
         IJwtService jwtService,
         IPasswordHasher passwordHasher,
-        ILogger<MockAuthService> logger)
+        ILogger<MockAuthService> logger,
+        IEmailService emailService)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _logger = logger;
+        _emailService = emailService;
 
         // Seed with test user
         SeedTestUsers();
@@ -80,11 +83,17 @@ public class MockAuthService : IAuthService
         var verificationToken = Guid.NewGuid().ToString();
         _verificationTokens[verificationToken] = userId;
 
-        _logger.LogInformation("User registered: {UserId}, Email: {Email}. Verification token: {Token}", 
+        _logger.LogInformation("User registered: {UserId}, Email: {Email}. Verification token: {Token}",
             userId, request.Email, verificationToken);
 
-        // In a real implementation, send email here
-        // For mock, just log the token
+        try
+        {
+            await _emailService.SendVerificationEmailAsync(user.Email, user.Name, verificationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send verification email to {Email}; token remains valid", user.Email);
+        }
 
         // Generate tokens (but user can't use them until email verified)
         var accessToken = _jwtService.GenerateAccessToken(userId, user.Email, user.Name);
@@ -238,8 +247,15 @@ public class MockAuthService : IAuthService
         };
 
         _logger.LogInformation("Password reset token generated for {Email}: {Token}", email, resetToken);
-        
-        // In real implementation, send email
+
+        try
+        {
+            await _emailService.SendPasswordResetEmailAsync(email, user.Name, resetToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send password reset email to {Email}; token remains valid", email);
+        }
         return true;
     }
 

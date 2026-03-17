@@ -32,7 +32,7 @@ public class AuthenticationTests
 
         _jwtService = new JwtService(jwtSettings, jwtLogger);
         _passwordHasher = new PasswordHasher();
-        _authService = new MockAuthService(_jwtService, _passwordHasher, authLogger);
+        _authService = new MockAuthService(_jwtService, _passwordHasher, authLogger, new NullEmailService(NullLogger<NullEmailService>.Instance));
     }
 
     [Fact]
