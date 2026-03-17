@@ -120,8 +120,7 @@ public class AzureAuthService : IAuthService
         };
         await _authTokensTable.UpsertEntityAsync(authTokenEntity);
 
-        _logger.LogInformation("User registered: {UserId}, Email: {Email}. Verification token: {Token}",
-            userId, request.Email, verificationToken);
+        _logger.LogInformation("User registered: {UserId}, Email: {Email}", userId, request.Email);
 
         try
         {
@@ -362,7 +361,7 @@ public class AzureAuthService : IAuthService
         };
         await _authTokensTable.UpsertEntityAsync(authTokenEntity);
 
-        _logger.LogInformation("Password reset token generated for {Email}: {Token}", email, resetToken);
+        _logger.LogInformation("Password reset token generated for {Email}", email);
 
         try
         {
@@ -397,6 +396,11 @@ public class AzureAuthService : IAuthService
             return false;
         }
 
+        // Consume the token before updating the user to prevent replay attacks.
+        // If the user update subsequently fails, the token is already invalidated
+        // and the user must request a new reset link.
+        await _authTokensTable.DeleteEntityAsync(token, "RESET");
+
         try
         {
             var userResponse = await _usersTable.GetEntityAsync<UserEntity>(
@@ -411,7 +415,6 @@ public class AzureAuthService : IAuthService
             return false;
         }
 
-        await _authTokensTable.DeleteEntityAsync(token, "RESET");
         await RevokeAllUserTokensAsync(authToken.UserId);
 
         _logger.LogInformation("Password reset successful for user {UserId}", authToken.UserId);

@@ -83,8 +83,7 @@ public class MockAuthService : IAuthService
         var verificationToken = Guid.NewGuid().ToString();
         _verificationTokens[verificationToken] = userId;
 
-        _logger.LogInformation("User registered: {UserId}, Email: {Email}. Verification token: {Token}",
-            userId, request.Email, verificationToken);
+        _logger.LogInformation("User registered: {UserId}, Email: {Email}", userId, request.Email);
 
         try
         {
@@ -246,7 +245,7 @@ public class MockAuthService : IAuthService
             ExpiresAt = DateTime.UtcNow.AddHours(1)
         };
 
-        _logger.LogInformation("Password reset token generated for {Email}: {Token}", email, resetToken);
+        _logger.LogInformation("Password reset token generated for {Email}", email);
 
         try
         {
