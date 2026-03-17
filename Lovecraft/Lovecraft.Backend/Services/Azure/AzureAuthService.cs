@@ -6,6 +6,7 @@ using Azure.Data.Tables;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
+using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Auth;
 
 namespace Lovecraft.Backend.Services.Azure;
@@ -20,18 +21,21 @@ public class AzureAuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly JwtSettings _jwtSettings;
     private readonly ILogger<AzureAuthService> _logger;
+    private readonly IEmailService _emailService;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
         IJwtService jwtService,
         IPasswordHasher passwordHasher,
         JwtSettings jwtSettings,
-        ILogger<AzureAuthService> logger)
+        ILogger<AzureAuthService> logger,
+        IEmailService emailService)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _jwtSettings = jwtSettings;
         _logger = logger;
+        _emailService = emailService;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
@@ -118,6 +122,15 @@ public class AzureAuthService : IAuthService
 
         _logger.LogInformation("User registered: {UserId}, Email: {Email}. Verification token: {Token}",
             userId, request.Email, verificationToken);
+
+        try
+        {
+            await _emailService.SendVerificationEmailAsync(request.Email, request.Name, verificationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send verification email to {Email}; token remains valid", request.Email);
+        }
 
         // Generate tokens
         var accessToken = _jwtService.GenerateAccessToken(userId, request.Email, request.Name);
@@ -311,29 +324,53 @@ public class AzureAuthService : IAuthService
     public async Task<bool> ForgotPasswordAsync(string email)
     {
         var emailLower = email.ToLower();
+        string userId;
         try
         {
             var indexResponse = await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
-            var userId = indexResponse.Value.UserId;
-
-            var resetToken = Guid.NewGuid().ToString();
-            var authTokenEntity = new AuthTokenEntity
-            {
-                PartitionKey = resetToken,
-                RowKey = "RESET",
-                UserId = userId,
-                Email = email,
-                ExpiresAt = DateTime.UtcNow.AddHours(1),
-                Used = false
-            };
-            await _authTokensTable.UpsertEntityAsync(authTokenEntity);
-
-            _logger.LogInformation("Password reset token generated for {Email}: {Token}", email, resetToken);
+            userId = indexResponse.Value.UserId;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            // Don't reveal if email exists
             _logger.LogWarning("Password reset requested for non-existent email {Email}", email);
+            return true;
+        }
+
+        // Load the full user entity to get Name for the personalised email greeting
+        UserEntity userEntity;
+        try
+        {
+            var userResponse = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            userEntity = userResponse.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            _logger.LogWarning("Password reset: index entry exists for {Email} but user row missing (data inconsistency)", email);
+            return true; // anti-enumeration: don't write token, return success
+        }
+
+        var resetToken = Guid.NewGuid().ToString();
+        var authTokenEntity = new AuthTokenEntity
+        {
+            PartitionKey = resetToken,
+            RowKey = "RESET",
+            UserId = userId,
+            Email = email,
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            Used = false
+        };
+        await _authTokensTable.UpsertEntityAsync(authTokenEntity);
+
+        _logger.LogInformation("Password reset token generated for {Email}: {Token}", email, resetToken);
+
+        try
+        {
+            await _emailService.SendPasswordResetEmailAsync(email, userEntity.Name, resetToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send password reset email to {Email}; token remains valid", email);
         }
 
         return true;
