@@ -13,11 +13,13 @@ public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly ILogger<UsersController> _logger;
+    private readonly IImageService _imageService;
 
-    public UsersController(IUserService userService, ILogger<UsersController> logger)
+    public UsersController(IUserService userService, ILogger<UsersController> logger, IImageService imageService)
     {
         _userService = userService;
         _logger = logger;
+        _imageService = imageService;
     }
 
     /// <summary>
@@ -75,6 +77,38 @@ public class UsersController : ControllerBase
         {
             _logger.LogError(ex, "Error updating user {UserId}", id);
             return StatusCode(500, ApiResponse<UserDto>.ErrorResponse("INTERNAL_ERROR", "Failed to update user"));
+        }
+    }
+
+    /// <summary>
+    /// Upload a profile image for a user
+    /// </summary>
+    [HttpPost("{id}/images")]
+    public async Task<ActionResult<ApiResponse<string>>> UploadProfileImage(string id, IFormFile image)
+    {
+        var callerId = User.FindFirst("sub")?.Value;
+        if (string.IsNullOrEmpty(callerId) || callerId != id)
+            return StatusCode(403, ApiResponse<string>.ErrorResponse("FORBIDDEN", "You can only upload your own profile image"));
+
+        if (image == null)
+            return BadRequest(ApiResponse<string>.ErrorResponse("INVALID_IMAGE", "Image file is required"));
+
+        var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+        if (!allowedTypes.Contains(image.ContentType))
+            return BadRequest(ApiResponse<string>.ErrorResponse("INVALID_IMAGE_TYPE", "Accepted types: JPEG, PNG, WebP"));
+
+        if (image.Length > 5 * 1024 * 1024)
+            return BadRequest(ApiResponse<string>.ErrorResponse("IMAGE_TOO_LARGE", "Image must be 5 MB or less"));
+
+        try
+        {
+            var url = await _imageService.UploadProfileImageAsync(id, image.OpenReadStream(), image.ContentType);
+            return Ok(ApiResponse<string>.SuccessResponse(url));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading profile image for user {UserId}", id);
+            return StatusCode(500, ApiResponse<string>.ErrorResponse("INTERNAL_ERROR", "Failed to upload image"));
         }
     }
 }
