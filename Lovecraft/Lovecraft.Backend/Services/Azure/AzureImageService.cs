@@ -1,0 +1,77 @@
+using Azure;
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
+using Lovecraft.Backend.Storage;
+using Lovecraft.Backend.Storage.Entities;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
+
+namespace Lovecraft.Backend.Services.Azure;
+
+public class AzureImageService : IImageService
+{
+    private const int MaxDimension = 800;
+    private const int JpegQuality = 85;
+    private const string ContainerName = "profile-images";
+
+    private readonly BlobContainerClient _containerClient;
+    private readonly TableClient _usersTable;
+    private readonly ILogger<AzureImageService> _logger;
+
+    public AzureImageService(
+        BlobServiceClient blobServiceClient,
+        TableServiceClient tableServiceClient,
+        ILogger<AzureImageService> logger)
+    {
+        _logger = logger;
+        _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
+        _containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob).GetAwaiter().GetResult();
+        _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
+    }
+
+    public async Task<string> UploadProfileImageAsync(string userId, Stream imageStream, string contentType)
+    {
+        // 1. Resize image
+        using var image = await Image.LoadAsync(imageStream);
+        if (image.Width > MaxDimension || image.Height > MaxDimension)
+        {
+            image.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Size = new Size(MaxDimension, MaxDimension),
+                Mode = ResizeMode.Max
+            }));
+        }
+
+        // 2. Encode to JPEG
+        using var outputStream = new MemoryStream();
+        var encoder = new JpegEncoder { Quality = JpegQuality };
+        await image.SaveAsync(outputStream, encoder);
+        outputStream.Position = 0;
+
+        // 3. Upload to Blob Storage
+        var blobName = $"{userId}/profile.jpg";
+        var blobClient = _containerClient.GetBlobClient(blobName);
+        await blobClient.UploadAsync(outputStream, overwrite: true);
+        var blobUrl = blobClient.Uri.ToString();
+
+        // 4. Update UserEntity.ProfileImage in Table Storage
+        try
+        {
+            var response = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            var entity = response.Value;
+            entity.ProfileImage = blobUrl;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogError(ex, "Failed to update ProfileImage in Table Storage for user {UserId}", userId);
+            throw;
+        }
+
+        return blobUrl;
+    }
+}
