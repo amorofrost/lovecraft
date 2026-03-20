@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 using Lovecraft.Backend.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,6 +38,11 @@ builder.Services.AddControllers()
                 System.Text.Json.JsonNamingPolicy.CamelCase));
     });
 builder.Services.AddSignalR();
+
+// Allow up to 10 MB multipart bodies (business rule of 5 MB enforced in controller)
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+    o.MultipartBodyLengthLimit = 10 * 1024 * 1024);
+
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "AloeVera Harmony Meet API", Version = "v1", Description = "Authentication required - use /api/v1/auth endpoints to login" });
@@ -110,6 +116,8 @@ if (useAzure)
     var connectionString = builder.Configuration["AZURE_STORAGE_CONNECTION_STRING"]
         ?? throw new InvalidOperationException("AZURE_STORAGE_CONNECTION_STRING not set");
     builder.Services.AddSingleton(new TableServiceClient(connectionString));
+    builder.Services.AddSingleton(new BlobServiceClient(connectionString));
+    builder.Services.AddSingleton<IImageService, AzureImageService>();
     builder.Services.AddSingleton<IAuthService, AzureAuthService>();
     builder.Services.AddSingleton<IUserService, AzureUserService>();
     builder.Services.AddSingleton<IMatchingService, AzureMatchingService>();
@@ -145,6 +153,7 @@ else
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
     builder.Services.AddSingleton<IForumService, MockForumService>();
     builder.Services.AddSingleton<IChatService, MockChatService>();
+    builder.Services.AddSingleton<IImageService, MockImageService>();
 }
 
 var app = builder.Build();
