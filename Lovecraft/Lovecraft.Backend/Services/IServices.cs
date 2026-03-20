@@ -69,3 +69,8 @@ public interface IChatService
     Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content);
     Task<bool> ValidateAccessAsync(string chatId, string userId);
 }
+
+public interface IImageService
+{
+    Task<string> UploadProfileImageAsync(string userId, Stream imageStream, string contentType);
+}
