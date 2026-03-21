@@ -12,6 +12,7 @@ public class AzureForumService : IForumService
     private readonly TableClient _topicsTable;
     private readonly TableClient _topicIndexTable;
     private readonly TableClient _repliesTable;
+    private readonly TableClient _usersTable;
     private readonly ILogger<AzureForumService> _logger;
 
     public AzureForumService(TableServiceClient tableServiceClient, ILogger<AzureForumService> logger)
@@ -21,6 +22,7 @@ public class AzureForumService : IForumService
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
         _topicIndexTable = tableServiceClient.GetTableClient(TableNames.ForumTopicIndex);
         _repliesTable = tableServiceClient.GetTableClient(TableNames.ForumReplies);
+        _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
 
         Task.WhenAll(
             _sectionsTable.CreateIfNotExistsAsync(),
@@ -28,6 +30,21 @@ public class AzureForumService : IForumService
             _topicIndexTable.CreateIfNotExistsAsync(),
             _repliesTable.CreateIfNotExistsAsync()
         ).GetAwaiter().GetResult();
+    }
+
+    private async Task<string?> GetAuthorAvatarAsync(string authorId)
+    {
+        try
+        {
+            var pk = Storage.Entities.UserEntity.GetPartitionKey(authorId);
+            var response = await _usersTable.GetEntityAsync<Storage.Entities.UserEntity>(pk, authorId);
+            var url = response.Value.ProfileImage;
+            return string.IsNullOrEmpty(url) ? null : url;
+        }
+        catch (RequestFailedException)
+        {
+            return null;
+        }
     }
 
     public async Task<List<ForumSectionDto>> GetSectionsAsync()
@@ -97,6 +114,8 @@ public class AzureForumService : IForumService
         var now = DateTime.UtcNow;
         var replyId = Guid.NewGuid().ToString();
 
+        var authorAvatar = await GetAuthorAvatarAsync(authorId);
+
         var replyEntity = new ForumReplyEntity
         {
             PartitionKey = ForumReplyEntity.GetPartitionKey(topicId),
@@ -105,6 +124,7 @@ public class AzureForumService : IForumService
             TopicId = topicId,
             AuthorId = authorId,
             AuthorName = authorName,
+            AuthorAvatar = authorAvatar ?? string.Empty,
             Content = content,
             CreatedAt = now,
             Likes = 0
@@ -226,6 +246,8 @@ public class AzureForumService : IForumService
         var topicId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
 
+        var authorAvatar = await GetAuthorAvatarAsync(authorId);
+
         var topicEntity = new ForumTopicEntity
         {
             PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
@@ -235,7 +257,7 @@ public class AzureForumService : IForumService
             Content = content,
             AuthorId = authorId,
             AuthorName = authorName,
-            AuthorAvatar = string.Empty,
+            AuthorAvatar = authorAvatar ?? string.Empty,
             IsPinned = false,
             IsLocked = false,
             ReplyCount = 0,

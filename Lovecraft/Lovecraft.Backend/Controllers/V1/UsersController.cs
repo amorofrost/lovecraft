@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Lovecraft.Common.DTOs.Users;
@@ -86,7 +87,7 @@ public class UsersController : ControllerBase
     [HttpPost("{id}/images")]
     public async Task<ActionResult<ApiResponse<string>>> UploadProfileImage(string id, IFormFile image)
     {
-        var callerId = User.FindFirst("sub")?.Value;
+        var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(callerId) || callerId != id)
             return StatusCode(403, ApiResponse<string>.ErrorResponse("FORBIDDEN", "You can only upload your own profile image"));
 
