@@ -6,6 +6,7 @@ using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Hubs;
+using Lovecraft.Backend.Helpers;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -110,6 +111,11 @@ public class ForumController : ControllerBase
             return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse(
                 "VALIDATION_ERROR", "Validation failed"));
 
+        if (HtmlGuard.ContainsHtml(request.Title))
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in topic title"));
+        if (HtmlGuard.ContainsHtml(request.Content))
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in topic content"));
+
         var authorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var authorName = User.FindFirst(ClaimTypes.Name)?.Value;
 
@@ -140,6 +146,9 @@ public class ForumController : ControllerBase
     {
         var authorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var authorName = User.FindFirst(ClaimTypes.Name)?.Value;
+
+        if (HtmlGuard.ContainsHtml(request.Content))
+            return BadRequest(ApiResponse<ForumReplyDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in reply content"));
 
         try
         {
