@@ -1,3 +1,4 @@
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Hubs;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Chats;
@@ -61,6 +62,9 @@ public class ChatsController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Content))
             return BadRequest(ApiResponse<MessageDto>.ErrorResponse("CONTENT_REQUIRED", "Message content cannot be empty"));
+
+        if (HtmlGuard.ContainsHtml(request.Content))
+            return BadRequest(ApiResponse<MessageDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in messages"));
 
         if (!await _chatService.ValidateAccessAsync(id, CurrentUserId))
             return Forbid();
