@@ -23,4 +23,34 @@ public class HtmlGuardTests
     {
         Assert.Equal(expected, HtmlGuard.ContainsHtml(input));
     }
+
+    [Fact]
+    public void ContainsHtml_MultilineInput_WithTag_ReturnsTrue()
+    {
+        var input = "hello\n<script>alert(1)</script>\nworld";
+        Assert.True(HtmlGuard.ContainsHtml(input));
+    }
+
+    [Fact]
+    public void ContainsHtml_MultilineInput_NoTag_ReturnsFalse()
+    {
+        var input = "hello\nworld\n5 < 10";
+        Assert.False(HtmlGuard.ContainsHtml(input));
+    }
+
+    [Fact]
+    public void ContainsHtml_HtmlEntityEncoded_ReturnsFalse()
+    {
+        // HTML entity encoding is not an HTML tag — should not be rejected
+        Assert.False(HtmlGuard.ContainsHtml("&lt;script&gt;alert(1)&lt;/script&gt;"));
+    }
+
+    [Fact]
+    public void ContainsHtml_DoesNotThrow_OnLongInput()
+    {
+        // Verify the method handles long strings without throwing (timeout is caught internally)
+        var longInput = new string('<', 10000) + new string('>', 10000);
+        var ex = Record.Exception(() => HtmlGuard.ContainsHtml(longInput));
+        Assert.Null(ex); // Must not propagate RegexMatchTimeoutException
+    }
 }
