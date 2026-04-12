@@ -6,7 +6,7 @@ public static class HtmlGuard
 {
     private static readonly Regex HtmlTagPattern = new(
         @"<[a-zA-Z!/?][^>]*>",
-        RegexOptions.Compiled | RegexOptions.Singleline,
+        RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100)  // ReDoS guard
     );
 
