@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Helpers;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -69,6 +70,13 @@ public class UsersController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult<ApiResponse<UserDto>>> UpdateUser(string id, [FromBody] UserDto user)
     {
+        if (HtmlGuard.ContainsHtml(user.Name))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in name"));
+        if (HtmlGuard.ContainsHtml(user.Location))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in location"));
+        if (HtmlGuard.ContainsHtml(user.Bio))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in bio"));
+
         try
         {
             var updatedUser = await _userService.UpdateUserAsync(id, user);
