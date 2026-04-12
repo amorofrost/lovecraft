@@ -2,9 +2,9 @@
 
 ## What Was Created
 
-A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM behind an nginx proxy.
+A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM at `https://aloeve.club` behind Cloudflare (DNS proxy + DDoS protection) and nginx (TLS termination, HTTP→HTTPS redirect).
 
-> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. Last updated March 16, 2026.
+> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, HTTPS via Cloudflare Origin Certificate, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. Last updated March 20, 2026.
 
 ### Solution Structure
 

@@ -1,11 +1,15 @@
 ## LoveCraft Backend - Docker Instructions
 
+> **Production deployment**: The full stack (frontend + backend) is managed by `docker-compose.yml` in `aloevera-harmony-meet/`. The backend is not exposed externally — nginx in the frontend container proxies `/api/` to the backend over the internal Docker network. See [aloevera-harmony-meet/docs/HTTPS_SETUP.md](../../../aloevera-harmony-meet/docs/HTTPS_SETUP.md) for the HTTPS/Cloudflare setup.
+>
+> The instructions below are for **local backend-only development**.
+
 ### Prerequisites
 
 - Docker Desktop installed and running
 - .NET 10 SDK (optional, only if you want to run without Docker)
 
-### Quick Start with Docker Compose
+### Quick Start with Docker Compose (local dev)
 
 1. **Build and run the container**:
    ```bash
