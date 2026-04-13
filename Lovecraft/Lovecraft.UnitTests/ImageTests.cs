@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -36,10 +37,10 @@ public class ImageTests
         {
             HttpContext = new DefaultHttpContext()
         };
-        controller.HttpContext.User = new System.Security.Claims.ClaimsPrincipal(
-            new System.Security.Claims.ClaimsIdentity(new[]
+        controller.HttpContext.User = new ClaimsPrincipal(
+            new ClaimsIdentity(new[]
             {
-                new System.Security.Claims.Claim("sub", "user1")
+                new Claim(ClaimTypes.NameIdentifier, "user1")
             }, "test"));
 
         var mockFile = new Mock<IFormFile>();
@@ -64,10 +65,10 @@ public class ImageTests
         {
             HttpContext = new DefaultHttpContext()
         };
-        controller.HttpContext.User = new System.Security.Claims.ClaimsPrincipal(
-            new System.Security.Claims.ClaimsIdentity(new[]
+        controller.HttpContext.User = new ClaimsPrincipal(
+            new ClaimsIdentity(new[]
             {
-                new System.Security.Claims.Claim("sub", "user1")
+                new Claim(ClaimTypes.NameIdentifier, "user1")
             }, "test"));
 
         var mockFile = new Mock<IFormFile>();
