@@ -122,9 +122,12 @@ builder.Services.AddRateLimiter(options =>
         ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         ctx.HttpContext.Response.ContentType = "application/json";
 
-        if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
-            ctx.HttpContext.Response.Headers.RetryAfter =
-                ((int)retryAfter.TotalSeconds).ToString();
+        // SlidingWindowRateLimiter does not populate RetryAfter metadata, so fall back
+        // to the known window duration (900 s = 15 min) when metadata is absent.
+        var retryAfterSeconds = ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+            ? (int)retryAfter.TotalSeconds
+            : 900;
+        ctx.HttpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString();
 
         await ctx.HttpContext.Response.WriteAsJsonAsync(
             ApiResponse<object>.ErrorResponse(

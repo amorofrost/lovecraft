@@ -94,6 +94,45 @@ public class RateLimitingTests
         Assert.Equal("TOO_MANY_REQUESTS", body.Error?.Code);
     }
 
+    [Fact]
+    public async Task CrossEndpoint_SharedBucket_ExhaustsLimit()
+    {
+        // 3 login + 3 register = 6 requests against the shared 5-permit bucket.
+        // The 6th request (2nd register) should be rejected regardless of endpoint.
+        await using var factory = new WebApplicationFactory<Program>();
+        var client = factory.CreateClient();
+
+        for (int i = 0; i < 3; i++)
+            await client.PostAsJsonAsync("/api/v1/auth/login",
+                new { email = "x@x.com", password = "wrong" });
+
+        HttpResponseMessage? last = null;
+        for (int i = 0; i < 3; i++)
+            last = await client.PostAsJsonAsync("/api/v1/auth/register",
+                new { email = $"u{i}@x.com", password = "wrong", name = "X" });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, last!.StatusCode);
+    }
+
+    [Fact]
+    public async Task RateLimitResponse_HasRetryAfterHeader()
+    {
+        await using var factory = new WebApplicationFactory<Program>();
+        var client = factory.CreateClient();
+
+        for (int i = 0; i < 6; i++)
+            await client.PostAsJsonAsync("/api/v1/auth/login",
+                new { email = "x@x.com", password = "wrong" });
+
+        Assert.True(client.DefaultRequestHeaders != null); // factory is live
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email = "x@x.com", password = "wrong" });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.True(response.Headers.Contains("Retry-After"),
+            "429 response must include Retry-After header");
+    }
+
     // Minimal shape to deserialise the ApiResponse error without pulling in the full DTO
     private sealed record ErrorBody(bool Success, ErrorDetail? Error);
     private sealed record ErrorDetail(string Code, string Message);

@@ -235,6 +235,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("resend-verification")]
     [Authorize]
+    // TODO: add [EnableRateLimiting("AuthRateLimit")] when the email service is real (currently a mock stub)
     public async Task<ActionResult<ApiResponse<bool>>> ResendVerification()
     {
         // Mock: always return success
@@ -270,6 +271,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("reset-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
     public async Task<ActionResult<ApiResponse<bool>>> ResetPassword([FromBody] ResetPasswordRequestDto request)
     {
         try
