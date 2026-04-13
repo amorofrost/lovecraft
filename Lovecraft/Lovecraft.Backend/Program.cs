@@ -4,12 +4,16 @@ using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Auth;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Threading.RateLimiting;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Lovecraft.Backend.Hubs;
+using Lovecraft.Common.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -85,6 +89,47 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// Trust X-Forwarded-For from nginx/Cloudflare so rate limiter sees the real client IP
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Clear default restrictions — all proxies trusted (nginx sits in front)
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// Rate limiting — sliding window, 5 requests / 15 min per IP, applied to auth endpoints
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("AuthRateLimit", context =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(15),
+                SegmentsPerWindow = 3,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.OnRejected = async (ctx, ct) =>
+    {
+        ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        ctx.HttpContext.Response.ContentType = "application/json";
+
+        if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            ctx.HttpContext.Response.Headers.RetryAfter =
+                ((int)retryAfter.TotalSeconds).ToString();
+
+        await ctx.HttpContext.Response.WriteAsJsonAsync(
+            ApiResponse<object>.ErrorResponse(
+                "TOO_MANY_REQUESTS",
+                "Too many requests. Please try again later."),
+            ct);
+    };
+});
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -169,6 +214,8 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.UseForwardedHeaders();
+app.UseRateLimiter();
 app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
 
@@ -189,3 +236,6 @@ app.MapGet("/health", () => Results.Ok(new
 }));
 
 app.Run();
+
+// Required for WebApplicationFactory<Program> in integration tests
+public partial class Program { }
