@@ -15,7 +15,10 @@ public class RegisterRequestDto
     public string Location { get; set; } = string.Empty;
     public string Gender { get; set; } = string.Empty;
     public string Bio { get; set; } = string.Empty;
+    public string? InviteCode { get; set; }
 }
+
+public record RegistrationConfigDto(bool InviteCodeRequired);
 
 public class AuthResponseDto
 {

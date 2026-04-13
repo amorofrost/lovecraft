@@ -14,11 +14,13 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(IAuthService authService, ILogger<AuthController> logger)
+    public AuthController(IAuthService authService, ILogger<AuthController> logger, IConfiguration configuration)
     {
         _authService = authService;
         _logger = logger;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -48,6 +50,12 @@ public class AuthController : ControllerBase
 
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
+        catch (InvalidInviteCodeException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INVALID_INVITE_CODE",
+                "Invalid invite code"));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during registration");
@@ -55,6 +63,17 @@ public class AuthController : ControllerBase
                 "INTERNAL_ERROR",
                 "Registration failed"));
         }
+    }
+
+    /// <summary>
+    /// Returns whether an invite code is required for registration
+    /// </summary>
+    [HttpGet("registration-config")]
+    [AllowAnonymous]
+    public ActionResult<ApiResponse<RegistrationConfigDto>> GetRegistrationConfig()
+    {
+        var inviteCodeRequired = !string.IsNullOrEmpty(_configuration["INVITE_CODE"]);
+        return Ok(ApiResponse<RegistrationConfigDto>.SuccessResponse(new RegistrationConfigDto(inviteCodeRequired)));
     }
 
     /// <summary>

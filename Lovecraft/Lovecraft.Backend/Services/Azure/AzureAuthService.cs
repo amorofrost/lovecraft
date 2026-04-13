@@ -22,6 +22,7 @@ public class AzureAuthService : IAuthService
     private readonly JwtSettings _jwtSettings;
     private readonly ILogger<AzureAuthService> _logger;
     private readonly IEmailService _emailService;
+    private readonly IConfiguration _configuration;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
@@ -29,13 +30,15 @@ public class AzureAuthService : IAuthService
         IPasswordHasher passwordHasher,
         JwtSettings jwtSettings,
         ILogger<AzureAuthService> logger,
-        IEmailService emailService)
+        IEmailService emailService,
+        IConfiguration configuration)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _jwtSettings = jwtSettings;
         _logger = logger;
         _emailService = emailService;
+        _configuration = configuration;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
@@ -57,6 +60,14 @@ public class AzureAuthService : IAuthService
 
     public async Task<AuthResponseDto?> RegisterAsync(RegisterRequestDto request)
     {
+        // Invite code validation
+        var configuredCode = _configuration["INVITE_CODE"];
+        if (!string.IsNullOrEmpty(configuredCode))
+        {
+            if (request.InviteCode != configuredCode)
+                throw new InvalidInviteCodeException();
+        }
+
         var emailLower = request.Email.ToLower();
 
         // Check if email already exists

@@ -63,7 +63,8 @@ public class MockAuthServiceEmailTests
             new JwtService(jwtSettings, NullLogger<JwtService>.Instance),
             new PasswordHasher(),
             NullLogger<MockAuthService>.Instance,
-            emailSvc);
+            emailSvc,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
     }
 
     [Fact]

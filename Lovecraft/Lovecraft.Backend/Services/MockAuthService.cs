@@ -9,6 +9,7 @@ public class MockAuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<MockAuthService> _logger;
     private readonly IEmailService _emailService;
+    private readonly IConfiguration _configuration;
 
     // Mock in-memory storage
     private static readonly Dictionary<string, MockUser> _users = new();
@@ -20,12 +21,14 @@ public class MockAuthService : IAuthService
         IJwtService jwtService,
         IPasswordHasher passwordHasher,
         ILogger<MockAuthService> logger,
-        IEmailService emailService)
+        IEmailService emailService,
+        IConfiguration configuration)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _logger = logger;
         _emailService = emailService;
+        _configuration = configuration;
 
         // Seed with test user
         SeedTestUsers();
@@ -52,6 +55,14 @@ public class MockAuthService : IAuthService
     public async Task<AuthResponseDto?> RegisterAsync(RegisterRequestDto request)
     {
         await Task.Delay(100); // Simulate async operation
+
+        // Invite code validation
+        var configuredCode = _configuration["INVITE_CODE"];
+        if (!string.IsNullOrEmpty(configuredCode))
+        {
+            if (request.InviteCode != configuredCode)
+                throw new InvalidInviteCodeException();
+        }
 
         // Validate email doesn't exist
         if (_users.ContainsKey(request.Email.ToLower()))
