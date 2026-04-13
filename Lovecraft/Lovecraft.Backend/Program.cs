@@ -99,7 +99,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-// Rate limiting — sliding window, 5 requests / 15 min per IP, applied to auth endpoints
+// Rate limiting — sliding window, 5 requests / 15 min per IP, applied to auth endpoints.
+// One shared bucket per IP across all three rate-limited endpoints (login + register +
+// forgot-password). A client mixing requests across them exhausts the limit faster than
+// per-endpoint limits would — this is intentional (any auth probing counts against the budget).
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("AuthRateLimit", context =>
