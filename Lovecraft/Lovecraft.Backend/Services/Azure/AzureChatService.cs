@@ -133,7 +133,7 @@ public class AzureChatService : IChatService
             .ToList();
     }
 
-    public async Task<MessageDto> SendMessageAsync(string chatId, string userId, string content)
+    public async Task<MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null)
     {
         if (!await ValidateAccessAsync(chatId, userId))
             throw new InvalidOperationException("Access denied");

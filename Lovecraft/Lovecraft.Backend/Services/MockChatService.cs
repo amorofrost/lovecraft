@@ -76,7 +76,7 @@ public class MockChatService : IChatService
         return Task.FromResult(paged);
     }
 
-    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content)
+    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null)
     {
         var chat = MockDataStore.Chats.FirstOrDefault(c => c.Id == chatId && c.Participants.Contains(userId))
             ?? throw new InvalidOperationException("Chat not found or access denied");
@@ -89,7 +89,8 @@ public class MockChatService : IChatService
             Content = content,
             Timestamp = DateTime.UtcNow,
             Read = false,
-            Type = MessageType.Text
+            Type = MessageType.Text,
+            ImageUrls = imageUrls ?? new List<string>()
         };
 
         if (!MockDataStore.Messages.TryGetValue(chatId, out var msgList))

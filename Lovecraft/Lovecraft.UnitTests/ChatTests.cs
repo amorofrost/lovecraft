@@ -1,5 +1,7 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -170,5 +172,21 @@ public class ChatTests
         var msg = await svc.SendMessageAsync("chat-1", "current-user", "Self-visible");
         var senderView = await svc.GetMessagesAsync("chat-1", "current-user");
         Assert.Contains(senderView, m => m.Id == msg.Id);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithImageUrls_StoresAndReturnsThem()
+    {
+        var svc = CreateService();
+        var imageUrls = new List<string>
+        {
+            "https://example.com/img1.jpg",
+            "https://example.com/img2.jpg"
+        };
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "See photos!", imageUrls);
+        Assert.Equal(imageUrls, msg.ImageUrls);
+        var history = await svc.GetMessagesAsync("chat-1", "current-user");
+        var persisted = history.First(m => m.Id == msg.Id);
+        Assert.Equal(imageUrls, persisted.ImageUrls);
     }
 }

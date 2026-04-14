@@ -66,7 +66,7 @@ public interface IChatService
     Task<ChatDto> GetOrCreateChatAsync(string userId, string targetUserId);
     // TODO(Task 14): remove fully-qualified name once Matching.MessageDto ambiguity is resolved
     Task<List<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50);
-    Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content);
+    Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null);
     Task<bool> ValidateAccessAsync(string chatId, string userId);
 }
 
