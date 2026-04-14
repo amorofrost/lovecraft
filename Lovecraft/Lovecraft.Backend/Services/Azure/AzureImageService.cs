@@ -16,6 +16,7 @@ public class AzureImageService : IImageService
     private const int JpegQuality = 85;
     private const string ContainerName = "profile-images";
 
+    private readonly BlobServiceClient _blobServiceClient;
     private readonly BlobContainerClient _containerClient;
     private readonly TableClient _usersTable;
     private readonly ILogger<AzureImageService> _logger;
@@ -26,6 +27,7 @@ public class AzureImageService : IImageService
         ILogger<AzureImageService> logger)
     {
         _logger = logger;
+        _blobServiceClient = blobServiceClient;
         _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
         _containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob).GetAwaiter().GetResult();
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
@@ -75,8 +77,30 @@ public class AzureImageService : IImageService
         return blobUrl;
     }
 
-    public Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType)
+    public async Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType)
     {
-        throw new NotImplementedException("Implemented in Task 3");
+        // 1. Resize image
+        using var image = await Image.LoadAsync(imageStream);
+        const int maxDimension = 1200;
+        if (image.Width > maxDimension || image.Height > maxDimension)
+        {
+            var ratio = Math.Min((double)maxDimension / image.Width, (double)maxDimension / image.Height);
+            image.Mutate(x => x.Resize((int)(image.Width * ratio), (int)(image.Height * ratio)));
+        }
+
+        // 2. Encode to JPEG
+        using var outputStream = new MemoryStream();
+        var encoder = new JpegEncoder { Quality = JpegQuality };
+        await image.SaveAsync(outputStream, encoder);
+        outputStream.Position = 0;
+
+        // 3. Upload to Blob Storage
+        var blobName = $"{userId}/{Guid.NewGuid()}.jpg";
+        var containerClient = _blobServiceClient.GetBlobContainerClient("content-images");
+        await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+        var blobClient = containerClient.GetBlobClient(blobName);
+        await blobClient.UploadAsync(outputStream, new BlobHttpHeaders { ContentType = "image/jpeg" });
+
+        return blobClient.Uri.ToString();
     }
 }
