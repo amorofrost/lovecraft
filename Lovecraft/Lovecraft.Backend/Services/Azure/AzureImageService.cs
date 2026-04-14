@@ -74,4 +74,9 @@ public class AzureImageService : IImageService
 
         return blobUrl;
     }
+
+    public Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType)
+    {
+        throw new NotImplementedException("Implemented in Task 3");
+    }
 }

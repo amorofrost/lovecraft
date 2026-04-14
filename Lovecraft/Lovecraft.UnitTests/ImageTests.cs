@@ -81,4 +81,12 @@ public class ImageTests
         var response = Assert.IsType<ApiResponse<string>>(objectResult.Value);
         Assert.Equal("IMAGE_TOO_LARGE", response.Error?.Code);
     }
+
+    [Fact]
+    public async Task MockImageService_UploadContentImageAsync_ReturnsPlaceholderUrl()
+    {
+        var service = new MockImageService();
+        var result = await service.UploadContentImageAsync("user1", Stream.Null, "image/jpeg");
+        Assert.Equal("https://placehold.co/600x400", result);
+    }
 }

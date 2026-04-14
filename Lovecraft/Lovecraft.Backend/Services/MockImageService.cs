@@ -9,4 +9,9 @@ public class MockImageService : IImageService
         var user = MockDataStore.Users.FirstOrDefault(u => u.Id == userId);
         return Task.FromResult(user?.ProfileImage ?? string.Empty);
     }
+
+    public Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType)
+    {
+        return Task.FromResult("https://placehold.co/600x400");
+    }
 }

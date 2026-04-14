@@ -73,4 +73,5 @@ public interface IChatService
 public interface IImageService
 {
     Task<string> UploadProfileImageAsync(string userId, Stream imageStream, string contentType);
+    Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType);
 }
