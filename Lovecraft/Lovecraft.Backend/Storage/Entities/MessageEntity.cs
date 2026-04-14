@@ -17,4 +17,5 @@ public class MessageEntity : ITableEntity
     public DateTime SentAt { get; set; }
     public string Type { get; set; } = "text";
     public bool Read { get; set; }
+    public string ImageUrls { get; set; } = "[]"; // stored as JSON array
 }

@@ -36,6 +36,7 @@ public class ForumReplyDto
     public string Content { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public int Likes { get; set; }
+    public List<string> ImageUrls { get; set; } = new();
 }
 
 public class CreateTopicRequestDto
@@ -52,4 +53,5 @@ public class CreateTopicRequestDto
 public class CreateReplyRequestDto
 {
     public string Content { get; set; } = string.Empty;
+    public List<string>? ImageUrls { get; set; }
 }

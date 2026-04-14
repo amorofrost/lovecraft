@@ -19,6 +19,7 @@ public class ForumReplyEntity : ITableEntity
     public string Content { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public int Likes { get; set; }
+    public string ImageUrls { get; set; } = "[]"; // stored as JSON array
 
     public static string GetPartitionKey(string topicId) => $"topic-{topicId}";
 

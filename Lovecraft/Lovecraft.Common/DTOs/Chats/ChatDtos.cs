@@ -23,12 +23,14 @@ public class MessageDto
     public DateTime Timestamp { get; set; }
     public bool Read { get; set; }
     public MessageType Type { get; set; } = MessageType.Text;
+    public List<string> ImageUrls { get; set; } = new();
 }
 
 public class SendMessageRequestDto
 {
     public string Content { get; set; } = string.Empty;
     public MessageType Type { get; set; } = MessageType.Text;
+    public List<string>? ImageUrls { get; set; }
 }
 
 public class CreateChatRequestDto
