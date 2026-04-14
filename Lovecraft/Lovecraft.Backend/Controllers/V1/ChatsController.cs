@@ -69,7 +69,7 @@ public class ChatsController : ControllerBase
         if (!await _chatService.ValidateAccessAsync(id, CurrentUserId))
             return Forbid();
 
-        var message = await _chatService.SendMessageAsync(id, CurrentUserId, request.Content);
+        var message = await _chatService.SendMessageAsync(id, CurrentUserId, request.Content, request.ImageUrls);
 
         // Push to all connected members of this chat group in real time.
         // The sender receives it too; the frontend deduplicates by message ID.

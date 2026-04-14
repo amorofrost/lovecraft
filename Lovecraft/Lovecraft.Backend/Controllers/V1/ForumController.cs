@@ -152,7 +152,7 @@ public class ForumController : ControllerBase
 
         try
         {
-            var reply = await _forumService.CreateReplyAsync(topicId, authorId!, authorName!, request.Content);
+            var reply = await _forumService.CreateReplyAsync(topicId, authorId!, authorName!, request.Content, request.ImageUrls);
             await _hubContext.Clients.Group($"topic-{topicId}").SendAsync("ReplyPosted", reply, topicId);
             return Ok(ApiResponse<ForumReplyDto>.SuccessResponse(reply));
         }
