@@ -34,7 +34,7 @@ public class MockForumService : IForumService
         return Task.FromResult(replies);
     }
 
-    public Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content)
+    public Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
     {
         var authorAvatar = MockDataStore.Users.FirstOrDefault(u => u.Id == authorId)?.ProfileImage;
         var reply = new ForumReplyDto
@@ -47,6 +47,7 @@ public class MockForumService : IForumService
             Content = content,
             CreatedAt = DateTime.UtcNow,
             Likes = 0,
+            ImageUrls = imageUrls ?? new List<string>()
         };
         MockDataStore.ForumReplies.Add(reply);
 

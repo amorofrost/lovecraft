@@ -1,6 +1,7 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Forum;
+using System.Collections.Generic;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -203,5 +204,18 @@ public class ForumTests : IDisposable
         var after = topics.First(t => t.Id == topicId).ReplyCount;
 
         Assert.Equal(before + 1, after);
+    }
+
+    [Fact]
+    public async Task CreateReplyAsync_WithImageUrls_StoresAndReturnsThem()
+    {
+        var service = CreateService();
+        var imageUrls = new List<string> { "https://example.com/photo.jpg" };
+
+        var reply = await service.CreateReplyAsync(
+            "t1", "user1", "TestUser",
+            "Reply with a photo attached", imageUrls);
+
+        Assert.Equal(imageUrls, reply.ImageUrls);
     }
 }

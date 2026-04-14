@@ -81,9 +81,9 @@ public class CachingForumService : IForumService
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(
-        string topicId, string authorId, string authorName, string content)
+        string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
     {
-        var result = await _inner.CreateReplyAsync(topicId, authorId, authorName, content);
+        var result = await _inner.CreateReplyAsync(topicId, authorId, authorName, content, imageUrls);
 
         // Invalidate topic detail (reply count changed) and reply list (new reply added).
         // Topics-per-section list is left to expire naturally — acceptable eventual consistency.

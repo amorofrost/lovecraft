@@ -50,7 +50,7 @@ public interface IForumService
     Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId);
     Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
     Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
-    Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content);
+    Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null);
     Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName);
     Task<ForumTopicDto> CreateTopicAsync(
         string sectionId,

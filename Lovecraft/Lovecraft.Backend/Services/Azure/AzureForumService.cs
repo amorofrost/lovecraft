@@ -109,7 +109,7 @@ public class AzureForumService : IForumService
         return results;
     }
 
-    public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content)
+    public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
     {
         var now = DateTime.UtcNow;
         var replyId = Guid.NewGuid().ToString();
