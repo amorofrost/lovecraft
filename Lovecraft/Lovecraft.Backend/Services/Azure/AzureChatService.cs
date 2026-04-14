@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Storage;
@@ -128,7 +129,8 @@ public class AzureChatService : IChatService
                 Content = e.Content,
                 Timestamp = e.SentAt,
                 Read = e.Read,
-                Type = MessageType.Text
+                Type = MessageType.Text,
+                ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>()
             })
             .ToList();
     }
@@ -152,7 +154,8 @@ public class AzureChatService : IChatService
             Content = content,
             SentAt = now,
             Type = "text",
-            Read = false
+            Read = false,
+            ImageUrls = JsonSerializer.Serialize(imageUrls ?? new List<string>())
         };
         await _messagesTable.AddEntityAsync(entity);
 
@@ -185,7 +188,8 @@ public class AzureChatService : IChatService
             Content = content,
             Timestamp = now,
             Read = false,
-            Type = MessageType.Text
+            Type = MessageType.Text,
+            ImageUrls = imageUrls ?? new List<string>()
         };
     }
 

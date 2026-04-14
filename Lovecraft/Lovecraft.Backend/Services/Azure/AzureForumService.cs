@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Storage;
@@ -127,7 +128,8 @@ public class AzureForumService : IForumService
             AuthorAvatar = authorAvatar ?? string.Empty,
             Content = content,
             CreatedAt = now,
-            Likes = 0
+            Likes = 0,
+            ImageUrls = JsonSerializer.Serialize(imageUrls ?? new List<string>())
         };
 
         await _repliesTable.UpsertEntityAsync(replyEntity);
@@ -306,6 +308,7 @@ public class AzureForumService : IForumService
         AuthorAvatar = string.IsNullOrEmpty(entity.AuthorAvatar) ? null : entity.AuthorAvatar,
         Content = entity.Content,
         CreatedAt = entity.CreatedAt,
-        Likes = entity.Likes
+        Likes = entity.Likes,
+        ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>()
     };
 }
