@@ -85,6 +85,9 @@ All endpoints return data in the format:
 - `POST /api/v1/chats` - Get or create private chat (`{ targetUserId }` body)
 - `POST /api/v1/chats/{id}/messages` - Send message via REST (`{ content }` body)
 
+#### Image Upload (`/api/v1/images`)
+- `POST /api/v1/images/upload` — multipart/form-data; validates content-type (JPEG/PNG/GIF/WebP) and size (≤10 MB); resizes to 1200px max, JPEG 85%; uploads to `content-images` Azure Blob container; returns `{ Url: string }`.
+
 #### SignalR Hub (`/hubs/chat`)
 - `JoinChat(chatId)` — join a private chat group (validates access)
 - `JoinTopic(topicId)` — join a forum topic group (no auth check — public topics)
@@ -121,7 +124,7 @@ All endpoints return data in the format:
 **Forum DTOs:**
 - `ForumSectionDto` - Forum section
 - `ForumTopicDto` - Forum topic (includes `AuthorAvatar?`)
-- `ForumReplyDto` - Forum reply (includes `Likes`, `AuthorAvatar?`)
+- `ForumReplyDto` - Forum reply (includes `Likes`, `AuthorAvatar?`, `imageUrls: string[]`)
 - `CreateTopicRequestDto` - Create topic request
 - `CreateReplyRequestDto` - Create reply request (`Content` property)
 
@@ -273,6 +276,7 @@ dotnet test
 - **Matching**: all controllers extract the caller's ID via `User.FindFirst(ClaimTypes.NameIdentifier)` — `"current-user"` placeholder is gone. Matches are computed at query time as the intersection of the `likes` and `likesreceived` tables; there is no dedicated `matches` table. A 1-on-1 chat is auto-created when a mutual like is detected (both mock and Azure paths).
 - **Chat tables**: `chats` (PK="CHAT"), `userchats` (PK=userId index), `messages` (PK=chatId, RK=invertedTicks_{id}); tables are created by `AzureChatService` constructor via `CreateIfNotExistsAsync()` on first startup
 - **Real-time delivery**: `ChatsController.SendMessage` broadcasts `MessageReceived` to `IHubContext<ChatHub>.Clients.Group($"chat-{id}")` after persisting each REST message, ensuring recipients receive live updates without using the hub's `SendMessage` method directly
+- **Image uploads**: `MessageDto` and `ForumReplyDto` now carry `imageUrls: string[]` arrays. New endpoint `POST /api/v1/images/upload` validates content-type (JPEG/PNG/GIF/WebP) and size (≤10 MB), resizes to 1200px max (JPEG 85% quality), uploads to Azure Blob `content-images` container
 - **Table prefix**: set `AZURE_TABLE_PREFIX` env var (e.g. `dev_`) to use isolated table sets for separate test datasets; respected by both the backend and the Seeder tool
 - **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate users, events, store, blog, forum, and like edges (sent, received, and mutual scenarios). Set `AZURE_TABLE_PREFIX` to seed into a prefixed namespace.
 - Test credentials after seeding: `test@example.com` / `Test123!@#`; mock users `user1@mock.local`–`user4@mock.local` / `Seed123!@#`
