@@ -53,17 +53,19 @@ public class AzureImageService : IImageService
         outputStream.Position = 0;
 
         // 3. Upload to Blob Storage
-        var blobName = $"{userId}/profile.jpg";
+        var blobName = $"{userId}/{Guid.NewGuid()}.jpg";
         var blobClient = _containerClient.GetBlobClient(blobName);
-        await blobClient.UploadAsync(outputStream, overwrite: true);
+        await blobClient.UploadAsync(outputStream);
         var blobUrl = blobClient.Uri.ToString();
 
-        // 4. Update UserEntity.ProfileImage in Table Storage
+        // 4. Update UserEntity.ProfileImage in Table Storage; capture old URL for cleanup
+        string? oldBlobUrl = null;
         try
         {
             var response = await _usersTable.GetEntityAsync<UserEntity>(
                 UserEntity.GetPartitionKey(userId), userId);
             var entity = response.Value;
+            oldBlobUrl = entity.ProfileImage;
             entity.ProfileImage = blobUrl;
             entity.UpdatedAt = DateTime.UtcNow;
             await _usersTable.UpdateEntityAsync(entity, entity.ETag);
@@ -72,6 +74,24 @@ public class AzureImageService : IImageService
         {
             _logger.LogError(ex, "Failed to update ProfileImage in Table Storage for user {UserId}", userId);
             throw;
+        }
+
+        // 5. Delete the previous profile image blob (best-effort — don't fail the request)
+        if (!string.IsNullOrEmpty(oldBlobUrl))
+        {
+            try
+            {
+                var containerPrefix = _containerClient.Uri.ToString().TrimEnd('/') + '/';
+                if (oldBlobUrl.StartsWith(containerPrefix))
+                {
+                    var oldBlobName = oldBlobUrl[containerPrefix.Length..];
+                    await _containerClient.GetBlobClient(oldBlobName).DeleteIfExistsAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete old profile image blob for user {UserId}", userId);
+            }
         }
 
         return blobUrl;
