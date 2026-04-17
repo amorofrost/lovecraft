@@ -1,6 +1,7 @@
 using Xunit;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Common.Enums;
 using System.Threading.Tasks;
 using System.Linq;
 
@@ -12,7 +13,7 @@ public class ServiceTests
     public async Task UserService_GetUsers_ReturnsUsers()
     {
         // Arrange
-        var service = new MockUserService();
+        var service = new MockUserService(new MockAppConfigService());
 
         // Act
         var users = await service.GetUsersAsync();
@@ -94,5 +95,43 @@ public class ServiceTests
         // Assert
         Assert.NotNull(sections);
         Assert.True(sections.Count > 0);
+    }
+
+    [Fact]
+    public async Task MockUserService_NoActivity_ReturnsNovice()
+    {
+        var svc = new MockUserService(new MockAppConfigService());
+        var user = await svc.GetUserByIdAsync("1");
+        Assert.NotNull(user);
+        Assert.Equal(UserRank.Novice, user!.Rank);
+        Assert.Equal(StaffRole.None, user.StaffRole);
+    }
+
+    [Fact]
+    public async Task MockUserService_CrewReplyCount_ReturnsAloeCrew()
+    {
+        MockDataStore.UserActivity["1"] = new MockUserActivity { ReplyCount = 100 };
+        try
+        {
+            var svc = new MockUserService(new MockAppConfigService());
+            var user = await svc.GetUserByIdAsync("1");
+            Assert.Equal(UserRank.AloeCrew, user!.Rank);
+        }
+        finally
+        {
+            MockDataStore.UserActivity.Clear();
+        }
+    }
+
+    [Fact]
+    public async Task MockUserService_IncrementCounter_PromotesTier()
+    {
+        MockDataStore.UserActivity.Clear();
+        var svc = new MockUserService(new MockAppConfigService());
+        for (int i = 0; i < 5; i++)
+            await svc.IncrementCounterAsync("1", UserCounter.ReplyCount);
+        var user = await svc.GetUserByIdAsync("1");
+        Assert.Equal(UserRank.ActiveMember, user!.Rank);
+        MockDataStore.UserActivity.Clear();
     }
 }

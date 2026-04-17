@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Users;
@@ -12,20 +13,26 @@ public class AzureUserService : IUserService
 {
     private readonly TableClient _usersTable;
     private readonly ILogger<AzureUserService> _logger;
+    private readonly IAppConfigService _appConfig;
 
-    public AzureUserService(TableServiceClient tableServiceClient, ILogger<AzureUserService> logger)
+    public AzureUserService(
+        TableServiceClient tableServiceClient,
+        ILogger<AzureUserService> logger,
+        IAppConfigService appConfig)
     {
         _logger = logger;
+        _appConfig = appConfig;
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _usersTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
 
     public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
     {
+        var config = await _appConfig.GetConfigAsync();
         var results = new List<UserDto>();
         await foreach (var entity in _usersTable.QueryAsync<UserEntity>())
         {
-            results.Add(ToDto(entity));
+            results.Add(ToDto(entity, config.Ranks));
         }
         return results.Skip(skip).Take(take).ToList();
     }
@@ -34,9 +41,10 @@ public class AzureUserService : IUserService
     {
         try
         {
+            var config = await _appConfig.GetConfigAsync();
             var response = await _usersTable.GetEntityAsync<UserEntity>(
                 UserEntity.GetPartitionKey(userId), userId);
-            return ToDto(response.Value);
+            return ToDto(response.Value, config.Ranks);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -48,6 +56,7 @@ public class AzureUserService : IUserService
     {
         try
         {
+            var config = await _appConfig.GetConfigAsync();
             var response = await _usersTable.GetEntityAsync<UserEntity>(
                 UserEntity.GetPartitionKey(userId), userId);
             var entity = response.Value;
@@ -68,7 +77,7 @@ public class AzureUserService : IUserService
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _usersTable.UpdateEntityAsync(entity, entity.ETag);
-            return ToDto(entity);
+            return ToDto(entity, config.Ranks);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -76,7 +85,76 @@ public class AzureUserService : IUserService
         }
     }
 
-    private static UserDto ToDto(UserEntity entity)
+    public async Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1)
+    {
+        // Read-modify-write with existing ETag (race condition acceptable, mirrors
+        // AzureForumService.CreateReplyAsync topic reply-count update pattern).
+        try
+        {
+            var response = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            var entity = response.Value;
+            switch (counter)
+            {
+                case UserCounter.ReplyCount:     entity.ReplyCount     += delta; break;
+                case UserCounter.LikesReceived:  entity.LikesReceived  += delta; break;
+                case UserCounter.EventsAttended: entity.EventsAttended += delta; break;
+                case UserCounter.MatchCount:     entity.MatchCount     += delta; break;
+            }
+            entity.UpdatedAt = DateTime.UtcNow;
+            await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            _logger.LogWarning("IncrementCounterAsync: user {UserId} not found", userId);
+        }
+    }
+
+    public async Task SetStaffRoleAsync(string userId, StaffRole role)
+    {
+        try
+        {
+            var response = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            var entity = response.Value;
+            entity.StaffRole = role.ToString().ToLowerInvariant();
+            entity.UpdatedAt = DateTime.UtcNow;
+            await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            _logger.LogWarning("SetStaffRoleAsync: user {UserId} not found", userId);
+        }
+    }
+
+    public async Task SetRankOverrideAsync(string userId, UserRank? rank)
+    {
+        try
+        {
+            var response = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            var entity = response.Value;
+            if (rank is null)
+            {
+                entity.RankOverride = null;
+            }
+            else
+            {
+                var raw = rank.Value.ToString();
+                entity.RankOverride = string.IsNullOrEmpty(raw)
+                    ? raw
+                    : char.ToLowerInvariant(raw[0]) + raw[1..];
+            }
+            entity.UpdatedAt = DateTime.UtcNow;
+            await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            _logger.LogWarning("SetRankOverrideAsync: user {UserId} not found", userId);
+        }
+    }
+
+    private static UserDto ToDto(UserEntity entity, RankThresholds ranks)
     {
         Enum.TryParse<Gender>(entity.Gender, out var gender);
 
@@ -99,6 +177,9 @@ public class AzureUserService : IUserService
             catch { }
         }
 
+        if (!Enum.TryParse<StaffRole>(entity.StaffRole, ignoreCase: true, out var staffRole))
+            staffRole = StaffRole.None;
+
         return new UserDto
         {
             Id = entity.RowKey,
@@ -113,7 +194,9 @@ public class AzureUserService : IUserService
             IsOnline = entity.IsOnline,
             Preferences = prefs,
             Settings = settings,
-            FavoriteSong = song
+            FavoriteSong = song,
+            Rank = RankCalculator.Compute(entity, ranks),
+            StaffRole = staffRole
         };
     }
 }

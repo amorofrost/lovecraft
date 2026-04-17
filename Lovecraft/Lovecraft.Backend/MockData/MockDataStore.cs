@@ -9,6 +9,14 @@ using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.MockData;
 
+public class MockUserActivity
+{
+    public int ReplyCount { get; set; }
+    public int LikesReceived { get; set; }
+    public int EventsAttended { get; set; }
+    public int MatchCount { get; set; }
+}
+
 public static class MockDataStore
 {
     public static List<AloeVeraSongDto> Songs { get; } = new()
@@ -17,6 +25,10 @@ public static class MockDataStore
         new() { Id = "2", Title = "Backend Mock: Летний ветер", Album = "Первый альбом", Duration = "4:12", PreviewUrl = "", Year = 2018 },
         new() { Id = "3", Title = "Backend Mock: Новые горизонты", Album = "Второй альбом", Duration = "3:28", PreviewUrl = "", Year = 2020 },
     };
+
+    public static Dictionary<string, MockUserActivity> UserActivity { get; set; } = new();
+    public static Dictionary<string, Lovecraft.Common.Enums.StaffRole> UserStaffRoles { get; set; } = new();
+    public static Dictionary<string, Lovecraft.Common.Enums.UserRank> UserRankOverrides { get; set; } = new();
 
     public static List<EventDto> Events { get; } = new()
     {

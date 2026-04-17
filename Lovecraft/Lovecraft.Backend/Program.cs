@@ -198,8 +198,10 @@ if (useAzure)
 }
 else
 {
+    builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
     builder.Services.AddSingleton<IAuthService, MockAuthService>();
-    builder.Services.AddSingleton<IUserService, MockUserService>();
+    builder.Services.AddSingleton<IUserService>(sp => new MockUserService(
+        sp.GetRequiredService<IAppConfigService>()));
     builder.Services.AddSingleton<IEventService, MockEventService>();
     builder.Services.AddSingleton<IMatchingService, MockMatchingService>();
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
@@ -207,7 +209,6 @@ else
     builder.Services.AddSingleton<IForumService, MockForumService>();
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
-    builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
 }
 
 var app = builder.Build();

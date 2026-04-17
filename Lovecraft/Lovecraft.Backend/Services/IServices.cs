@@ -5,14 +5,26 @@ using Lovecraft.Common.DTOs.Store;
 using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Chats;
+using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services;
+
+public enum UserCounter
+{
+    ReplyCount,
+    LikesReceived,
+    EventsAttended,
+    MatchCount,
+}
 
 public interface IUserService
 {
     Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10);
     Task<UserDto?> GetUserByIdAsync(string userId);
     Task<UserDto> UpdateUserAsync(string userId, UserDto user);
+    Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1);
+    Task SetStaffRoleAsync(string userId, StaffRole role);
+    Task SetRankOverrideAsync(string userId, UserRank? rank);
 }
 
 public interface IEventService
