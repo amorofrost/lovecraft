@@ -99,6 +99,15 @@ public class UsersController : ControllerBase
         return Ok(ApiResponse<object>.SuccessResponse(new { userId = id, staffRole = request.Role }));
     }
 
+    [HttpPut("{id}/rank-override")]
+    [RequireStaffRole("admin")]
+    public async Task<IActionResult> SetRankOverride(
+        string id, [FromBody] SetRankOverrideRequestDto request)
+    {
+        await _userService.SetRankOverrideAsync(id, request.Rank);
+        return Ok(ApiResponse<object>.SuccessResponse(new { userId = id, rankOverride = request.Rank }));
+    }
+
     /// <summary>
     /// Upload a profile image for a user
     /// </summary>

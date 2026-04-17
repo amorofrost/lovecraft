@@ -33,6 +33,7 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         "novice-reply", "active-reply",
         "author-user", "rando", "mod-user",
         "admin-1", "mod-1", "u-target",
+        "admin-2", "admin-3", "u-2", "u-3",
     };
 
     private static readonly string[] TestSectionIds = { "gated" };
@@ -285,6 +286,27 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
         var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<object>>();
         Assert.Equal("ADMIN_REQUIRED", payload!.Error!.Code);
+    }
+
+    [Fact]
+    public async Task SetRankOverride_AsAdmin_Succeeds()
+    {
+        using var client = _factory.CreateClientAsUser("admin-2", "admin");
+        var resp = await client.PutAsJsonAsync("/api/v1/users/u-2/rank-override",
+            new SetRankOverrideRequestDto(UserRank.AloeCrew));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Equal(UserRank.AloeCrew, MockDataStore.UserRankOverrides["u-2"]);
+    }
+
+    [Fact]
+    public async Task ClearRankOverride_AsAdmin_Works()
+    {
+        MockDataStore.UserRankOverrides["u-3"] = UserRank.AloeCrew;
+        using var client = _factory.CreateClientAsUser("admin-3", "admin");
+        var resp = await client.PutAsJsonAsync("/api/v1/users/u-3/rank-override",
+            new SetRankOverrideRequestDto(null));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.False(MockDataStore.UserRankOverrides.ContainsKey("u-3"));
     }
 
     public class TestAppFactory : WebApplicationFactory<Program>
