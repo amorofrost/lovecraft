@@ -169,6 +169,7 @@ if (useAzure)
         ?? throw new InvalidOperationException("AZURE_STORAGE_CONNECTION_STRING not set");
     builder.Services.AddSingleton(new TableServiceClient(connectionString));
     builder.Services.AddSingleton(new BlobServiceClient(connectionString));
+    builder.Services.AddSingleton<IAppConfigService, AzureAppConfigService>();
     builder.Services.AddSingleton<IImageService, AzureImageService>();
     builder.Services.AddSingleton<IAuthService, AzureAuthService>();
     builder.Services.AddSingleton<IUserService, AzureUserService>();
@@ -206,6 +207,7 @@ else
     builder.Services.AddSingleton<IForumService, MockForumService>();
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
+    builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
 }
 
 var app = builder.Build();
