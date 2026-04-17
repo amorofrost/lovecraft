@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Models;
+using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Helpers;
 
@@ -87,6 +89,14 @@ public class UsersController : ControllerBase
             _logger.LogError(ex, "Error updating user {UserId}", id);
             return StatusCode(500, ApiResponse<UserDto>.ErrorResponse("INTERNAL_ERROR", "Failed to update user"));
         }
+    }
+
+    [HttpPut("{id}/role")]
+    [RequireStaffRole("admin")]
+    public async Task<IActionResult> AssignRole(string id, [FromBody] AssignRoleRequestDto request)
+    {
+        await _userService.SetStaffRoleAsync(id, request.Role);
+        return Ok(ApiResponse<object>.SuccessResponse(new { userId = id, staffRole = request.Role }));
     }
 
     /// <summary>

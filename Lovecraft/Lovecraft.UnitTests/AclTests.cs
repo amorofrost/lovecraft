@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
@@ -31,6 +32,7 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         "novice-user-2", "novice-user-3", "novice-user-4", "active-user-2",
         "novice-reply", "active-reply",
         "author-user", "rando", "mod-user",
+        "admin-1", "mod-1", "u-target",
     };
 
     private static readonly string[] TestSectionIds = { "gated" };
@@ -262,6 +264,27 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
             new UpdateTopicRequestDto { IsPinned = true });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.True(MockDataStore.ForumTopics.First(t => t.Id == "own-3").IsPinned);
+    }
+
+    [Fact]
+    public async Task AssignRole_AsAdmin_Succeeds()
+    {
+        using var client = _factory.CreateClientAsUser("admin-1", "admin");
+        var resp = await client.PutAsJsonAsync("/api/v1/users/u-target/role",
+            new AssignRoleRequestDto(StaffRole.Moderator));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Equal(StaffRole.Moderator, MockDataStore.UserStaffRoles["u-target"]);
+    }
+
+    [Fact]
+    public async Task AssignRole_AsNonAdmin_ReturnsAdminRequired()
+    {
+        using var client = _factory.CreateClientAsUser("mod-1", "moderator");
+        var resp = await client.PutAsJsonAsync("/api/v1/users/u-target/role",
+            new AssignRoleRequestDto(StaffRole.Admin));
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<object>>();
+        Assert.Equal("ADMIN_REQUIRED", payload!.Error!.Code);
     }
 
     public class TestAppFactory : WebApplicationFactory<Program>
