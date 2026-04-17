@@ -42,7 +42,7 @@ public class AzureForumService : IForumService
             var url = response.Value.ProfileImage;
             return string.IsNullOrEmpty(url) ? null : url;
         }
-        catch (RequestFailedException)
+        catch (Exception)
         {
             return null;
         }
@@ -110,7 +110,7 @@ public class AzureForumService : IForumService
 
         // Fetch current avatar for each unique author so stale cached URLs don't persist
         // after a user updates their profile picture.
-        var authorIds = entities.Select(e => e.AuthorId).Distinct();
+        var authorIds = entities.Select(e => e.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct();
         var avatars = new Dictionary<string, string?>();
         foreach (var authorId in authorIds)
             avatars[authorId] = await GetAuthorAvatarAsync(authorId);
