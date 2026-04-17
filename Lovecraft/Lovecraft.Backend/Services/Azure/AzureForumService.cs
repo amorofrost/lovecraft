@@ -100,14 +100,22 @@ public class AzureForumService : IForumService
     public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
     {
         var pk = ForumReplyEntity.GetPartitionKey(topicId);
-        var results = new List<ForumReplyDto>();
+        var entities = new List<ForumReplyEntity>();
         // Results come back newest-first due to reversed-ticks RK ordering
         await foreach (var entity in _repliesTable.QueryAsync<ForumReplyEntity>(
             filter: $"PartitionKey eq '{pk}'"))
         {
-            results.Add(ToReplyDto(entity));
+            entities.Add(entity);
         }
-        return results;
+
+        // Fetch current avatar for each unique author so stale cached URLs don't persist
+        // after a user updates their profile picture.
+        var authorIds = entities.Select(e => e.AuthorId).Distinct();
+        var avatars = new Dictionary<string, string?>();
+        foreach (var authorId in authorIds)
+            avatars[authorId] = await GetAuthorAvatarAsync(authorId);
+
+        return entities.Select(e => ToReplyDto(e, avatars.GetValueOrDefault(e.AuthorId))).ToList();
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
@@ -299,13 +307,13 @@ public class AzureForumService : IForumService
         };
     }
 
-    private static ForumReplyDto ToReplyDto(ForumReplyEntity entity) => new ForumReplyDto
+    private static ForumReplyDto ToReplyDto(ForumReplyEntity entity, string? currentAvatar = null) => new ForumReplyDto
     {
         Id = entity.ReplyId,
         TopicId = entity.TopicId,
         AuthorId = entity.AuthorId,
         AuthorName = entity.AuthorName,
-        AuthorAvatar = string.IsNullOrEmpty(entity.AuthorAvatar) ? null : entity.AuthorAvatar,
+        AuthorAvatar = string.IsNullOrEmpty(currentAvatar) ? null : currentAvatar,
         Content = entity.Content,
         CreatedAt = entity.CreatedAt,
         Likes = entity.Likes,
