@@ -48,10 +48,24 @@ public class AzureAppConfigService : IAppConfigService
             .Where(r => r.PartitionKey == AppConfigEntity.PartitionPermissions)
             .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
 
-        int I(string key, int fallback) =>
-            thresholds.TryGetValue(key, out var v) && int.TryParse(v, out var n) ? n : fallback;
-        string S(string key, string fallback) =>
-            perms.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v : fallback;
+        int I(string key, int fallback)
+        {
+            if (!thresholds.TryGetValue(key, out var v)) return fallback;
+            if (int.TryParse(v, out var n)) return n;
+            _logger.LogWarning(
+                "AppConfig threshold {Key} has non-integer value {Value}; falling back to {Fallback}",
+                key, v, fallback);
+            return fallback;
+        }
+        string S(string key, string fallback)
+        {
+            if (!perms.TryGetValue(key, out var v)) return fallback;
+            if (!string.IsNullOrWhiteSpace(v)) return v;
+            _logger.LogWarning(
+                "AppConfig permission {Key} is empty/whitespace; falling back to {Fallback}",
+                key, fallback);
+            return fallback;
+        }
 
         var d = RankThresholds.Defaults;
         var p = PermissionConfig.Defaults;
