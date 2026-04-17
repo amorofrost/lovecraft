@@ -158,4 +158,31 @@ public class ServiceTests
             MockDataStore.UserActivity.Clear();
         }
     }
+
+    [Fact]
+    public async Task RegisterForEvent_DuplicateRegistration_DoesNotDoubleCount()
+    {
+        MockDataStore.UserActivity.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var svc = new MockEventService(userSvc);
+        var eventId = MockDataStore.Events.First(e => !e.Attendees.Contains("99")).Id;
+
+        var originalAttendees = new List<string>(MockDataStore.Events.First(e => e.Id == eventId).Attendees);
+        try
+        {
+            var first = await svc.RegisterForEventAsync("99", eventId);
+            var second = await svc.RegisterForEventAsync("99", eventId);
+
+            Assert.True(first);
+            Assert.False(second);
+            Assert.Equal(1, MockDataStore.UserActivity["99"].EventsAttended);
+        }
+        finally
+        {
+            var ev = MockDataStore.Events.First(e => e.Id == eventId);
+            ev.Attendees.Clear();
+            ev.Attendees.AddRange(originalAttendees);
+            MockDataStore.UserActivity.Clear();
+        }
+    }
 }

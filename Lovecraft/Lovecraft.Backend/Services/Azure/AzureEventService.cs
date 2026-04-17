@@ -63,7 +63,17 @@ public class AzureEventService : IEventService
             RowKey = userId,
             RegisteredAt = DateTime.UtcNow
         };
-        await _attendeesTable.UpsertEntityAsync(entity);
+
+        try
+        {
+            await _attendeesTable.AddEntityAsync(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            // Already registered — idempotent no-op, do not bump counter.
+            return false;
+        }
+
         await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended);
         return true;
     }
