@@ -87,7 +87,7 @@ public class ServiceTests
     public async Task ForumService_GetSections_ReturnsSections()
     {
         // Arrange
-        var service = new MockForumService();
+        var service = new MockForumService(new MockUserService(new MockAppConfigService()));
 
         // Act
         var sections = await service.GetSectionsAsync();

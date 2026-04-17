@@ -1,6 +1,7 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.Enums;
 using System.Collections.Generic;
 using Xunit;
 
@@ -15,7 +16,8 @@ namespace Lovecraft.UnitTests;
 [Collection("ForumTests")]
 public class ForumTests : IDisposable
 {
-    private static MockForumService CreateService() => new MockForumService();
+    private static MockForumService CreateService() =>
+        new MockForumService(new MockUserService(new MockAppConfigService()));
 
     private const string SectionId = "general";
 
@@ -217,5 +219,21 @@ public class ForumTests : IDisposable
             "Reply with a photo attached", imageUrls);
 
         Assert.Equal(imageUrls, reply.ImageUrls);
+    }
+
+    [Fact]
+    public async Task CreateReply_IncrementsAuthorReplyCount()
+    {
+        MockDataStore.UserActivity.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var service = new MockForumService(userSvc);
+
+        await service.CreateReplyAsync("t1", "1", "Тест", "Some reply content that's fine.", null);
+
+        var user = await userSvc.GetUserByIdAsync("1");
+        Assert.Equal(1, MockDataStore.UserActivity.TryGetValue("1", out var a) ? a.ReplyCount : 0);
+        // With only 1 reply and no other activity, user is still novice (threshold 5)
+        Assert.Equal(UserRank.Novice, user!.Rank);
+        MockDataStore.UserActivity.Clear();
     }
 }

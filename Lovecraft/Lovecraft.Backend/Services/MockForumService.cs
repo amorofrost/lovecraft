@@ -1,10 +1,18 @@
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
 
 namespace Lovecraft.Backend.Services;
 
 public class MockForumService : IForumService
 {
+    private readonly IUserService _userService;
+
+    public MockForumService(IUserService userService)
+    {
+        _userService = userService;
+    }
+
     public Task<List<ForumSectionDto>> GetSectionsAsync()
     {
         return Task.FromResult(MockDataStore.ForumSections);
@@ -57,6 +65,8 @@ public class MockForumService : IForumService
             topic.ReplyCount++;
             topic.UpdatedAt = reply.CreatedAt;
         }
+
+        _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount).GetAwaiter().GetResult();
 
         return Task.FromResult(reply);
     }

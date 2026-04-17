@@ -4,6 +4,7 @@ using Azure.Data.Tables;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services.Azure;
 
@@ -14,10 +15,15 @@ public class AzureForumService : IForumService
     private readonly TableClient _topicIndexTable;
     private readonly TableClient _repliesTable;
     private readonly TableClient _usersTable;
+    private readonly IUserService _userService;
     private readonly ILogger<AzureForumService> _logger;
 
-    public AzureForumService(TableServiceClient tableServiceClient, ILogger<AzureForumService> logger)
+    public AzureForumService(
+        TableServiceClient tableServiceClient,
+        IUserService userService,
+        ILogger<AzureForumService> logger)
     {
+        _userService = userService;
         _logger = logger;
         _sectionsTable = tableServiceClient.GetTableClient(TableNames.ForumSections);
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
@@ -160,6 +166,8 @@ public class AzureForumService : IForumService
                 _logger.LogWarning(ex, "Failed to update reply count for topic {TopicId}", topicId);
             }
         }
+
+        await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
 
         return ToReplyDto(replyEntity);
     }
