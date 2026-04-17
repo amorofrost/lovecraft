@@ -34,6 +34,7 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         "author-user", "rando", "mod-user",
         "admin-1", "mod-1", "u-target",
         "admin-2", "admin-3", "u-2", "u-3",
+        "admin-4", "regular",
     };
 
     private static readonly string[] TestSectionIds = { "gated" };
@@ -307,6 +308,25 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
             new SetRankOverrideRequestDto(null));
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.False(MockDataStore.UserRankOverrides.ContainsKey("u-3"));
+    }
+
+    [Fact]
+    public async Task GetAdminConfig_AsAdmin_ReturnsConfig()
+    {
+        using var client = _factory.CreateClientAsUser("admin-4", "admin");
+        var resp = await client.GetAsync("/api/v1/admin/config");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<AppConfigDto>>();
+        Assert.Equal("5", payload!.Data!.RankThresholds["active_replies"]);
+        Assert.Equal("activeMember", payload.Data.Permissions["create_topic"]);
+    }
+
+    [Fact]
+    public async Task GetAdminConfig_AsUser_Returns403()
+    {
+        using var client = _factory.CreateClientAsUser("regular");
+        var resp = await client.GetAsync("/api/v1/admin/config");
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
     public class TestAppFactory : WebApplicationFactory<Program>
