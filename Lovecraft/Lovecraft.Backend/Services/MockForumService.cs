@@ -106,7 +106,8 @@ public class MockForumService : IForumService
     }
 
     public Task<ForumTopicDto> CreateTopicAsync(
-        string sectionId, string authorId, string authorName, string title, string content)
+        string sectionId, string authorId, string authorName, string title, string content,
+        bool? noviceVisible = null, bool? noviceCanReply = null)
     {
         var section = MockDataStore.ForumSections.FirstOrDefault(s => s.Id == sectionId)
             ?? throw new KeyNotFoundException($"Section '{sectionId}' not found.");
@@ -124,7 +125,9 @@ public class MockForumService : IForumService
             IsLocked = false,
             ReplyCount = 0,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            NoviceVisible = noviceVisible ?? true,
+            NoviceCanReply = noviceCanReply ?? true
         };
 
         MockDataStore.ForumTopics.Add(topic);

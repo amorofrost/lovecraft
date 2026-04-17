@@ -7,6 +7,7 @@ using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Hubs;
 using Lovecraft.Backend.Helpers;
+using Lovecraft.Backend.Auth;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -18,12 +19,21 @@ public class ForumController : ControllerBase
     private readonly IForumService _forumService;
     private readonly IHubContext<ChatHub> _hubContext;
     private readonly ILogger<ForumController> _logger;
+    private readonly IAppConfigService _appConfig;
+    private readonly IUserService _userService;
 
-    public ForumController(IForumService forumService, IHubContext<ChatHub> hubContext, ILogger<ForumController> logger)
+    public ForumController(
+        IForumService forumService,
+        IHubContext<ChatHub> hubContext,
+        ILogger<ForumController> logger,
+        IAppConfigService appConfig,
+        IUserService userService)
     {
         _forumService = forumService;
         _hubContext = hubContext;
         _logger = logger;
+        _appConfig = appConfig;
+        _userService = userService;
     }
 
     /// <summary>
@@ -116,13 +126,22 @@ public class ForumController : ControllerBase
         if (HtmlGuard.ContainsHtml(request.Content))
             return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in topic content"));
 
+        var config = await _appConfig.GetConfigAsync();
+        var allowed = await PermissionGuard.MeetsAsync(User, _userService, config.Permissions.CreateTopic);
+        if (!allowed)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<ForumTopicDto>.ErrorResponse(
+                    AuthorizationErrors.InsufficientRank,
+                    AuthorizationErrors.InsufficientRankMessage));
+
         var authorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var authorName = User.FindFirst(ClaimTypes.Name)?.Value;
 
         try
         {
             var result = await _forumService.CreateTopicAsync(
-                sectionId, authorId!, authorName!, request.Title, request.Content);
+                sectionId, authorId!, authorName!, request.Title, request.Content,
+                request.NoviceVisible, request.NoviceCanReply);
             return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(result));
         }
         catch (KeyNotFoundException)

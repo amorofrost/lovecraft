@@ -69,7 +69,9 @@ public interface IForumService
         string authorId,
         string authorName,
         string title,
-        string content);
+        string content,
+        bool? noviceVisible = null,
+        bool? noviceCanReply = null);
 }
 
 public interface IChatService

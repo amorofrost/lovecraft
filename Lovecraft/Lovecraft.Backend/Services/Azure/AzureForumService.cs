@@ -259,7 +259,8 @@ public class AzureForumService : IForumService
     }
 
     public async Task<ForumTopicDto> CreateTopicAsync(
-        string sectionId, string authorId, string authorName, string title, string content)
+        string sectionId, string authorId, string authorName, string title, string content,
+        bool? noviceVisible = null, bool? noviceCanReply = null)
     {
         // 1. Verify section exists
         ForumSectionEntity sectionEntity;
@@ -293,7 +294,9 @@ public class AzureForumService : IForumService
             IsLocked = false,
             ReplyCount = 0,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            NoviceVisible = noviceVisible,
+            NoviceCanReply = noviceCanReply
         };
         await _topicsTable.AddEntityAsync(topicEntity);
 
@@ -324,7 +327,9 @@ public class AzureForumService : IForumService
             IsLocked = false,
             ReplyCount = 0,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            NoviceVisible = noviceVisible ?? true,
+            NoviceCanReply = noviceCanReply ?? true
         };
     }
 

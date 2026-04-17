@@ -97,9 +97,11 @@ public class CachingForumService : IForumService
         => _inner.CreateEventTopicAsync(eventId, eventName);
 
     public async Task<ForumTopicDto> CreateTopicAsync(
-        string sectionId, string authorId, string authorName, string title, string content)
+        string sectionId, string authorId, string authorName, string title, string content,
+        bool? noviceVisible = null, bool? noviceCanReply = null)
     {
-        var result = await _inner.CreateTopicAsync(sectionId, authorId, authorName, title, content);
+        var result = await _inner.CreateTopicAsync(
+            sectionId, authorId, authorName, title, content, noviceVisible, noviceCanReply);
         _cache.Remove(TopicsKey(sectionId));
         _cache.Remove(SectionsKey);
         return result;
