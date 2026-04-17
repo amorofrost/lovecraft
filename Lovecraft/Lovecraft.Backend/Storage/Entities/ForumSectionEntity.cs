@@ -15,4 +15,5 @@ public class ForumSectionEntity : ITableEntity
     public string Description { get; set; } = string.Empty;
     public int TopicCount { get; set; }
     public int OrderIndex { get; set; }
+    public string MinRank { get; set; } = "novice";
 }

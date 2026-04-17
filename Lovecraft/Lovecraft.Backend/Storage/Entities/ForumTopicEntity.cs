@@ -22,6 +22,9 @@ public class ForumTopicEntity : ITableEntity
     public int ReplyCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string MinRank { get; set; } = "novice";
+    public bool? NoviceVisible { get; set; }
+    public bool? NoviceCanReply { get; set; }
 
     public static string GetPartitionKey(string sectionId) => $"section-{sectionId}";
 }
