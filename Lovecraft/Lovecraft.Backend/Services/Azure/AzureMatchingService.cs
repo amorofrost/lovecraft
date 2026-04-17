@@ -3,6 +3,7 @@ using Azure.Data.Tables;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Matching;
+using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services.Azure;
 
@@ -11,11 +12,17 @@ public class AzureMatchingService : IMatchingService
     private readonly TableClient _likesTable;
     private readonly TableClient _likesReceivedTable;
     private readonly IChatService _chatService;
+    private readonly IUserService _userService;
     private readonly ILogger<AzureMatchingService> _logger;
 
-    public AzureMatchingService(TableServiceClient tableServiceClient, IChatService chatService, ILogger<AzureMatchingService> logger)
+    public AzureMatchingService(
+        TableServiceClient tableServiceClient,
+        IChatService chatService,
+        IUserService userService,
+        ILogger<AzureMatchingService> logger)
     {
         _chatService = chatService;
+        _userService = userService;
         _logger = logger;
         _likesTable = tableServiceClient.GetTableClient(TableNames.Likes);
         _likesReceivedTable = tableServiceClient.GetTableClient(TableNames.LikesReceived);
@@ -87,6 +94,8 @@ public class AzureMatchingService : IMatchingService
             _likesReceivedTable.UpsertEntityAsync(likeReceivedEntity)
         );
 
+        await _userService.IncrementCounterAsync(toUserId, UserCounter.LikesReceived);
+
         MatchDto? matchDto = null;
         if (isMutual)
         {
@@ -99,6 +108,8 @@ public class AzureMatchingService : IMatchingService
             };
 
             await _chatService.GetOrCreateChatAsync(fromUserId, toUserId);
+            await _userService.IncrementCounterAsync(fromUserId, UserCounter.MatchCount);
+            await _userService.IncrementCounterAsync(toUserId, UserCounter.MatchCount);
             _logger.LogInformation("Match created between {From} and {To}", fromUserId, toUserId);
         }
 

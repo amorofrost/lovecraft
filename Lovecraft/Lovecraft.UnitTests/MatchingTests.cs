@@ -1,6 +1,7 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Matching;
+using Lovecraft.Common.Enums;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -16,17 +17,20 @@ public class MatchingTests : IDisposable
     public MatchingTests()
     {
         MockDataStore.Likes = new List<LikeDto>();
+        MockDataStore.UserActivity.Clear();
     }
 
     public void Dispose()
     {
         MockDataStore.Likes = new List<LikeDto>();
+        MockDataStore.UserActivity.Clear();
     }
 
     private static (MockMatchingService matching, MockChatService chat) CreateServices()
     {
         var chat = new MockChatService();
-        var matching = new MockMatchingService(chat);
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var matching = new MockMatchingService(chat, userSvc);
         return (matching, chat);
     }
 
@@ -210,5 +214,36 @@ public class MatchingTests : IDisposable
 
         // Both sides should compute the same stable match ID
         Assert.Equal(fromAlice.Id, fromBob.Id);
+    }
+
+    // ── Counter hooks (LikesReceived + MatchCount) ────────────────────────────
+
+    [Fact]
+    public async Task CreateLike_IncrementsTargetLikesReceived()
+    {
+        MockDataStore.UserActivity.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var service = new MockMatchingService(new MockChatService(), userSvc);
+
+        await service.CreateLikeAsync("1", "2");
+
+        Assert.Equal(1, MockDataStore.UserActivity.TryGetValue("2", out var a) ? a.LikesReceived : 0);
+        MockDataStore.UserActivity.Clear();
+    }
+
+    [Fact]
+    public async Task MutualLike_IncrementsMatchCount_OnBoth()
+    {
+        MockDataStore.UserActivity.Clear();
+        MockDataStore.Matches = new List<MatchDto>();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var service = new MockMatchingService(new MockChatService(), userSvc);
+
+        await service.CreateLikeAsync("1", "2"); // like 1→2
+        await service.CreateLikeAsync("2", "1"); // reverse → match
+
+        Assert.Equal(1, MockDataStore.UserActivity["1"].MatchCount);
+        Assert.Equal(1, MockDataStore.UserActivity["2"].MatchCount);
+        MockDataStore.UserActivity.Clear();
     }
 }

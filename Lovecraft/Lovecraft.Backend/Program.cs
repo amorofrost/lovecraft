@@ -173,7 +173,11 @@ if (useAzure)
     builder.Services.AddSingleton<IImageService, AzureImageService>();
     builder.Services.AddSingleton<IAuthService, AzureAuthService>();
     builder.Services.AddSingleton<IUserService, AzureUserService>();
-    builder.Services.AddSingleton<IMatchingService, AzureMatchingService>();
+    builder.Services.AddSingleton<IMatchingService>(sp => new AzureMatchingService(
+        sp.GetRequiredService<TableServiceClient>(),
+        sp.GetRequiredService<IChatService>(),
+        sp.GetRequiredService<IUserService>(),
+        sp.GetRequiredService<ILogger<AzureMatchingService>>()));
     builder.Services.AddSingleton<IEventService>(sp => new CachingEventService(
         new AzureEventService(
             sp.GetRequiredService<TableServiceClient>(),
@@ -204,7 +208,9 @@ else
     builder.Services.AddSingleton<IUserService>(sp => new MockUserService(
         sp.GetRequiredService<IAppConfigService>()));
     builder.Services.AddSingleton<IEventService, MockEventService>();
-    builder.Services.AddSingleton<IMatchingService, MockMatchingService>();
+    builder.Services.AddSingleton<IMatchingService>(sp => new MockMatchingService(
+        sp.GetRequiredService<IChatService>(),
+        sp.GetRequiredService<IUserService>()));
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
     builder.Services.AddSingleton<IForumService>(sp =>

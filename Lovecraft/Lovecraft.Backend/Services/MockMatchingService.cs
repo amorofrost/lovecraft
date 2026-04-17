@@ -1,4 +1,5 @@
 using Lovecraft.Common.DTOs.Matching;
+using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
 
 namespace Lovecraft.Backend.Services;
@@ -6,10 +7,12 @@ namespace Lovecraft.Backend.Services;
 public class MockMatchingService : IMatchingService
 {
     private readonly IChatService _chatService;
+    private readonly IUserService _userService;
 
-    public MockMatchingService(IChatService chatService)
+    public MockMatchingService(IChatService chatService, IUserService userService)
     {
         _chatService = chatService;
+        _userService = userService;
     }
 
     public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
@@ -39,6 +42,8 @@ public class MockMatchingService : IMatchingService
 
         MockDataStore.Likes.Add(like);
 
+        await _userService.IncrementCounterAsync(toUserId, UserCounter.LikesReceived);
+
         // Check if reverse like exists (match)
         var reverseLike = MockDataStore.Likes.FirstOrDefault(l =>
             l.FromUserId == toUserId && l.ToUserId == fromUserId);
@@ -57,6 +62,9 @@ public class MockMatchingService : IMatchingService
             };
 
             await _chatService.GetOrCreateChatAsync(fromUserId, toUserId);
+
+            await _userService.IncrementCounterAsync(fromUserId, UserCounter.MatchCount);
+            await _userService.IncrementCounterAsync(toUserId, UserCounter.MatchCount);
 
             return new LikeResponseDto
             {
