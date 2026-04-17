@@ -15,6 +15,13 @@ using Microsoft.Extensions.Options;
 
 namespace Lovecraft.UnitTests;
 
+// Note: DELETE /forum/replies/{id}, DELETE /forum/topics/{id}, and a dedicated pin endpoint
+// are not implemented in the backend as of the Roles & ACL rollout. The permission keys
+// delete_own_reply, delete_any_reply, delete_any_topic, and pin_topic are defined in
+// appconfig so a later spec can wire them without requiring a reconfig. Pin is currently
+// exercised indirectly via PUT /forum/topics/{id} with IsPinned (moderator-only path,
+// covered by UpdateTopic_AsModerator_Succeeds).
+
 [Collection("ForumTests")]
 public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
 {
