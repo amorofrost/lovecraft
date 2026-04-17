@@ -135,6 +135,20 @@ public class MockForumService : IForumService
         return Task.FromResult(topic);
     }
 
+    public Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update)
+    {
+        var topic = MockDataStore.ForumTopics.FirstOrDefault(t => t.Id == topicId);
+        if (topic is null) return Task.FromResult<ForumTopicDto?>(null);
+
+        if (update.NoviceVisible.HasValue) topic.NoviceVisible = update.NoviceVisible.Value;
+        if (update.NoviceCanReply.HasValue) topic.NoviceCanReply = update.NoviceCanReply.Value;
+        if (update.IsPinned.HasValue) topic.IsPinned = update.IsPinned.Value;
+        if (update.IsLocked.HasValue) topic.IsLocked = update.IsLocked.Value;
+        topic.UpdatedAt = DateTime.UtcNow;
+
+        return Task.FromResult<ForumTopicDto?>(topic);
+    }
+
     public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
     {
         var topic = new ForumTopicDto

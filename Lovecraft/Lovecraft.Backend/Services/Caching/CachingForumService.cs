@@ -106,4 +106,7 @@ public class CachingForumService : IForumService
         _cache.Remove(SectionsKey);
         return result;
     }
+
+    public Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update)
+        => _inner.UpdateTopicAsync(topicId, update);
 }

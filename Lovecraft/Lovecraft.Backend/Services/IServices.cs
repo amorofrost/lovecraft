@@ -72,6 +72,7 @@ public interface IForumService
         string content,
         bool? noviceVisible = null,
         bool? noviceCanReply = null);
+    Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update);
 }
 
 public interface IChatService

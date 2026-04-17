@@ -333,6 +333,41 @@ public class AzureForumService : IForumService
         };
     }
 
+    public async Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update)
+    {
+        ForumTopicIndexEntity indexEntity;
+        try
+        {
+            var indexResponse = await _topicIndexTable.GetEntityAsync<ForumTopicIndexEntity>("TOPICINDEX", topicId);
+            indexEntity = indexResponse.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        var pk = ForumTopicEntity.GetPartitionKey(indexEntity.SectionId);
+        ForumTopicEntity topicEntity;
+        try
+        {
+            var resp = await _topicsTable.GetEntityAsync<ForumTopicEntity>(pk, topicId);
+            topicEntity = resp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        if (update.NoviceVisible.HasValue) topicEntity.NoviceVisible = update.NoviceVisible.Value;
+        if (update.NoviceCanReply.HasValue) topicEntity.NoviceCanReply = update.NoviceCanReply.Value;
+        if (update.IsPinned.HasValue) topicEntity.IsPinned = update.IsPinned.Value;
+        if (update.IsLocked.HasValue) topicEntity.IsLocked = update.IsLocked.Value;
+        topicEntity.UpdatedAt = DateTime.UtcNow;
+
+        await _topicsTable.UpdateEntityAsync(topicEntity, topicEntity.ETag);
+        return ToTopicDto(topicEntity);
+    }
+
     private static ForumReplyDto ToReplyDto(ForumReplyEntity entity, string? currentAvatar = null, UserDto? author = null) => new ForumReplyDto
     {
         Id = entity.ReplyId,

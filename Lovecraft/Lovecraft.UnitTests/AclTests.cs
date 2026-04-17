@@ -23,10 +23,11 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         "novice-user-1", "active-user-1",
         "novice-user-2", "novice-user-3", "novice-user-4", "active-user-2",
         "novice-reply", "active-reply",
+        "author-user", "rando", "mod-user",
     };
 
     private static readonly string[] TestSectionIds = { "gated" };
-    private static readonly string[] TestTopicIds = { "hidden-1", "hidden-2", "hidden-3", "norep-1", "norep-2" };
+    private static readonly string[] TestTopicIds = { "hidden-1", "hidden-2", "hidden-3", "norep-1", "norep-2", "own-1", "own-2", "own-3" };
 
     private readonly TestAppFactory _factory;
 
@@ -209,6 +210,51 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         using var client = _factory.CreateClientAsUser("novice-user-4");
         var resp = await client.GetAsync("/api/v1/forum/topics/hidden-3");
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateTopic_AsAuthor_Succeeds()
+    {
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "own-1", SectionId = "general", Title = "Own", Content = "...",
+            AuthorId = "author-user", AuthorName = "Author",
+            NoviceVisible = true, NoviceCanReply = true,
+        });
+        using var client = _factory.CreateClientAsUser("author-user");
+        var resp = await client.PutAsJsonAsync("/api/v1/forum/topics/own-1",
+            new UpdateTopicRequestDto { NoviceVisible = false });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.False(MockDataStore.ForumTopics.First(t => t.Id == "own-1").NoviceVisible);
+    }
+
+    [Fact]
+    public async Task UpdateTopic_AsRandomUser_Returns403()
+    {
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "own-2", SectionId = "general", Title = "Own2", Content = "...",
+            AuthorId = "someone-else", AuthorName = "X",
+        });
+        using var client = _factory.CreateClientAsUser("rando");
+        var resp = await client.PutAsJsonAsync("/api/v1/forum/topics/own-2",
+            new UpdateTopicRequestDto { NoviceVisible = false });
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateTopic_AsModerator_Succeeds()
+    {
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "own-3", SectionId = "general", Title = "Own3", Content = "...",
+            AuthorId = "someone-else", AuthorName = "X",
+        });
+        using var client = _factory.CreateClientAsUser("mod-user", "moderator");
+        var resp = await client.PutAsJsonAsync("/api/v1/forum/topics/own-3",
+            new UpdateTopicRequestDto { IsPinned = true });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.True(MockDataStore.ForumTopics.First(t => t.Id == "own-3").IsPinned);
     }
 
     public class TestAppFactory : WebApplicationFactory<Program>

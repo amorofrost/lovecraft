@@ -227,6 +227,32 @@ public class ForumController : ControllerBase
         }
     }
 
+    [HttpPut("topics/{topicId}")]
+    public async Task<IActionResult> UpdateTopic(string topicId, [FromBody] UpdateTopicRequestDto request)
+    {
+        var topic = await _forumService.GetTopicByIdAsync(topicId);
+        if (topic is null)
+            return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
+        var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var staffRole = User.FindFirst("staffRole")?.Value ?? "none";
+        var isAuthor = callerId == topic.AuthorId;
+        var isModerator = EffectiveLevel.Parse(staffRole) >= EffectiveLevel.Moderator;
+
+        if (!isAuthor && !isModerator)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<ForumTopicDto>.ErrorResponse(
+                    AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
+        if ((request.IsPinned.HasValue || request.IsLocked.HasValue) && !isModerator)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<ForumTopicDto>.ErrorResponse(
+                    AuthorizationErrors.ModeratorRequired, AuthorizationErrors.ModeratorRequiredMessage));
+
+        var updated = await _forumService.UpdateTopicAsync(topicId, request);
+        return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(updated!));
+    }
+
     private async Task<UserRank> GetCallerRankAsync()
     {
         var id = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
