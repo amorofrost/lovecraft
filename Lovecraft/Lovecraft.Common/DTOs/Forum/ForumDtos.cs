@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Common.DTOs.Forum;
 
@@ -8,6 +9,7 @@ public class ForumSectionDto
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int TopicCount { get; set; }
+    public string MinRank { get; set; } = "novice";
 }
 
 public class ForumTopicDto
@@ -24,6 +26,9 @@ public class ForumTopicDto
     public int ReplyCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string MinRank { get; set; } = "novice";
+    public bool NoviceVisible { get; set; } = true;
+    public bool NoviceCanReply { get; set; } = true;
 }
 
 public class ForumReplyDto
@@ -37,6 +42,8 @@ public class ForumReplyDto
     public DateTime CreatedAt { get; set; }
     public int Likes { get; set; }
     public List<string> ImageUrls { get; set; } = new();
+    public UserRank AuthorRank { get; set; } = UserRank.Novice;
+    public StaffRole AuthorStaffRole { get; set; } = StaffRole.None;
 }
 
 public class CreateTopicRequestDto
@@ -48,10 +55,20 @@ public class CreateTopicRequestDto
     [Required]
     [StringLength(5000, MinimumLength = 10)]
     public string Content { get; set; } = string.Empty;
+    public bool? NoviceVisible { get; set; }
+    public bool? NoviceCanReply { get; set; }
 }
 
 public class CreateReplyRequestDto
 {
     public string Content { get; set; } = string.Empty;
     public List<string>? ImageUrls { get; set; }
+}
+
+public class UpdateTopicRequestDto
+{
+    public bool? NoviceVisible { get; set; }
+    public bool? NoviceCanReply { get; set; }
+    public bool? IsPinned { get; set; }
+    public bool? IsLocked { get; set; }
 }
