@@ -107,6 +107,16 @@ public class CachingForumService : IForumService
         return result;
     }
 
-    public Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update)
-        => _inner.UpdateTopicAsync(topicId, update);
+    public async Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update)
+    {
+        var result = await _inner.UpdateTopicAsync(topicId, update);
+
+        // Invalidate topic detail (fields may have changed) and the section's topic list
+        // (pin/lock state affects ordering and visibility). Reply list is unaffected.
+        _cache.Remove(TopicKey(topicId));
+        if (result is not null)
+            _cache.Remove(TopicsKey(result.SectionId));
+
+        return result;
+    }
 }
