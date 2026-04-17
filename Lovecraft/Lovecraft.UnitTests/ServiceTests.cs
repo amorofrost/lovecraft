@@ -27,7 +27,7 @@ public class ServiceTests
     public async Task EventService_GetEvents_ReturnsEvents()
     {
         // Arrange
-        var service = new MockEventService();
+        var service = new MockEventService(new MockUserService(new MockAppConfigService()));
 
         // Act
         var events = await service.GetEventsAsync();
@@ -133,5 +133,29 @@ public class ServiceTests
         var user = await svc.GetUserByIdAsync("1");
         Assert.Equal(UserRank.ActiveMember, user!.Rank);
         MockDataStore.UserActivity.Clear();
+    }
+
+    [Fact]
+    public async Task RegisterForEvent_IncrementsEventsAttended()
+    {
+        MockDataStore.UserActivity.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var svc = new MockEventService(userSvc);
+
+        // Pick an event the user is not already registered for so the register path runs.
+        const string userId = "99";
+        var evt = MockDataStore.Events.First(e => !e.Attendees.Contains(userId));
+        try
+        {
+            var result = await svc.RegisterForEventAsync(userId, evt.Id);
+
+            Assert.True(result);
+            Assert.Equal(1, MockDataStore.UserActivity[userId].EventsAttended);
+        }
+        finally
+        {
+            evt.Attendees.Remove(userId);
+            MockDataStore.UserActivity.Clear();
+        }
     }
 }

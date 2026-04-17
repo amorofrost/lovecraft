@@ -1,10 +1,18 @@
 using Lovecraft.Common.DTOs.Events;
+using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
 
 namespace Lovecraft.Backend.Services;
 
 public class MockEventService : IEventService
 {
+    private readonly IUserService _userService;
+
+    public MockEventService(IUserService userService)
+    {
+        _userService = userService;
+    }
+
     public Task<List<EventDto>> GetEventsAsync()
     {
         return Task.FromResult(MockDataStore.Events);
@@ -22,6 +30,7 @@ public class MockEventService : IEventService
         if (eventDto != null && !eventDto.Attendees.Contains(userId))
         {
             eventDto.Attendees.Add(userId);
+            _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended).GetAwaiter().GetResult();
             return Task.FromResult(true);
         }
         return Task.FromResult(false);

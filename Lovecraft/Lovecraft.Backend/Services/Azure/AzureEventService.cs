@@ -11,10 +11,15 @@ public class AzureEventService : IEventService
 {
     private readonly TableClient _eventsTable;
     private readonly TableClient _attendeesTable;
+    private readonly IUserService _userService;
     private readonly ILogger<AzureEventService> _logger;
 
-    public AzureEventService(TableServiceClient tableServiceClient, ILogger<AzureEventService> logger)
+    public AzureEventService(
+        TableServiceClient tableServiceClient,
+        IUserService userService,
+        ILogger<AzureEventService> logger)
     {
+        _userService = userService;
         _logger = logger;
         _eventsTable = tableServiceClient.GetTableClient(TableNames.Events);
         _attendeesTable = tableServiceClient.GetTableClient(TableNames.EventAttendees);
@@ -59,6 +64,7 @@ public class AzureEventService : IEventService
             RegisteredAt = DateTime.UtcNow
         };
         await _attendeesTable.UpsertEntityAsync(entity);
+        await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended);
         return true;
     }
 
