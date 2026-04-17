@@ -1,6 +1,7 @@
 using Xunit;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
 using System.Threading.Tasks;
 using System.Linq;
@@ -184,5 +185,30 @@ public class ServiceTests
             ev.Attendees.AddRange(originalAttendees);
             MockDataStore.UserActivity.Clear();
         }
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_RecomputesRank_FromActivityCounters_IgnoresPayloadRank()
+    {
+        MockDataStore.UserActivity.Clear();
+        var svc = new MockUserService(new MockAppConfigService());
+
+        // Seed the user's actual activity to ActiveMember tier (5 replies meets default threshold)
+        var userId = MockDataStore.Users.First().Id;
+        MockDataStore.UserActivity[userId] = new MockUserActivity { ReplyCount = 5 };
+
+        // Caller sends a payload claiming AloeCrew rank
+        var payload = new UserDto
+        {
+            Id = userId,
+            Name = "Test",
+            Rank = UserRank.AloeCrew,  // attacker-supplied; must be ignored
+        };
+
+        var result = await svc.UpdateUserAsync(userId, payload);
+
+        Assert.Equal(UserRank.ActiveMember, result.Rank);
+
+        MockDataStore.UserActivity.Clear();
     }
 }

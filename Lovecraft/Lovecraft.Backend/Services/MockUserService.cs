@@ -32,11 +32,11 @@ public class MockUserService : IUserService
         return dto is null ? null : AugmentWithRank(dto, config.Ranks);
     }
 
-    public Task<UserDto> UpdateUserAsync(string userId, UserDto user)
+    public async Task<UserDto> UpdateUserAsync(string userId, UserDto user)
     {
         var existing = MockDataStore.Users.FirstOrDefault(u => u.Id == userId);
         if (existing is null)
-            return Task.FromResult(user);
+            return user;
 
         existing.Name = user.Name;
         existing.Age = user.Age;
@@ -48,7 +48,9 @@ public class MockUserService : IUserService
         existing.FavoriteSong = user.FavoriteSong;
         existing.Preferences = user.Preferences;
         existing.Settings = user.Settings;
-        return Task.FromResult(existing);
+
+        var config = await _appConfig.GetConfigAsync();
+        return AugmentWithRank(existing, config.Ranks);
     }
 
     public Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1)
