@@ -74,7 +74,15 @@ public class AzureEventService : IEventService
             return false;
         }
 
-        await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended);
+        try
+        {
+            await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to increment {Counter} for user {UserId}",
+                UserCounter.EventsAttended, userId);
+        }
         return true;
     }
 

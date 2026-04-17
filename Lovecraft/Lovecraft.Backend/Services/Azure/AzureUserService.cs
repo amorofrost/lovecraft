@@ -87,27 +87,45 @@ public class AzureUserService : IUserService
 
     public async Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1)
     {
-        // Read-modify-write with existing ETag (race condition acceptable, mirrors
-        // AzureForumService.CreateReplyAsync topic reply-count update pattern).
-        try
+        // Read-modify-write with ETag. Concurrent increments to the same user
+        // (e.g. rapid reply posts, or LikesReceived+MatchCount races on mutual
+        // match) produce 412 Precondition Failed on the losing writer; retry
+        // a bounded number of times with small jitter to spread the herd.
+        const int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            var response = await _usersTable.GetEntityAsync<UserEntity>(
-                UserEntity.GetPartitionKey(userId), userId);
-            var entity = response.Value;
-            switch (counter)
+            try
             {
-                case UserCounter.ReplyCount:     entity.ReplyCount     += delta; break;
-                case UserCounter.LikesReceived:  entity.LikesReceived  += delta; break;
-                case UserCounter.EventsAttended: entity.EventsAttended += delta; break;
-                case UserCounter.MatchCount:     entity.MatchCount     += delta; break;
+                var response = await _usersTable.GetEntityAsync<UserEntity>(
+                    UserEntity.GetPartitionKey(userId), userId);
+                var entity = response.Value;
+                switch (counter)
+                {
+                    case UserCounter.ReplyCount:     entity.ReplyCount     += delta; break;
+                    case UserCounter.LikesReceived:  entity.LikesReceived  += delta; break;
+                    case UserCounter.EventsAttended: entity.EventsAttended += delta; break;
+                    case UserCounter.MatchCount:     entity.MatchCount     += delta; break;
+                }
+                entity.UpdatedAt = DateTime.UtcNow;
+                await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+                return;
             }
-            entity.UpdatedAt = DateTime.UtcNow;
-            await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                _logger.LogWarning("IncrementCounterAsync: user {UserId} not found", userId);
+                return;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 412 && attempt < maxAttempts)
+            {
+                _logger.LogDebug(
+                    "ETag conflict on counter {Counter} for {UserId}, attempt {Attempt}, retrying",
+                    counter, userId, attempt);
+                await Task.Delay(Random.Shared.Next(5, 25));
+            }
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            _logger.LogWarning("IncrementCounterAsync: user {UserId} not found", userId);
-        }
+        // Unreachable: each attempt either returns on success/404, continues on
+        // retryable 412, or lets the 412 bubble on the final attempt (filter is
+        // false so the catch doesn't match). Caller shields with try/catch.
     }
 
     public async Task SetStaffRoleAsync(string userId, StaffRole role)

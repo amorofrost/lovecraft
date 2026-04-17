@@ -175,7 +175,15 @@ public class AzureForumService : IForumService
             }
         }
 
-        await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
+        try
+        {
+            await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to increment {Counter} for user {UserId}",
+                UserCounter.ReplyCount, authorId);
+        }
 
         var author = await _userService.GetUserByIdAsync(authorId);
         return ToReplyDto(replyEntity, authorAvatar, author);
