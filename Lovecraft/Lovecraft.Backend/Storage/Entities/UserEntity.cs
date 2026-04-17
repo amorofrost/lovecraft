@@ -27,6 +27,12 @@ public class UserEntity : ITableEntity
     public string PreferencesJson { get; set; } = "{}";
     public string SettingsJson { get; set; } = "{}";
     public string FavoriteSongJson { get; set; } = string.Empty;
+    public int ReplyCount { get; set; }
+    public int LikesReceived { get; set; }
+    public int EventsAttended { get; set; }
+    public int MatchCount { get; set; }
+    public string StaffRole { get; set; } = "none";
+    public string? RankOverride { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
