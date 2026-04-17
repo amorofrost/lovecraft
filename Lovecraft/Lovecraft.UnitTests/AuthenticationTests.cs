@@ -1,7 +1,9 @@
 using Xunit;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Auth;
+using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -333,5 +335,31 @@ public class AuthenticationTests
         };
 
         await Assert.ThrowsAsync<InvalidInviteCodeException>(() => service.RegisterAsync(request));
+    }
+
+    [Fact]
+    public async Task Login_EmbedsStaffRoleInToken()
+    {
+        const string userId = "test-user-001";
+        var original = MockDataStore.UserStaffRoles.TryGetValue(userId, out var prior) ? (StaffRole?)prior : null;
+        MockDataStore.UserStaffRoles[userId] = StaffRole.Moderator;
+        try
+        {
+            var result = await _authService.LoginAsync(new LoginRequestDto
+            {
+                Email = "test@example.com",
+                Password = "Test123!@#"
+            });
+
+            Assert.NotNull(result);
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var token = handler.ReadJwtToken(result!.AccessToken);
+            Assert.Equal("moderator", token.Claims.First(c => c.Type == "staffRole").Value);
+        }
+        finally
+        {
+            if (original.HasValue) MockDataStore.UserStaffRoles[userId] = original.Value;
+            else MockDataStore.UserStaffRoles.Remove(userId);
+        }
     }
 }

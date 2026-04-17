@@ -1,5 +1,6 @@
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.MockData;
 
 namespace Lovecraft.Backend.Services;
 
@@ -106,7 +107,7 @@ public class MockAuthService : IAuthService
         }
 
         // Generate tokens (but user can't use them until email verified)
-        var accessToken = _jwtService.GenerateAccessToken(userId, user.Email, user.Name);
+        var accessToken = _jwtService.GenerateAccessToken(userId, user.Email, user.Name, "none");
         var refreshToken = _jwtService.GenerateRefreshToken();
         _refreshTokens[refreshToken] = userId;
 
@@ -153,7 +154,10 @@ public class MockAuthService : IAuthService
         }
 
         // Generate tokens
-        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name);
+        var staffRole = MockDataStore.UserStaffRoles.TryGetValue(user.Id, out var role)
+            ? role.ToString().ToLowerInvariant()
+            : "none";
+        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name, staffRole);
         var refreshToken = _jwtService.GenerateRefreshToken();
         _refreshTokens[refreshToken] = user.Id;
 
@@ -195,7 +199,10 @@ public class MockAuthService : IAuthService
         _refreshTokens.Remove(refreshToken);
 
         // Generate new tokens
-        var newAccessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name);
+        var staffRole = MockDataStore.UserStaffRoles.TryGetValue(user.Id, out var role)
+            ? role.ToString().ToLowerInvariant()
+            : "none";
+        var newAccessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name, staffRole);
         var newRefreshToken = _jwtService.GenerateRefreshToken();
         _refreshTokens[newRefreshToken] = userId;
 

@@ -8,7 +8,7 @@ namespace Lovecraft.Backend.Auth;
 
 public interface IJwtService
 {
-    string GenerateAccessToken(string userId, string email, string name);
+    string GenerateAccessToken(string userId, string email, string name, string staffRole = "none");
     string GenerateRefreshToken();
     ClaimsPrincipal? ValidateToken(string token);
     string? GetUserIdFromToken(string token);
@@ -25,7 +25,7 @@ public class JwtService : IJwtService
         _logger = logger;
     }
 
-    public string GenerateAccessToken(string userId, string email, string name)
+    public string GenerateAccessToken(string userId, string email, string name, string staffRole = "none")
     {
         var tokenHandler = new JwtSecurityTokenHandler();
         var key = Encoding.UTF8.GetBytes(_settings.SecretKey);
@@ -36,6 +36,7 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.Email, email),
             new Claim(ClaimTypes.Name, name),
             new Claim(ClaimTypes.Role, "user"),
+            new Claim("staffRole", staffRole ?? "none"),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
         };

@@ -143,7 +143,7 @@ public class AzureAuthService : IAuthService
         }
 
         // Generate tokens
-        var accessToken = _jwtService.GenerateAccessToken(userId, request.Email, request.Name);
+        var accessToken = _jwtService.GenerateAccessToken(userId, request.Email, request.Name, "none");
         var refreshToken = _jwtService.GenerateRefreshToken();
         await WriteRefreshTokenAsync(refreshToken, userId, now);
 
@@ -207,7 +207,8 @@ public class AzureAuthService : IAuthService
         }
 
         var now = DateTime.UtcNow;
-        var accessToken = _jwtService.GenerateAccessToken(userEntity.RowKey, userEntity.Email, userEntity.Name);
+        var accessToken = _jwtService.GenerateAccessToken(
+            userEntity.RowKey, userEntity.Email, userEntity.Name, userEntity.StaffRole ?? "none");
         var refreshToken = _jwtService.GenerateRefreshToken();
         await WriteRefreshTokenAsync(refreshToken, userEntity.RowKey, now);
 
@@ -268,7 +269,8 @@ public class AzureAuthService : IAuthService
 
         // Issue new tokens
         var now = DateTime.UtcNow;
-        var newAccessToken = _jwtService.GenerateAccessToken(userEntity.RowKey, userEntity.Email, userEntity.Name);
+        var newAccessToken = _jwtService.GenerateAccessToken(
+            userEntity.RowKey, userEntity.Email, userEntity.Name, userEntity.StaffRole ?? "none");
         var newRefreshToken = _jwtService.GenerateRefreshToken();
         await WriteRefreshTokenAsync(newRefreshToken, userEntity.RowKey, now);
 
