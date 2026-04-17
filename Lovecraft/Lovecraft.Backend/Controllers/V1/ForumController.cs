@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.Enums;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Hubs;
@@ -62,7 +63,21 @@ public class ForumController : ControllerBase
     {
         try
         {
+            var section = (await _forumService.GetSectionsAsync()).FirstOrDefault(s => s.Id == sectionId);
+            if (section is null)
+                return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Section not found"));
+
+            var allowed = await PermissionGuard.MeetsAsync(User, _userService, section.MinRank);
+            if (!allowed)
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<List<ForumTopicDto>>.ErrorResponse(
+                        AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
             var topics = await _forumService.GetTopicsAsync(sectionId);
+            var callerRank = await GetCallerRankAsync();
+            if (callerRank == UserRank.Novice)
+                topics = topics.Where(t => t.NoviceVisible).ToList();
+
             return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
         }
         catch (Exception ex)
@@ -83,6 +98,18 @@ public class ForumController : ControllerBase
             var topic = await _forumService.GetTopicByIdAsync(topicId);
             if (topic == null)
                 return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
+            var allowed = await PermissionGuard.MeetsAsync(User, _userService, topic.MinRank);
+            if (!allowed)
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<ForumTopicDto>.ErrorResponse(
+                        AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
+            if (!topic.NoviceVisible && await GetCallerRankAsync() == UserRank.Novice)
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<ForumTopicDto>.ErrorResponse(
+                        AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
             return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(topic));
         }
         catch (Exception ex)
@@ -180,5 +207,13 @@ public class ForumController : ControllerBase
             _logger.LogError(ex, "Error creating reply for topic {TopicId}", topicId);
             return StatusCode(500, ApiResponse<ForumReplyDto>.ErrorResponse("INTERNAL_ERROR", "Failed to create reply"));
         }
+    }
+
+    private async Task<UserRank> GetCallerRankAsync()
+    {
+        var id = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(id)) return UserRank.Novice;
+        var user = await _userService.GetUserByIdAsync(id);
+        return user?.Rank ?? UserRank.Novice;
     }
 }

@@ -4,6 +4,7 @@ using System.Security.Claims;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
+using Lovecraft.Common.Enums;
 using Lovecraft.Common.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -17,7 +18,14 @@ namespace Lovecraft.UnitTests;
 [Collection("ForumTests")]
 public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
 {
-    private static readonly string[] TestUserIds = { "novice-user-1", "active-user-1" };
+    private static readonly string[] TestUserIds =
+    {
+        "novice-user-1", "active-user-1",
+        "novice-user-2", "novice-user-3", "novice-user-4", "active-user-2",
+    };
+
+    private static readonly string[] TestSectionIds = { "gated" };
+    private static readonly string[] TestTopicIds = { "hidden-1", "hidden-2", "hidden-3" };
 
     private readonly TestAppFactory _factory;
 
@@ -25,12 +33,22 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
     {
         _factory = factory;
         ResetTestUsers();
+        ResetTestForumData();
         SeedTestUsers();
     }
 
     public void Dispose()
     {
         ResetTestUsers();
+        ResetTestForumData();
+    }
+
+    private static void ResetTestForumData()
+    {
+        foreach (var id in TestSectionIds)
+            MockDataStore.ForumSections.RemoveAll(s => s.Id == id);
+        foreach (var id in TestTopicIds)
+            MockDataStore.ForumTopics.RemoveAll(t => t.Id == id);
     }
 
     /// <summary>
@@ -92,6 +110,61 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         var resp = await client.PostAsJsonAsync("/api/v1/forum/sections/general/topics", body);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTopicsInGatedSection_AsNovice_Returns403()
+    {
+        MockDataStore.ForumSections.Add(new ForumSectionDto
+        {
+            Id = "gated", Name = "Gated", Description = "", TopicCount = 0, MinRank = "activeMember"
+        });
+        using var client = _factory.CreateClientAsUser("novice-user-2");
+        var resp = await client.GetAsync("/api/v1/forum/sections/gated/topics");
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task NoviceHiddenTopic_NotInList_ForNovice()
+    {
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "hidden-1", SectionId = "general", Title = "Hidden", Content = "...",
+            AuthorId = "x", AuthorName = "x", MinRank = "novice", NoviceVisible = false,
+        });
+        using var client = _factory.CreateClientAsUser("novice-user-3");
+        var resp = await client.GetAsync("/api/v1/forum/sections/general/topics");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<List<ForumTopicDto>>>();
+        Assert.DoesNotContain(payload!.Data!, t => t.Id == "hidden-1");
+    }
+
+    [Fact]
+    public async Task NoviceHiddenTopic_Visible_ForActiveMember()
+    {
+        MockDataStore.UserActivity["active-user-2"] = new MockUserActivity { ReplyCount = 5 };
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "hidden-2", SectionId = "general", Title = "Hidden 2", Content = "...",
+            AuthorId = "x", AuthorName = "x", MinRank = "novice", NoviceVisible = false,
+        });
+        using var client = _factory.CreateClientAsUser("active-user-2");
+        var resp = await client.GetAsync("/api/v1/forum/sections/general/topics");
+        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<List<ForumTopicDto>>>();
+        Assert.Contains(payload!.Data!, t => t.Id == "hidden-2");
+    }
+
+    [Fact]
+    public async Task GetHiddenTopic_ById_AsNovice_Returns403()
+    {
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "hidden-3", SectionId = "general", Title = "H3", Content = "...",
+            AuthorId = "x", AuthorName = "x", MinRank = "novice", NoviceVisible = false,
+        });
+        using var client = _factory.CreateClientAsUser("novice-user-4");
+        var resp = await client.GetAsync("/api/v1/forum/topics/hidden-3");
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
     public class TestAppFactory : WebApplicationFactory<Program>
