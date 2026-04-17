@@ -18,6 +18,8 @@ public class UserDto
     public AloeVeraSongDto? FavoriteSong { get; set; }
     public UserPreferencesDto Preferences { get; set; } = new();
     public UserSettingsDto Settings { get; set; } = new();
+    public UserRank Rank { get; set; } = UserRank.Novice;
+    public StaffRole StaffRole { get; set; } = StaffRole.None;
 }
 
 public class UserPreferencesDto
