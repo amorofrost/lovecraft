@@ -4,6 +4,7 @@ using Azure.Data.Tables;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services.Azure;
@@ -116,12 +117,19 @@ public class AzureForumService : IForumService
 
         // Fetch current avatar for each unique author so stale cached URLs don't persist
         // after a user updates their profile picture.
-        var authorIds = entities.Select(e => e.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct();
+        var authorIds = entities.Select(e => e.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
         var avatars = new Dictionary<string, string?>();
+        var userInfo = new Dictionary<string, UserDto?>();
         foreach (var authorId in authorIds)
+        {
             avatars[authorId] = await GetAuthorAvatarAsync(authorId);
+            userInfo[authorId] = await _userService.GetUserByIdAsync(authorId);
+        }
 
-        return entities.Select(e => ToReplyDto(e, avatars.GetValueOrDefault(e.AuthorId))).ToList();
+        return entities.Select(e => ToReplyDto(
+            e,
+            avatars.GetValueOrDefault(e.AuthorId),
+            userInfo.GetValueOrDefault(e.AuthorId))).ToList();
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
@@ -169,7 +177,8 @@ public class AzureForumService : IForumService
 
         await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
 
-        return ToReplyDto(replyEntity);
+        var author = await _userService.GetUserByIdAsync(authorId);
+        return ToReplyDto(replyEntity, authorAvatar, author);
     }
 
     private static ForumSectionDto ToSectionDto(ForumSectionEntity entity) => new ForumSectionDto
@@ -177,7 +186,8 @@ public class AzureForumService : IForumService
         Id = entity.RowKey,
         Name = entity.Name,
         Description = entity.Description,
-        TopicCount = entity.TopicCount
+        TopicCount = entity.TopicCount,
+        MinRank = string.IsNullOrWhiteSpace(entity.MinRank) ? "novice" : entity.MinRank
     };
 
     private static ForumTopicDto ToTopicDto(ForumTopicEntity entity) => new ForumTopicDto
@@ -193,7 +203,10 @@ public class AzureForumService : IForumService
         IsLocked = entity.IsLocked,
         ReplyCount = entity.ReplyCount,
         CreatedAt = entity.CreatedAt,
-        UpdatedAt = entity.UpdatedAt
+        UpdatedAt = entity.UpdatedAt,
+        MinRank = string.IsNullOrWhiteSpace(entity.MinRank) ? "novice" : entity.MinRank,
+        NoviceVisible = entity.NoviceVisible ?? true,
+        NoviceCanReply = entity.NoviceCanReply ?? true
     };
 
     public async Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
@@ -315,7 +328,7 @@ public class AzureForumService : IForumService
         };
     }
 
-    private static ForumReplyDto ToReplyDto(ForumReplyEntity entity, string? currentAvatar = null) => new ForumReplyDto
+    private static ForumReplyDto ToReplyDto(ForumReplyEntity entity, string? currentAvatar = null, UserDto? author = null) => new ForumReplyDto
     {
         Id = entity.ReplyId,
         TopicId = entity.TopicId,
@@ -325,6 +338,8 @@ public class AzureForumService : IForumService
         Content = entity.Content,
         CreatedAt = entity.CreatedAt,
         Likes = entity.Likes,
-        ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>()
+        ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),
+        AuthorRank = author?.Rank ?? UserRank.Novice,
+        AuthorStaffRole = author?.StaffRole ?? StaffRole.None
     };
 }

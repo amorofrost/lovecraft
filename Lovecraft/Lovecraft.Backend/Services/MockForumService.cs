@@ -1,4 +1,5 @@
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
 
@@ -33,16 +34,35 @@ public class MockForumService : IForumService
         return Task.FromResult(topic);
     }
 
-    public Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
     {
-        var replies = MockDataStore.ForumReplies
+        var stored = MockDataStore.ForumReplies
             .Where(r => r.TopicId == topicId)
             .OrderBy(r => r.CreatedAt)
             .ToList();
-        return Task.FromResult(replies);
+
+        var authorIds = stored.Select(r => r.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct();
+        var authors = new Dictionary<string, UserDto?>();
+        foreach (var id in authorIds)
+            authors[id] = await _userService.GetUserByIdAsync(id);
+
+        return stored.Select(r => new ForumReplyDto
+        {
+            Id = r.Id,
+            TopicId = r.TopicId,
+            AuthorId = r.AuthorId,
+            AuthorName = r.AuthorName,
+            AuthorAvatar = r.AuthorAvatar,
+            Content = r.Content,
+            CreatedAt = r.CreatedAt,
+            Likes = r.Likes,
+            ImageUrls = r.ImageUrls,
+            AuthorRank = authors.GetValueOrDefault(r.AuthorId)?.Rank ?? UserRank.Novice,
+            AuthorStaffRole = authors.GetValueOrDefault(r.AuthorId)?.StaffRole ?? StaffRole.None,
+        }).ToList();
     }
 
-    public Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
+    public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
     {
         var authorAvatar = MockDataStore.Users.FirstOrDefault(u => u.Id == authorId)?.ProfileImage;
         var reply = new ForumReplyDto
@@ -66,9 +86,23 @@ public class MockForumService : IForumService
             topic.UpdatedAt = reply.CreatedAt;
         }
 
-        _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount).GetAwaiter().GetResult();
+        await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
 
-        return Task.FromResult(reply);
+        var author = await _userService.GetUserByIdAsync(authorId);
+        return new ForumReplyDto
+        {
+            Id = reply.Id,
+            TopicId = reply.TopicId,
+            AuthorId = reply.AuthorId,
+            AuthorName = reply.AuthorName,
+            AuthorAvatar = reply.AuthorAvatar,
+            Content = reply.Content,
+            CreatedAt = reply.CreatedAt,
+            Likes = reply.Likes,
+            ImageUrls = reply.ImageUrls,
+            AuthorRank = author?.Rank ?? UserRank.Novice,
+            AuthorStaffRole = author?.StaffRole ?? StaffRole.None,
+        };
     }
 
     public Task<ForumTopicDto> CreateTopicAsync(
