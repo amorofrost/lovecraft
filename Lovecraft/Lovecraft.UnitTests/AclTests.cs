@@ -22,10 +22,11 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
     {
         "novice-user-1", "active-user-1",
         "novice-user-2", "novice-user-3", "novice-user-4", "active-user-2",
+        "novice-reply", "active-reply",
     };
 
     private static readonly string[] TestSectionIds = { "gated" };
-    private static readonly string[] TestTopicIds = { "hidden-1", "hidden-2", "hidden-3" };
+    private static readonly string[] TestTopicIds = { "hidden-1", "hidden-2", "hidden-3", "norep-1", "norep-2" };
 
     private readonly TestAppFactory _factory;
 
@@ -152,6 +153,49 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         var resp = await client.GetAsync("/api/v1/forum/sections/general/topics");
         var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<List<ForumTopicDto>>>();
         Assert.Contains(payload!.Data!, t => t.Id == "hidden-2");
+    }
+
+    [Fact]
+    public async Task PostReply_WhenNoviceCantReply_AsNovice_Returns403()
+    {
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "norep-1",
+            SectionId = "general",
+            Title = "NR",
+            Content = "...",
+            AuthorId = "x",
+            AuthorName = "x",
+            MinRank = "novice",
+            NoviceVisible = true,
+            NoviceCanReply = false,
+        });
+        using var client = _factory.CreateClientAsUser("novice-reply");
+        var resp = await client.PostAsJsonAsync("/api/v1/forum/topics/norep-1/replies",
+            new CreateReplyRequestDto { Content = "some text" });
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostReply_WhenNoviceCantReply_AsActive_Succeeds()
+    {
+        MockDataStore.UserActivity["active-reply"] = new MockUserActivity { ReplyCount = 5 };
+        MockDataStore.ForumTopics.Add(new ForumTopicDto
+        {
+            Id = "norep-2",
+            SectionId = "general",
+            Title = "NR2",
+            Content = "...",
+            AuthorId = "x",
+            AuthorName = "x",
+            MinRank = "novice",
+            NoviceVisible = true,
+            NoviceCanReply = false,
+        });
+        using var client = _factory.CreateClientAsUser("active-reply");
+        var resp = await client.PostAsJsonAsync("/api/v1/forum/topics/norep-2/replies",
+            new CreateReplyRequestDto { Content = "some text" });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
 
     [Fact]

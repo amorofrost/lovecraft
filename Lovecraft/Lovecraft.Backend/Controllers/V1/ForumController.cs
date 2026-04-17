@@ -196,6 +196,24 @@ public class ForumController : ControllerBase
         if (HtmlGuard.ContainsHtml(request.Content))
             return BadRequest(ApiResponse<ForumReplyDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in reply content"));
 
+        var topic = await _forumService.GetTopicByIdAsync(topicId);
+        if (topic is null)
+            return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
+        var section = (await _forumService.GetSectionsAsync()).FirstOrDefault(s => s.Id == topic.SectionId);
+        var sectionAllowed = section is null ||
+            await PermissionGuard.MeetsAsync(User, _userService, section.MinRank);
+        var topicAllowed = await PermissionGuard.MeetsAsync(User, _userService, topic.MinRank);
+        if (!sectionAllowed || !topicAllowed)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<ForumReplyDto>.ErrorResponse(
+                    AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
+        if (!topic.NoviceCanReply && await GetCallerRankAsync() == UserRank.Novice)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<ForumReplyDto>.ErrorResponse(
+                    AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
         try
         {
             var reply = await _forumService.CreateReplyAsync(topicId, authorId!, authorName!, request.Content, request.ImageUrls);
