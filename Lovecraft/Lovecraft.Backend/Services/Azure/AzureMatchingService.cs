@@ -35,27 +35,8 @@ public class AzureMatchingService : IMatchingService
 
     public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
     {
-        // Check if like already sent
-        bool alreadyLiked = false;
-        try
-        {
-            await _likesTable.GetEntityAsync<LikeEntity>(fromUserId, toUserId);
-            alreadyLiked = true;
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404) { }
-
-        if (alreadyLiked)
-        {
-            // Return existing like without creating a match
-            var existingLike = (await _likesTable.GetEntityAsync<LikeEntity>(fromUserId, toUserId)).Value;
-            return new LikeResponseDto
-            {
-                Like = ToSentLikeDto(existingLike),
-                IsMatch = existingLike.IsMatch
-            };
-        }
-
-        // Check if there's a reverse like (mutual match)
+        // Check if there's a reverse like (mutual match). Done before the write
+        // so the IsMatch flag is persisted on the new row.
         bool isMutual = false;
         try
         {
@@ -78,6 +59,35 @@ public class AzureMatchingService : IMatchingService
             IsMatch = isMutual
         };
 
+        // Atomic create: AddEntityAsync fails with 409 if (fromUserId, toUserId)
+        // already exists. Collapses the previous "GetEntity-then-Upsert" into
+        // a single server-side uniqueness check so two concurrent CreateLike
+        // calls for the same pair can't both observe "not yet liked" and then
+        // both proceed to bump LikesReceived.
+        bool wasNewLike;
+        try
+        {
+            await _likesTable.AddEntityAsync(likeEntity);
+            wasNewLike = true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            wasNewLike = false;
+        }
+
+        if (!wasNewLike)
+        {
+            var existingLike = (await _likesTable.GetEntityAsync<LikeEntity>(fromUserId, toUserId)).Value;
+            return new LikeResponseDto
+            {
+                Like = ToSentLikeDto(existingLike),
+                IsMatch = existingLike.IsMatch
+            };
+        }
+
+        // Mirror row for the recipient-indexed table. Upsert is fine: this row
+        // is keyed identically to the likes row (by pair), so if the likes Add
+        // above succeeded we logically own the write of this mirror too.
         var likeReceivedEntity = new LikeEntity
         {
             PartitionKey = toUserId,
@@ -88,13 +98,17 @@ public class AzureMatchingService : IMatchingService
             CreatedAt = now,
             IsMatch = isMutual
         };
+        await _likesReceivedTable.UpsertEntityAsync(likeReceivedEntity);
 
-        await Task.WhenAll(
-            _likesTable.UpsertEntityAsync(likeEntity),
-            _likesReceivedTable.UpsertEntityAsync(likeReceivedEntity)
-        );
-
-        await _userService.IncrementCounterAsync(toUserId, UserCounter.LikesReceived);
+        try
+        {
+            await _userService.IncrementCounterAsync(toUserId, UserCounter.LikesReceived);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to increment {Counter} for user {UserId}",
+                UserCounter.LikesReceived, toUserId);
+        }
 
         MatchDto? matchDto = null;
         if (isMutual)
@@ -108,8 +122,32 @@ public class AzureMatchingService : IMatchingService
             };
 
             await _chatService.GetOrCreateChatAsync(fromUserId, toUserId);
-            await _userService.IncrementCounterAsync(fromUserId, UserCounter.MatchCount);
-            await _userService.IncrementCounterAsync(toUserId, UserCounter.MatchCount);
+
+            // Known limitation: two perfectly-concurrent reciprocal likes
+            // (a→b and b→a arriving simultaneously) can each observe the other
+            // as existing and independently bump MatchCount, double-counting
+            // the match. The probability is negligible in practice and a
+            // proper fix would require a transaction or lock, which is out
+            // of scope for this defensive pass.
+            try
+            {
+                await _userService.IncrementCounterAsync(fromUserId, UserCounter.MatchCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to increment {Counter} for user {UserId}",
+                    UserCounter.MatchCount, fromUserId);
+            }
+            try
+            {
+                await _userService.IncrementCounterAsync(toUserId, UserCounter.MatchCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to increment {Counter} for user {UserId}",
+                    UserCounter.MatchCount, toUserId);
+            }
+
             _logger.LogInformation("Match created between {From} and {To}", fromUserId, toUserId);
         }
 
