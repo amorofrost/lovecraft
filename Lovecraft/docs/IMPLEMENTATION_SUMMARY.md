@@ -50,6 +50,8 @@ All endpoints return data in the format:
 - `GET /api/v1/users` - List users (paginated)
 - `GET /api/v1/users/{id}` - Get user by ID
 - `PUT /api/v1/users/{id}` - Update user
+- `PUT /api/v1/users/{id}/role` - Assign staff role. **Admin-only.**
+- `PUT /api/v1/users/{id}/rank-override` - Override computed rank. **Admin-only.**
 
 #### Events (`/api/v1/events`)
 - `GET /api/v1/events` - List all events
@@ -76,8 +78,12 @@ All endpoints return data in the format:
 - `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section
 - `POST /api/v1/forum/sections/{sectionId}/topics` - Create topic in section
 - `GET /api/v1/forum/topics/{topicId}` - Get topic detail (title, content, author, pin status)
+- `PUT /api/v1/forum/topics/{topicId}` - Update topic (author + moderator; `IsPinned`/`IsLocked` require moderator+). Returns `INSUFFICIENT_RANK` or `MODERATOR_REQUIRED` on rejection.
 - `GET /api/v1/forum/topics/{topicId}/replies` - Get all replies for a topic
 - `POST /api/v1/forum/topics/{topicId}/replies` - Post a reply (`{ content }` body)
+
+#### Admin (`/api/v1/admin`)
+- `GET /api/v1/admin/config` - Read `appconfig` values. **Admin-only.**
 
 #### Chats (`/api/v1/chats`)
 - `GET /api/v1/chats` - List user's chats
@@ -188,27 +194,16 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Testing
 
-- **81 unit tests** — all passing
-  - 16 authentication tests (`AuthenticationTests.cs`)
-  - 6 service tests (`ServiceTests.cs`)
-  - **13 refresh token tests** (`RefreshTokenTests.cs`) — added February 24, 2026
-    - Happy-path: new access token, rotated refresh token, preserved user identity, valid JWT signature, future expiry
-    - Token rotation / replay: old token rejected after use, chained refreshes work
-    - Invalid / unknown tokens: unknown token returns null, empty string returns null
-    - Revocation: single-token revocation, revoke-all-user-tokens, isolation between users
-    - `JwtService.GenerateRefreshToken`: uniqueness, base64 encoding, sufficient entropy
-  - **18 chat tests** (`ChatTests.cs`) — added March 15, 2026
-    - `MockChatService`: GetChats filters by participant, GetOrCreateChat idempotency, GetMessages pagination, SendMessage persistence, ValidateAccess, UserChats index updated on send
-    - Hub access paths: JoinChat validates access, SendMessage validates access, JoinTopic allows any authenticated user, SendMessage persists and returns DTO, direct REST fallback route
-    - `[Collection("ChatTests")]` serialises tests to prevent races on `MockDataStore` static state
-  - **13 matching tests** (`MatchingTests.cs`) — added March 16, 2026
-    - One-way like → not a match; mutual like → IsMatch=true, Match object returned, chat auto-created
-    - Duplicate like → returns existing like, no second chat created
-    - GetSentLikes / GetReceivedLikes filtering correctness
-    - GetMatches: only mutual likes, excludes one-way, deterministic match ID from both sides
-    - `IDisposable` resets `MockDataStore.Likes` before/after each test for isolation
+- **193 passing** — xUnit unit + integration tests (`dotnet test Lovecraft.UnitTests`)
+  - Existing suites: `AuthenticationTests`, `ServiceTests`, `RefreshTokenTests`, `ChatTests`, `MatchingTests`, `ForumTests` (all extended with rank/ACL coverage where applicable)
+  - New suites (Roles & ACL spec):
+    - `AppConfigServiceTests` — cache hits/misses, 1-hour TTL, fallback to `RankThresholds.Defaults` / `PermissionConfig.Defaults` on missing or invalid rows, `LogWarning` on parse failure
+    - `EffectiveLevelTests` — unified 0–5 map: Novice=0, ActiveMember=1, FriendOfAloe=2, AloeCrew=3, Moderator=4, Admin=5; `For(user, computedRank) = Math.Max(rankLevel, staffLevel)`
+    - `RankCalculatorTests` — top-down OR-matching from crew → novice, honours `RankOverride`, threshold boundary conditions
+    - `AzureUserServiceTests` — counter increments retry 3× on ETag 412 and swallow exceptions so counter failures never fail the primary operation
+    - `AclTests` — integration tests using `WebApplicationFactory<Program>` + a custom `TestAuthHandler` that injects `staffRole` claims; exercises `section.MinRank`, `topic.MinRank`, `topic.NoviceVisible`, `topic.NoviceCanReply` rejections (`INSUFFICIENT_RANK` / `MODERATOR_REQUIRED` / `ADMIN_REQUIRED`)
 - Tests run with `dotnet test`
-- `[Collection("AuthTests")]` serialises `AuthenticationTests` and `RefreshTokenTests` to prevent races on `MockAuthService` static state
+- Assembly-level `[CollectionBehavior(DisableTestParallelization = true)]` (in `Lovecraft.UnitTests/AssemblyInfo.cs`) serialises the entire suite — a pragmatic workaround for `MockDataStore` static state (tracked as `followup-mock-state-hygiene` for a proper migration off shared static state)
 
 ## How to Use
 
@@ -272,6 +267,9 @@ dotnet test
 
 - JWT authentication fully operational; all content endpoints require `[Authorize]`
 - **Azure Table Storage** active when `USE_AZURE_STORAGE=true` in `.env`; falls back to in-memory mock services when false
+- **`appconfig` table** (new in the Roles & ACL spec) — partitions: `rank_thresholds` (10 integer rows) and `permissions` (11 string rows). Served by `AzureAppConfigService` with 1-hour `IMemoryCache`; falls back to `RankThresholds.Defaults` / `PermissionConfig.Defaults` with `LogWarning` on missing/invalid rows. Seeded by `Lovecraft.Tools.Seeder`.
+- **`IAppConfigService`** — singleton; 1-hour cached read of the `appconfig` table; fallback to code-defined defaults for missing rows. `IUserService` gained `IncrementCounterAsync` / `SetStaffRoleAsync` / `SetRankOverrideAsync`; counter increments in the Azure implementation retry 3× on ETag 412 and are wrapped in try/catch so counter failures never fail the primary operation. `IForumService` gained `UpdateTopicAsync`.
+- **ACL enforcement**: `PermissionGuard.MeetsAsync(user, userService, requiredLevel)` is the shared helper; `[RequireStaffRole("moderator"|"admin")]` is a synchronous filter reading only the `staffRole` JWT claim; `[RequirePermission("<key>")]` is an `IFilterFactory` that resolves the required level from `AppConfig.Permissions` at runtime and delegates to `PermissionGuard`. Error codes: `INSUFFICIENT_RANK`, `MODERATOR_REQUIRED`, `ADMIN_REQUIRED`. JWT access tokens now embed `staffRole` as a custom claim.
 - **SignalR** at `/hubs/chat` — JWT passed as `?access_token=` query string; nginx `/hubs/` location block proxies WebSocket upgrade
 - **Matching**: all controllers extract the caller's ID via `User.FindFirst(ClaimTypes.NameIdentifier)` — `"current-user"` placeholder is gone. Matches are computed at query time as the intersection of the `likes` and `likesreceived` tables; there is no dedicated `matches` table. A 1-on-1 chat is auto-created when a mutual like is detected (both mock and Azure paths).
 - **Chat tables**: `chats` (PK="CHAT"), `userchats` (PK=userId index), `messages` (PK=chatId, RK=invertedTicks_{id}); tables are created by `AzureChatService` constructor via `CreateIfNotExistsAsync()` on first startup
