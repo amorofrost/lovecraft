@@ -300,6 +300,7 @@ public static class MockDataStore
         new() { Id = "music", Name = "🎵 Музыка и творчество", Description = "Разбор песен, каверы, творчество", TopicCount = 3 },
         new() { Id = "cities", Name = "🏙️ По городам", Description = "Общение по городам и регионам", TopicCount = 3 },
         new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2 },
+        new() { Id = "insiders",  Name = "🔒 Инсайдеры",       Description = "Только для Active Members+",        TopicCount = 0, MinRank = "activeMember" },
     };
 
     public static List<ForumReplyDto> ForumReplies { get; } = new()

@@ -217,6 +217,7 @@ foreach (var (section, order) in MockDataStore.ForumSections.Select((s, i) => (s
         Description  = section.Description,
         TopicCount   = section.TopicCount,
         OrderIndex   = order,
+        MinRank      = section.MinRank,
     });
 }
 Console.WriteLine($"  [forumsections] {MockDataStore.ForumSections.Count} sections");
