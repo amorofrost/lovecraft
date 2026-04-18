@@ -58,6 +58,12 @@ public class ForumReplyDto
     public List<string> ImageUrls { get; set; } = new();
     public UserRank AuthorRank { get; set; } = UserRank.Novice;
     public StaffRole AuthorStaffRole { get; set; } = StaffRole.None;
+
+    /// <summary>Up to 3 badge image URLs from events the author attended (newest first).</summary>
+    public List<string> AuthorEventBadgeImageUrls { get; set; } = new();
+
+    /// <summary>Total count of attended events that have a badge image (for +N overflow).</summary>
+    public int AuthorEventBadgeTotalCount { get; set; }
 }
 
 public class CreateTopicRequestDto

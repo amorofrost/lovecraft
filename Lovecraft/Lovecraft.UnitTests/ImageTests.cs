@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Lovecraft.Backend.Controllers.V1;
 using Lovecraft.Backend.MockData;
+using System.Linq;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Images;
 using Lovecraft.Common.Models;
@@ -18,21 +19,28 @@ public class ImageTests
     public async Task MockImageService_UploadProfileImageAsync_ReturnsNonNullUrl()
     {
         var service = new MockImageService();
-        var userId = MockDataStore.Users[0].Id;
+        const string userId = "1";
 
         var result = await service.UploadProfileImageAsync(userId, Stream.Null, "image/jpeg");
 
         Assert.NotNull(result);
         Assert.NotEmpty(result);
-        Assert.Equal(MockDataStore.Users[0].ProfileImage, result);
+        Assert.Equal(
+            MockDataStore.Users.First(u => u.Id == userId).ProfileImage,
+            result);
     }
 
     [Fact]
     public async Task UploadProfileImage_InvalidContentType_Returns400WithInvalidImageType()
     {
         var mockUserService = new Mock<IUserService>();
+        var mockEventService = new Mock<IEventService>();
         var mockImageService = new Mock<IImageService>();
-        var controller = new UsersController(mockUserService.Object, NullLogger<UsersController>.Instance, mockImageService.Object);
+        var controller = new UsersController(
+            mockUserService.Object,
+            mockEventService.Object,
+            NullLogger<UsersController>.Instance,
+            mockImageService.Object);
 
         controller.ControllerContext = new ControllerContext
         {
@@ -59,8 +67,13 @@ public class ImageTests
     public async Task UploadProfileImage_FileTooLarge_Returns400WithImageTooLarge()
     {
         var mockUserService = new Mock<IUserService>();
+        var mockEventService = new Mock<IEventService>();
         var mockImageService = new Mock<IImageService>();
-        var controller = new UsersController(mockUserService.Object, NullLogger<UsersController>.Instance, mockImageService.Object);
+        var controller = new UsersController(
+            mockUserService.Object,
+            mockEventService.Object,
+            NullLogger<UsersController>.Instance,
+            mockImageService.Object);
 
         controller.ControllerContext = new ControllerContext
         {

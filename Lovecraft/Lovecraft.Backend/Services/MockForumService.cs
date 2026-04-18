@@ -111,20 +111,31 @@ public class MockForumService : IForumService
         foreach (var id in authorIds)
             authors[id] = await _userService.GetUserByIdAsync(id);
 
-        return stored.Select(r => new ForumReplyDto
+        var list = new List<ForumReplyDto>();
+        foreach (var r in stored.OrderBy(x => x.CreatedAt))
         {
-            Id = r.Id,
-            TopicId = r.TopicId,
-            AuthorId = r.AuthorId,
-            AuthorName = r.AuthorName,
-            AuthorAvatar = r.AuthorAvatar,
-            Content = r.Content,
-            CreatedAt = r.CreatedAt,
-            Likes = r.Likes,
-            ImageUrls = r.ImageUrls,
-            AuthorRank = authors.GetValueOrDefault(r.AuthorId)?.Rank ?? UserRank.Novice,
-            AuthorStaffRole = authors.GetValueOrDefault(r.AuthorId)?.StaffRole ?? StaffRole.None,
-        }).ToList();
+            var (urls, total) = string.IsNullOrEmpty(r.AuthorId)
+                ? (new List<string>(), 0)
+                : await _eventService.GetUserEventBadgePreviewAsync(r.AuthorId);
+            list.Add(new ForumReplyDto
+            {
+                Id = r.Id,
+                TopicId = r.TopicId,
+                AuthorId = r.AuthorId,
+                AuthorName = r.AuthorName,
+                AuthorAvatar = r.AuthorAvatar,
+                Content = r.Content,
+                CreatedAt = r.CreatedAt,
+                Likes = r.Likes,
+                ImageUrls = r.ImageUrls,
+                AuthorRank = authors.GetValueOrDefault(r.AuthorId)?.Rank ?? UserRank.Novice,
+                AuthorStaffRole = authors.GetValueOrDefault(r.AuthorId)?.StaffRole ?? StaffRole.None,
+                AuthorEventBadgeImageUrls = urls,
+                AuthorEventBadgeTotalCount = total,
+            });
+        }
+
+        return list;
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
@@ -154,6 +165,7 @@ public class MockForumService : IForumService
         await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
 
         var author = await _userService.GetUserByIdAsync(authorId);
+        var (badgeUrls, badgeTotal) = await _eventService.GetUserEventBadgePreviewAsync(authorId);
         return new ForumReplyDto
         {
             Id = reply.Id,
@@ -167,6 +179,8 @@ public class MockForumService : IForumService
             ImageUrls = reply.ImageUrls,
             AuthorRank = author?.Rank ?? UserRank.Novice,
             AuthorStaffRole = author?.StaffRole ?? StaffRole.None,
+            AuthorEventBadgeImageUrls = badgeUrls,
+            AuthorEventBadgeTotalCount = badgeTotal,
         };
     }
 

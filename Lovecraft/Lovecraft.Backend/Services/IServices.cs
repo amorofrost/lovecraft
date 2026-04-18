@@ -43,6 +43,12 @@ public interface IEventService
     Task<bool> RegisterForEventAsync(string userId, string eventId);
     Task<bool> UnregisterFromEventAsync(string userId, string eventId);
     Task SetForumTopicIdAsync(string eventId, string forumTopicId);
+
+    /// <summary>Events the user has registered for (newest first). Includes archived events.</summary>
+    Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId);
+
+    /// <summary>Badge image URLs from attended events (newest first), for compact UI.</summary>
+    Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId);
 }
 
 public interface IMatchingService

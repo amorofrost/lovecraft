@@ -219,10 +219,17 @@ public class AzureForumService : IForumService
             userInfo[authorId] = await _userService.GetUserByIdAsync(authorId);
         }
 
-        return entities.Select(e => ToReplyDto(
-            e,
-            avatars.GetValueOrDefault(e.AuthorId),
-            userInfo.GetValueOrDefault(e.AuthorId))).ToList();
+        var ordered = entities.OrderBy(e => e.CreatedAt).ToList();
+        var results = new List<ForumReplyDto>();
+        foreach (var e in ordered)
+        {
+            results.Add(await ToReplyDtoAsync(
+                e,
+                avatars.GetValueOrDefault(e.AuthorId),
+                userInfo.GetValueOrDefault(e.AuthorId)));
+        }
+
+        return results;
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
@@ -279,7 +286,7 @@ public class AzureForumService : IForumService
         }
 
         var author = await _userService.GetUserByIdAsync(authorId);
-        return ToReplyDto(replyEntity, authorAvatar, author);
+        return await ToReplyDtoAsync(replyEntity, authorAvatar, author);
     }
 
     private static ForumSectionDto ToSectionDto(ForumSectionEntity entity) => new ForumSectionDto
@@ -627,18 +634,30 @@ public class AzureForumService : IForumService
         return ToTopicDto(topicEntity);
     }
 
-    private static ForumReplyDto ToReplyDto(ForumReplyEntity entity, string? currentAvatar = null, UserDto? author = null) => new ForumReplyDto
+    private async Task<ForumReplyDto> ToReplyDtoAsync(ForumReplyEntity entity, string? currentAvatar = null, UserDto? author = null)
     {
-        Id = entity.ReplyId,
-        TopicId = entity.TopicId,
-        AuthorId = entity.AuthorId,
-        AuthorName = entity.AuthorName,
-        AuthorAvatar = string.IsNullOrEmpty(currentAvatar) ? null : currentAvatar,
-        Content = entity.Content,
-        CreatedAt = entity.CreatedAt,
-        Likes = entity.Likes,
-        ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),
-        AuthorRank = author?.Rank ?? UserRank.Novice,
-        AuthorStaffRole = author?.StaffRole ?? StaffRole.None
-    };
+        var dto = new ForumReplyDto
+        {
+            Id = entity.ReplyId,
+            TopicId = entity.TopicId,
+            AuthorId = entity.AuthorId,
+            AuthorName = entity.AuthorName,
+            AuthorAvatar = string.IsNullOrEmpty(currentAvatar) ? null : currentAvatar,
+            Content = entity.Content,
+            CreatedAt = entity.CreatedAt,
+            Likes = entity.Likes,
+            ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),
+            AuthorRank = author?.Rank ?? UserRank.Novice,
+            AuthorStaffRole = author?.StaffRole ?? StaffRole.None,
+        };
+
+        if (!string.IsNullOrEmpty(entity.AuthorId))
+        {
+            var (urls, total) = await _eventService.GetUserEventBadgePreviewAsync(entity.AuthorId);
+            dto.AuthorEventBadgeImageUrls = urls;
+            dto.AuthorEventBadgeTotalCount = total;
+        }
+
+        return dto;
+    }
 }

@@ -46,6 +46,7 @@ public class MockEventService : IEventService
             Title = dto.Title,
             Description = dto.Description,
             ImageUrl = dto.ImageUrl,
+            BadgeImageUrl = dto.BadgeImageUrl ?? string.Empty,
             Date = dto.Date,
             EndDate = dto.EndDate,
             Location = dto.Location,
@@ -71,6 +72,7 @@ public class MockEventService : IEventService
         eventDto.Title = dto.Title;
         eventDto.Description = dto.Description;
         eventDto.ImageUrl = dto.ImageUrl;
+        eventDto.BadgeImageUrl = dto.BadgeImageUrl ?? string.Empty;
         eventDto.Date = dto.Date;
         eventDto.EndDate = dto.EndDate;
         eventDto.Location = dto.Location;
@@ -162,5 +164,26 @@ public class MockEventService : IEventService
         if (evt != null)
             evt.ForumTopicId = forumTopicId;
         return Task.CompletedTask;
+    }
+
+    public Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId)
+    {
+        var list = MockDataStore.Events
+            .Where(e => e.Attendees.Contains(userId))
+            .OrderByDescending(e => e.Date)
+            .ToList();
+        return Task.FromResult(list);
+    }
+
+    public Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId)
+    {
+        var attended = MockDataStore.Events
+            .Where(e => e.Attendees.Contains(userId))
+            .Where(e => !string.IsNullOrWhiteSpace(e.BadgeImageUrl))
+            .OrderByDescending(e => e.Date)
+            .ToList();
+        var total = attended.Count;
+        var preview = attended.Take(3).Select(e => e.BadgeImageUrl.Trim()).ToList();
+        return Task.FromResult((preview, total));
     }
 }

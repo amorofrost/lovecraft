@@ -283,6 +283,37 @@ public class AzureEventService : IEventService
         return attendees;
     }
 
+    public async Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId)
+    {
+        var escaped = userId.Replace("'", "''");
+        var eventIds = new List<string>();
+        await foreach (var row in _attendeesTable.QueryAsync<EventAttendeeEntity>(
+                     filter: $"RowKey eq '{escaped}'"))
+            eventIds.Add(row.PartitionKey);
+
+        var result = new List<EventDto>();
+        foreach (var eventId in eventIds)
+        {
+            var ev = await GetEventByIdAdminAsync(eventId);
+            if (ev != null)
+                result.Add(ev);
+        }
+
+        return result.OrderByDescending(e => e.Date).ToList();
+    }
+
+    public async Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId)
+    {
+        var attended = await GetEventsAttendedByUserAsync(userId);
+        var withBadges = attended
+            .Where(e => !string.IsNullOrWhiteSpace(e.BadgeImageUrl))
+            .OrderByDescending(e => e.Date)
+            .ToList();
+        var total = withBadges.Count;
+        var preview = withBadges.Take(3).Select(e => e.BadgeImageUrl.Trim()).ToList();
+        return (preview, total);
+    }
+
     private static EventDto ToDto(EventEntity entity, List<string> attendees)
     {
         var visibility = ResolveVisibility(entity);
@@ -292,6 +323,7 @@ public class AzureEventService : IEventService
             Title = entity.Title,
             Description = entity.Description,
             ImageUrl = entity.ImageUrl,
+            BadgeImageUrl = entity.BadgeImageUrl ?? string.Empty,
             Date = entity.Date,
             EndDate = entity.EndDate,
             Location = entity.Location,
@@ -313,6 +345,7 @@ public class AzureEventService : IEventService
         entity.Title = dto.Title;
         entity.Description = dto.Description;
         entity.ImageUrl = dto.ImageUrl;
+        entity.BadgeImageUrl = dto.BadgeImageUrl ?? string.Empty;
         entity.Date = dto.Date;
         entity.EndDate = dto.EndDate;
         entity.Location = dto.Location;

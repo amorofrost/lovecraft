@@ -1,3 +1,4 @@
+using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Common.DTOs.Users;
@@ -15,6 +16,9 @@ public class UserDto
     public DateTime LastSeen { get; set; }
     public bool IsOnline { get; set; }
     public List<string>? EventsAttended { get; set; }
+
+    /// <summary>Events this user attended (full detail; includes badge images).</summary>
+    public List<EventDto>? AttendedEvents { get; set; }
     public AloeVeraSongDto? FavoriteSong { get; set; }
     public UserPreferencesDto Preferences { get; set; } = new();
     public UserSettingsDto Settings { get; set; } = new();

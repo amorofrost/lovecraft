@@ -127,4 +127,10 @@ public class CachingEventService : IEventService
         }
         return ok;
     }
+
+    public Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId) =>
+        _inner.GetEventsAttendedByUserAsync(userId);
+
+    public Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId) =>
+        _inner.GetUserEventBadgePreviewAsync(userId);
 }

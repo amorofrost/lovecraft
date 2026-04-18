@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Lovecraft.Common.DTOs.Admin;
+using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Auth;
@@ -16,12 +17,18 @@ namespace Lovecraft.Backend.Controllers.V1;
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly IEventService _eventService;
     private readonly ILogger<UsersController> _logger;
     private readonly IImageService _imageService;
 
-    public UsersController(IUserService userService, ILogger<UsersController> logger, IImageService imageService)
+    public UsersController(
+        IUserService userService,
+        IEventService eventService,
+        ILogger<UsersController> logger,
+        IImageService imageService)
     {
         _userService = userService;
+        _eventService = eventService;
         _logger = logger;
         _imageService = imageService;
     }
@@ -57,6 +64,9 @@ public class UsersController : ControllerBase
             {
                 return NotFound(ApiResponse<UserDto>.ErrorResponse("NOT_FOUND", "User not found"));
             }
+
+            var attended = await _eventService.GetEventsAttendedByUserAsync(id);
+            user.AttendedEvents = attended.Select(StripEventForProfile).ToList();
             return Ok(ApiResponse<UserDto>.SuccessResponse(user));
         }
         catch (Exception ex)
@@ -139,4 +149,28 @@ public class UsersController : ControllerBase
             return StatusCode(500, ApiResponse<string>.ErrorResponse("INTERNAL_ERROR", "Failed to upload image"));
         }
     }
+
+    /// <summary>
+    /// Public profile does not need full attendee lists; keeps payloads small.
+    /// </summary>
+    private static EventDto StripEventForProfile(EventDto e) => new()
+    {
+        Id = e.Id,
+        Title = e.Title,
+        Description = e.Description,
+        ImageUrl = e.ImageUrl,
+        BadgeImageUrl = e.BadgeImageUrl,
+        Date = e.Date,
+        EndDate = e.EndDate,
+        Location = e.Location,
+        Capacity = e.Capacity,
+        Attendees = new List<string>(),
+        Category = e.Category,
+        Price = e.Price,
+        Organizer = e.Organizer,
+        IsSecret = e.IsSecret,
+        Visibility = e.Visibility,
+        ForumTopicId = e.ForumTopicId,
+        Archived = e.Archived,
+    };
 }

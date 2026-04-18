@@ -142,6 +142,7 @@ foreach (var ev in MockDataStore.Events)
         Title        = ev.Title,
         Description  = ev.Description,
         ImageUrl     = ev.ImageUrl,
+        BadgeImageUrl = ev.BadgeImageUrl ?? string.Empty,
         Date         = DateTime.SpecifyKind(ev.Date, DateTimeKind.Utc),
         EndDate      = ev.EndDate.HasValue ? DateTime.SpecifyKind(ev.EndDate.Value, DateTimeKind.Utc) : null,
         Location     = ev.Location,
