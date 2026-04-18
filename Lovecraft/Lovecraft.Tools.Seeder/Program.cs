@@ -53,6 +53,7 @@ var allTables = new[]
     TableNames.ForumTopics,
     TableNames.ForumTopicIndex,
     TableNames.ForumReplies,
+    TableNames.AppConfig,
 };
 
 Console.WriteLine("Resetting tables (ensure exists, then wipe entities)...");
@@ -256,6 +257,44 @@ foreach (var reply in MockDataStore.ForumReplies)
     });
 }
 Console.WriteLine($"  [forumreplies]  {MockDataStore.ForumReplies.Count} replies");
+
+// AppConfig (rank_thresholds + permissions)
+Console.WriteLine("Seeding appconfig...");
+var appConfigTable = service.GetTableClient(TableNames.AppConfig);
+
+async Task UpsertAppConfigAsync(string pk, string rk, string value) =>
+    await appConfigTable.UpsertEntityAsync(new AppConfigEntity
+    {
+        PartitionKey = pk,
+        RowKey = rk,
+        Value = value,
+    });
+
+// rank_thresholds
+await UpsertAppConfigAsync("rank_thresholds", "active_replies", "5");
+await UpsertAppConfigAsync("rank_thresholds", "active_likes", "3");
+await UpsertAppConfigAsync("rank_thresholds", "active_events", "1");
+await UpsertAppConfigAsync("rank_thresholds", "friend_replies", "25");
+await UpsertAppConfigAsync("rank_thresholds", "friend_likes", "15");
+await UpsertAppConfigAsync("rank_thresholds", "friend_events", "3");
+await UpsertAppConfigAsync("rank_thresholds", "crew_replies", "100");
+await UpsertAppConfigAsync("rank_thresholds", "crew_likes", "50");
+await UpsertAppConfigAsync("rank_thresholds", "crew_events", "10");
+await UpsertAppConfigAsync("rank_thresholds", "crew_matches", "10");
+
+// permissions
+await UpsertAppConfigAsync("permissions", "create_topic", "activeMember");
+await UpsertAppConfigAsync("permissions", "delete_own_reply", "novice");
+await UpsertAppConfigAsync("permissions", "delete_any_reply", "moderator");
+await UpsertAppConfigAsync("permissions", "delete_any_topic", "moderator");
+await UpsertAppConfigAsync("permissions", "pin_topic", "moderator");
+await UpsertAppConfigAsync("permissions", "ban_user", "moderator");
+await UpsertAppConfigAsync("permissions", "assign_role", "admin");
+await UpsertAppConfigAsync("permissions", "override_rank", "admin");
+await UpsertAppConfigAsync("permissions", "manage_events", "admin");
+await UpsertAppConfigAsync("permissions", "manage_blog", "admin");
+await UpsertAppConfigAsync("permissions", "manage_store", "admin");
+Console.WriteLine("  [appconfig]     10 rank_thresholds + 11 permissions");
 
 // Likes + LikesReceived
 // Scenarios:
