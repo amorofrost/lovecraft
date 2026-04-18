@@ -66,7 +66,8 @@ public static class MockDataStore
             Price = 2500m,
             Organizer = "AloeVera Official",
             IsSecret = false,
-            Visibility = EventVisibility.Public
+            Visibility = EventVisibility.Public,
+            ForumTopicId = "evt-1",
         },
         new()
         {
@@ -81,7 +82,8 @@ public static class MockDataStore
             Category = EventCategory.Meetup,
             Organizer = "Фан-клуб AloeVera",
             IsSecret = false,
-            Visibility = EventVisibility.Public
+            Visibility = EventVisibility.Public,
+            ForumTopicId = "evt-2",
         },
         new()
         {
@@ -98,7 +100,8 @@ public static class MockDataStore
             Price = 5000m,
             Organizer = "AloeVera Official",
             IsSecret = true,
-            Visibility = EventVisibility.SecretTeaser
+            Visibility = EventVisibility.SecretTeaser,
+            ForumTopicId = "evt-3",
         },
         new()
         {
@@ -115,7 +118,43 @@ public static class MockDataStore
             Price = 25000m,
             Organizer = "Veter Veter",
             IsSecret = true,
-            Visibility = EventVisibility.SecretHidden
+            Visibility = EventVisibility.SecretHidden,
+            ForumTopicId = "evt-9",
+        },
+        new()
+        {
+            Id = "10",
+            Title = "Backend Mock: Акустический вечер в Москве",
+            Description = "Камерный концерт и разговор с музыкантами.",
+            ImageUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&h=400&fit=crop",
+            Date = new DateTime(2025, 12, 5, 19, 0, 0),
+            EndDate = new DateTime(2025, 12, 5, 22, 0, 0),
+            Location = "Клуб \"16 тонн\", Москва",
+            Capacity = 120,
+            Attendees = new List<string> { "1", "2", "3" },
+            Category = EventCategory.Concert,
+            Price = 1800m,
+            Organizer = "AloeVera Official",
+            IsSecret = false,
+            Visibility = EventVisibility.Public,
+            ForumTopicId = "evt-10",
+        },
+        new()
+        {
+            Id = "11",
+            Title = "Backend Mock: Закрытая прослушивание в студии",
+            Description = "Предпросмотр нового материала. Только по приглашению.",
+            ImageUrl = "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&h=400&fit=crop",
+            Date = new DateTime(2025, 8, 1, 18, 0, 0),
+            EndDate = new DateTime(2025, 8, 1, 21, 0, 0),
+            Location = "Студия SoundWave, Москва",
+            Capacity = 40,
+            Attendees = new List<string> { "1", "2" },
+            Category = EventCategory.Meetup,
+            Organizer = "AloeVera Official",
+            IsSecret = true,
+            Visibility = EventVisibility.SecretTeaser,
+            ForumTopicId = "evt-11",
         },
     };
 
@@ -296,6 +335,13 @@ public static class MockDataStore
         // offtopic
         new() { Id = "t11", SectionId = "offtopic", Title = "Кто смотрел новый фильм?", Content = "Обсуждаем кино и сериалы", AuthorId = "1", AuthorName = "Алексей", ReplyCount = 12, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 22, 20, 15, 0) },
         new() { Id = "t12", SectionId = "offtopic", Title = "Рекомендации книг", Content = "Что почитать?", AuthorId = "4", AuthorName = "Мария", ReplyCount = 9, CreatedAt = new DateTime(2024, 2, 19), UpdatedAt = new DateTime(2024, 2, 21, 18, 30, 0) },
+        // events (see EventDto.ForumTopicId — same ids)
+        new() { Id = "evt-1", SectionId = "events", Title = "Концерт «Новые горизонты» — планы и встречи", Content = "Кто идёт в театр «Мир»? Делимся билетами и транспортом.", AuthorId = "1", AuthorName = "Анна", IsPinned = true, ReplyCount = 2, CreatedAt = new DateTime(2024, 10, 1, 10, 0, 0), UpdatedAt = new DateTime(2024, 10, 5, 12, 0, 0) },
+        new() { Id = "evt-2", SectionId = "events", Title = "Фан-встреча в Сокольниках", Content = "Неформальная встреча — берём пледы и термосы ☕", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 1, CreatedAt = new DateTime(2024, 10, 15, 9, 0, 0), UpdatedAt = new DateTime(2024, 10, 20, 14, 0, 0) },
+        new() { Id = "evt-3", SectionId = "events", Title = "AloeVera Fest 2024 — билеты и логистика", Content = "Обсуждаем сцены, кемпинг и расписание.", AuthorId = "3", AuthorName = "Елена", IsPinned = true, ReplyCount = 2, CreatedAt = new DateTime(2024, 11, 1, 8, 0, 0), UpdatedAt = new DateTime(2024, 11, 10, 18, 0, 0) },
+        new() { Id = "evt-9", SectionId = "events", Title = "Яхтинг в Австралии — организационный тред", Content = "Только для участников с доступом. Визы, перелёты, экипировка.", AuthorId = "1", AuthorName = "Анна", ReplyCount = 1, CreatedAt = new DateTime(2025, 1, 10, 12, 0, 0), UpdatedAt = new DateTime(2025, 2, 1, 9, 0, 0) },
+        new() { Id = "evt-10", SectionId = "events", Title = "Акустический вечер — вход и саундчек", Content = "Вопросы по рассадке и времени.", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 0, CreatedAt = new DateTime(2025, 6, 1, 15, 0, 0), UpdatedAt = new DateTime(2025, 6, 1, 15, 0, 0) },
+        new() { Id = "evt-11", SectionId = "events", Title = "Студия: закрытая прослушивание", Content = "Правила NDA и список гостей.", AuthorId = "1", AuthorName = "Анна", IsLocked = true, ReplyCount = 0, CreatedAt = new DateTime(2025, 5, 1, 11, 0, 0), UpdatedAt = new DateTime(2025, 5, 1, 11, 0, 0) },
     };
 
     public static List<ForumSectionDto> ForumSections { get; } = new()
@@ -304,6 +350,7 @@ public static class MockDataStore
         new() { Id = "music", Name = "🎵 Музыка и творчество", Description = "Разбор песен, каверы, творчество", TopicCount = 3 },
         new() { Id = "cities", Name = "🏙️ По городам", Description = "Общение по городам и регионам", TopicCount = 3 },
         new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2 },
+        new() { Id = "events", Name = "📅 События", Description = "Обсуждения концертов, фестивалей и встреч", TopicCount = 6 },
         new() { Id = "insiders",  Name = "🔒 Инсайдеры",       Description = "Только для Active Members+",        TopicCount = 0, MinRank = "activeMember" },
     };
 
@@ -346,15 +393,12 @@ public static class MockDataStore
         // t12 — Книги
         new() { Id = "r24", TopicId = "t12", AuthorName = "София", Content = "Советую \"Маленький принц\" — вечная классика.", CreatedAt = new DateTime(2024, 2, 19, 14, 0, 0), Likes = 8 },
         new() { Id = "r25", TopicId = "t12", AuthorId = "3", AuthorName = "Елена", Content = "\"1984\" Оруэлла — очень актуально сейчас.", CreatedAt = new DateTime(2024, 2, 20, 9, 0, 0), Likes = 6 },
-    };
-
-    // Hidden section for event discussions (not shown in forum section list)
-    public static ForumSectionDto EventsForumSection { get; } = new()
-    {
-        Id = "events",
-        Name = "Events",
-        Description = "Event discussion threads",
-        TopicCount = 0
+        new() { Id = "r26", TopicId = "evt-1", AuthorId = "2", AuthorName = "Дмитрий", Content = "Беру партер, могу встретиться у метро Таганская.", CreatedAt = new DateTime(2024, 10, 2, 14, 0, 0), Likes = 5 },
+        new() { Id = "r27", TopicId = "evt-1", AuthorId = "3", AuthorName = "Елена", Content = "Я из Нск — прилечу накануне, напишу в личку.", CreatedAt = new DateTime(2024, 10, 3, 7, 30, 0), Likes = 3 },
+        new() { Id = "r28", TopicId = "evt-2", AuthorId = "4", AuthorName = "Мария", Content = "Принесу термос с чаем и печенье 🍪", CreatedAt = new DateTime(2024, 10, 18, 11, 0, 0), Likes = 4 },
+        new() { Id = "r29", TopicId = "evt-3", AuthorId = "1", AuthorName = "Анна", Content = "VIP билеты разобрали за час — кто успел в обычный сектор?", CreatedAt = new DateTime(2024, 11, 2, 19, 0, 0), Likes = 9 },
+        new() { Id = "r30", TopicId = "evt-3", AuthorId = "2", AuthorName = "Дмитрий", Content = "Еду на оба дня, снимаю жильё рядом с Лужниками.", CreatedAt = new DateTime(2024, 11, 3, 8, 15, 0), Likes = 6 },
+        new() { Id = "r31", TopicId = "evt-9", AuthorId = "2", AuthorName = "Дмитрий", Content = "Подтвердил перелёт, нужен совет по снаряжению для яхты.", CreatedAt = new DateTime(2025, 1, 12, 16, 0, 0), Likes = 2 },
     };
 
     public static List<LikeDto> Likes { get; set; } = new();

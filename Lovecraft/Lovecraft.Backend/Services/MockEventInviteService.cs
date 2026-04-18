@@ -23,6 +23,7 @@ public class MockEventInviteService : IEventInviteService
     {
         _pepper = configuration["JWT_SECRET"]
             ?? configuration["Jwt:Secret"]
+            ?? configuration["JWT_SECRET_KEY"]
             ?? "mock-event-invite-pepper-change-me-32chars!!";
     }
 

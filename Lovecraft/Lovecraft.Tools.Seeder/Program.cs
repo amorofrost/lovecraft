@@ -4,6 +4,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.Enums;
@@ -34,7 +35,7 @@ if (!string.IsNullOrEmpty(tablePrefix))
     Console.WriteLine($"Table prefix: \"{tablePrefix}\"\n");
 var service = new TableServiceClient(connectionString);
 
-// ─── Reset all 15 tables (create if needed, then wipe all entities) ───────────
+// ─── Reset all known tables (create if needed, then wipe all entities) ────────
 
 var allTables = new[]
 {
@@ -150,6 +151,7 @@ foreach (var ev in MockDataStore.Events)
         Organizer    = ev.Organizer,
         IsSecret     = ev.IsSecret,
         Visibility   = ev.Visibility.ToString(),
+        ForumTopicId = ev.ForumTopicId,
     };
     await eventsTable.UpsertEntityAsync(entity);
 
@@ -167,6 +169,42 @@ foreach (var ev in MockDataStore.Events)
 }
 Console.WriteLine($"  [events]        {MockDataStore.Events.Count} events");
 Console.WriteLine($"  [eventattendees]{attendeeCount} registrations");
+
+// Event invites (hashed RowKey — plaintext printed in summary; pepper = JWT_SECRET | JWT_SECRET_KEY)
+var invitePepper = Environment.GetEnvironmentVariable("JWT_SECRET")
+    ?? Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+var seededInvitePairs = new (string Plain, string EventId)[]
+{
+    ("SEED-ALOE-CONCERT-1", "1"),
+    ("SEED-ALOE-MEETUP-2", "2"),
+    ("SEED-ALOE-FEST-3", "3"),
+    ("SEED-ALOE-YACHT-9", "9"),
+    ("SEED-ALOE-ACOUSTIC-10", "10"),
+    ("SEED-ALOE-STUDIO-11", "11"),
+};
+if (string.IsNullOrEmpty(invitePepper))
+{
+    Console.WriteLine("  [eventinvites]  skipped (set JWT_SECRET or JWT_SECRET_KEY in .env for hashed invite rows)");
+}
+else
+{
+    var invitesTableSeed = service.GetTableClient(TableNames.EventInvites);
+    var inviteExpiry = DateTime.UtcNow.AddYears(2);
+    foreach (var (plain, eventId) in seededInvitePairs)
+    {
+        var hash = EventInviteHasher.Hash(plain, invitePepper);
+        await invitesTableSeed.UpsertEntityAsync(new EventInviteEntity
+        {
+            PartitionKey = EventInviteEntity.PartitionValue,
+            RowKey = hash,
+            EventId = eventId,
+            ExpiresAtUtc = inviteExpiry,
+            Revoked = false,
+            CreatedAtUtc = DateTime.UtcNow,
+        });
+    }
+    Console.WriteLine($"  [eventinvites]  {seededInvitePairs.Length} rows (plaintext codes listed after seed summary)");
+}
 
 // Store items
 var storeTable = service.GetTableClient(TableNames.StoreItems);
@@ -361,6 +399,14 @@ Console.WriteLine($"  [refreshtokens / authtokens / matches] empty (ready to use
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 Console.WriteLine("\n✓ Seeding complete.\n");
+if (!string.IsNullOrEmpty(invitePepper))
+{
+    Console.WriteLine("Seeded event invite codes (use at registration or for secret event access):");
+    Console.WriteLine("  Plaintext          EventId  Notes");
+    foreach (var (plain, eventId) in seededInvitePairs)
+        Console.WriteLine($"  {plain,-20} {eventId,-8} mock seed");
+    Console.WriteLine();
+}
 Console.WriteLine("Test credentials:");
 foreach (var (id, email, pw) in seededUsers)
     Console.WriteLine($"  {email,-38} password: {pw}   (id: {id})");

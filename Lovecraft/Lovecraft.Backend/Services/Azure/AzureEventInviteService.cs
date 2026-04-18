@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using System.Security.Cryptography;
@@ -12,15 +13,20 @@ public class AzureEventInviteService : IEventInviteService
     private readonly string _pepper;
     private readonly ILogger<AzureEventInviteService> _logger;
 
+    /// <summary>
+    /// Uses <see cref="JwtSettings.SecretKey"/> as the HMAC pepper so it always matches
+    /// the JWT signing key configured via <c>JWT_SECRET_KEY</c>.
+    /// </summary>
     public AzureEventInviteService(
         TableServiceClient tableServiceClient,
-        IConfiguration configuration,
+        JwtSettings jwtSettings,
         ILogger<AzureEventInviteService> logger)
     {
         _logger = logger;
-        _pepper = configuration["JWT_SECRET"]
-            ?? configuration["Jwt:Secret"]
-            ?? throw new InvalidOperationException("JWT_SECRET or Jwt:Secret required for event invite hashing");
+        if (string.IsNullOrWhiteSpace(jwtSettings.SecretKey))
+            throw new InvalidOperationException(
+                "JwtSettings.SecretKey is empty — set JWT_SECRET_KEY (required for JWT and event invite hashing).");
+        _pepper = jwtSettings.SecretKey;
         _table = tableServiceClient.GetTableClient(TableNames.EventInvites);
         _table.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
