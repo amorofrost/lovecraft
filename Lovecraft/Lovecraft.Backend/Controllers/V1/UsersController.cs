@@ -125,8 +125,8 @@ public class UsersController : ControllerBase
         if (!allowedTypes.Contains(image.ContentType))
             return BadRequest(ApiResponse<string>.ErrorResponse("INVALID_IMAGE_TYPE", "Accepted types: JPEG, PNG, WebP"));
 
-        if (image.Length > 5 * 1024 * 1024)
-            return BadRequest(ApiResponse<string>.ErrorResponse("IMAGE_TOO_LARGE", "Image must be 5 MB or less"));
+        if (image.Length > 20 * 1024 * 1024)
+            return BadRequest(ApiResponse<string>.ErrorResponse("IMAGE_TOO_LARGE", "Image must be 20 MB or less"));
 
         try
         {
