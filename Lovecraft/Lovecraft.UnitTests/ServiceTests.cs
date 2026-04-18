@@ -101,6 +101,12 @@ public class ServiceTests
     [Fact]
     public async Task MockUserService_NoActivity_ReturnsNovice()
     {
+        // MockDataStore now pre-seeds activity counters for mock-mode parity with
+        // the seeder (P7-T3). Remove this user's entry so the test's "no activity"
+        // premise holds regardless of what other parallel tests have done.
+        MockDataStore.UserActivity.Remove("1");
+        MockDataStore.UserStaffRoles.Remove("1");
+
         var svc = new MockUserService(new MockAppConfigService());
         var user = await svc.GetUserByIdAsync("1");
         Assert.NotNull(user);

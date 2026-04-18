@@ -26,8 +26,27 @@ public static class MockDataStore
         new() { Id = "3", Title = "Backend Mock: Новые горизонты", Album = "Второй альбом", Duration = "3:28", PreviewUrl = "", Year = 2020 },
     };
 
-    public static Dictionary<string, MockUserActivity> UserActivity { get; set; } = new();
-    public static Dictionary<string, Lovecraft.Common.Enums.StaffRole> UserStaffRoles { get; set; } = new();
+    public static Dictionary<string, MockUserActivity> UserActivity { get; set; } = new()
+    {
+        // Anna (Aloe Crew)      — id "1"
+        ["1"] = new MockUserActivity { ReplyCount = 120, LikesReceived = 60, EventsAttended = 12, MatchCount = 11 },
+        // Dmitry (Friend of Aloe) — id "2"
+        ["2"] = new MockUserActivity { ReplyCount = 30,  LikesReceived = 18, EventsAttended = 4,  MatchCount = 0 },
+        // Elena (Active Member)   — id "3"
+        ["3"] = new MockUserActivity { ReplyCount = 8,   LikesReceived = 4,  EventsAttended = 2,  MatchCount = 0 },
+        // Maria (Novice)          — id "4"
+        ["4"] = new MockUserActivity { ReplyCount = 1 },
+    };
+
+    public static Dictionary<string, Lovecraft.Common.Enums.StaffRole> UserStaffRoles { get; set; } = new()
+    {
+        // test-user-001 is the local login account seeded by MockAuthService.SeedTestUsers;
+        // making it admin gives devs a convenient admin-capable login in mock mode.
+        ["test-user-001"] = Lovecraft.Common.Enums.StaffRole.Admin,
+        // Mirror seeder: Dmitry is the demo moderator.
+        ["2"] = Lovecraft.Common.Enums.StaffRole.Moderator,
+    };
+
     public static Dictionary<string, Lovecraft.Common.Enums.UserRank> UserRankOverrides { get; set; } = new();
 
     public static List<EventDto> Events { get; } = new()
