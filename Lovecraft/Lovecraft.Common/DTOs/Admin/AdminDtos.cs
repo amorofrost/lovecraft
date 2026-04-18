@@ -9,7 +9,13 @@ public record AppConfigDto(
     Dictionary<string, string> Permissions,
     Dictionary<string, string> Registration);
 
-public record CreateEventInviteRequestDto(DateTime ExpiresAtUtc);
+/// <summary>Body for <c>POST /api/v1/admin/events/{eventId}/invites</c>.</summary>
+public class CreateEventInviteRequestDto
+{
+    public DateTime ExpiresAtUtc { get; set; }
+    /// <summary>If set, this plaintext is stored (normalized); otherwise a code is generated.</summary>
+    public string? PlainCode { get; set; }
+}
 
 public record CreateEventInviteResponseDto(string PlainCode, DateTime ExpiresAtUtc);
 

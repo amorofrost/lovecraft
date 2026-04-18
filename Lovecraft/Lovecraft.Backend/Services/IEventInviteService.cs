@@ -13,7 +13,11 @@ public interface IEventInviteService
     /// Creates a new invite for the event and revokes previous non-revoked invites for that event.
     /// Returns the plaintext code (stored as-is in the table).
     /// </summary>
-    Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateOrRotateInviteAsync(string eventId, DateTime expiresAtUtc, CancellationToken cancellationToken = default);
+    Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateOrRotateInviteAsync(
+        string eventId,
+        DateTime expiresAtUtc,
+        string? plainCodeOverride = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Non-event campaign invite (negative EventId). Does not revoke other codes.</summary>
     Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateCampaignInviteAsync(

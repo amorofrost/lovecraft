@@ -1,4 +1,3 @@
-using System.Globalization;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Storage;
@@ -48,21 +47,32 @@ public class AzureEventInviteService : IEventInviteService
     public async Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateOrRotateInviteAsync(
         string eventId,
         DateTime expiresAtUtc,
+        string? plainCodeOverride = null,
         CancellationToken cancellationToken = default)
     {
         if (EventInviteHelpers.IsCampaignEventId(eventId))
             throw new ArgumentException("Use CreateCampaignInviteAsync for campaign (negative) ids.", nameof(eventId));
 
-        var plain = await GenerateUniquePlainCodeAsync(cancellationToken).ConfigureAwait(false);
-        var key = EventInviteNormalizer.Normalize(plain);
-
         await RevokeExistingForEventAsync(eventId, cancellationToken).ConfigureAwait(false);
 
+        if (!string.IsNullOrWhiteSpace(plainCodeOverride))
+        {
+            var plain = plainCodeOverride.Trim();
+            var key = EventInviteNormalizer.Normalize(plain);
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException("PlainCode cannot be empty.", nameof(plainCodeOverride));
+
+            await UpsertEventInviteRowAsync(eventId, key, expiresAtUtc, cancellationToken).ConfigureAwait(false);
+            return (plain, expiresAtUtc);
+        }
+
+        var autoPlain = await GenerateUniquePlainCodeAsync(cancellationToken).ConfigureAwait(false);
+        var autoKey = EventInviteNormalizer.Normalize(autoPlain);
         var row = new EventInviteEntity
         {
             PartitionKey = EventInviteEntity.PartitionValue,
-            RowKey = key,
-            PlainCode = key,
+            RowKey = autoKey,
+            PlainCode = autoKey,
             EventId = eventId,
             CampaignLabel = string.Empty,
             ExpiresAtUtc = expiresAtUtc,
@@ -73,7 +83,57 @@ public class AzureEventInviteService : IEventInviteService
         };
 
         await _table.AddEntityAsync(row, cancellationToken).ConfigureAwait(false);
-        return (plain, expiresAtUtc);
+        return (autoPlain, expiresAtUtc);
+    }
+
+    /// <summary>After revoke for this event: insert new row or reactivate an existing row for <paramref name="key"/>.</summary>
+    private async Task UpsertEventInviteRowAsync(
+        string eventId,
+        string key,
+        DateTime expiresAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        try
+        {
+            var existing = await _table.GetEntityAsync<EventInviteEntity>(
+                EventInviteEntity.PartitionValue,
+                key,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            var e = existing.Value;
+            if (!e.Revoked && !string.Equals(e.EventId, eventId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Invite code '{key}' is already in use.");
+            }
+
+            e.EventId = eventId;
+            e.PlainCode = key;
+            e.CampaignLabel = string.Empty;
+            e.ExpiresAtUtc = expiresAtUtc;
+            e.Revoked = false;
+            e.CreatedAtUtc = now;
+            e.RegistrationCount = 0;
+            e.EventAttendanceClaimCount = 0;
+            await _table.UpdateEntityAsync(e, e.ETag, TableUpdateMode.Replace, cancellationToken).ConfigureAwait(false);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            var row = new EventInviteEntity
+            {
+                PartitionKey = EventInviteEntity.PartitionValue,
+                RowKey = key,
+                PlainCode = key,
+                EventId = eventId,
+                CampaignLabel = string.Empty,
+                ExpiresAtUtc = expiresAtUtc,
+                Revoked = false,
+                CreatedAtUtc = now,
+                RegistrationCount = 0,
+                EventAttendanceClaimCount = 0,
+            };
+            await _table.AddEntityAsync(row, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateCampaignInviteAsync(

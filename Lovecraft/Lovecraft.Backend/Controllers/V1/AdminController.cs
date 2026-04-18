@@ -196,7 +196,7 @@ public class AdminController : ControllerBase
         string eventId,
         [FromBody] CreateEventInviteRequestDto request)
     {
-        var (plain, exp) = await _eventInvites.CreateOrRotateInviteAsync(eventId, request.ExpiresAtUtc);
+        var (plain, exp) = await _eventInvites.CreateOrRotateInviteAsync(eventId, request.ExpiresAtUtc, request.PlainCode);
         return Ok(ApiResponse<CreateEventInviteResponseDto>.SuccessResponse(
             new CreateEventInviteResponseDto(plain, exp)));
     }

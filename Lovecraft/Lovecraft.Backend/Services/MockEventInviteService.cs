@@ -11,12 +11,12 @@ public class MockEventInviteService : IEventInviteService
 
     private sealed class MockRow
     {
-        public required string PlainDisplay { get; init; }
+        public required string PlainDisplay { get; set; }
         public required string EventId { get; set; }
         public string CampaignLabel { get; set; } = string.Empty;
         public required DateTime ExpiresAtUtc { get; set; }
         public bool Revoked { get; set; }
-        public required DateTime CreatedAtUtc { get; init; }
+        public required DateTime CreatedAtUtc { get; set; }
         public int RegistrationCount { get; set; }
         public int EventAttendanceClaimCount { get; set; }
     }
@@ -37,6 +37,7 @@ public class MockEventInviteService : IEventInviteService
     public Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateOrRotateInviteAsync(
         string eventId,
         DateTime expiresAtUtc,
+        string? plainCodeOverride = null,
         CancellationToken cancellationToken = default)
     {
         if (EventInviteHelpers.IsCampaignEventId(eventId))
@@ -50,11 +51,38 @@ public class MockEventInviteService : IEventInviteService
                     kv.Value.Revoked = true;
             }
 
-            var plain = GenerateUniquePlainCodeLocked();
-            var key = EventInviteNormalizer.Normalize(plain);
-            ByNormalizedKey[key] = new MockRow
+            if (!string.IsNullOrWhiteSpace(plainCodeOverride))
             {
-                PlainDisplay = plain,
+                var plain = plainCodeOverride.Trim();
+                var key = EventInviteNormalizer.Normalize(plain);
+                if (string.IsNullOrEmpty(key))
+                    throw new ArgumentException("PlainCode cannot be empty.", nameof(plainCodeOverride));
+
+                if (ByNormalizedKey.TryGetValue(key, out var existing))
+                {
+                    if (!existing.Revoked && !string.Equals(existing.EventId, eventId, StringComparison.Ordinal))
+                        throw new InvalidOperationException($"Invite code '{key}' is already in use.");
+                }
+
+                ByNormalizedKey[key] = new MockRow
+                {
+                    PlainDisplay = plain,
+                    EventId = eventId,
+                    ExpiresAtUtc = expiresAtUtc,
+                    Revoked = false,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    RegistrationCount = 0,
+                    EventAttendanceClaimCount = 0,
+                };
+
+                return Task.FromResult((plain, expiresAtUtc));
+            }
+
+            var autoPlain = GenerateUniquePlainCodeLocked();
+            var autoKey = EventInviteNormalizer.Normalize(autoPlain);
+            ByNormalizedKey[autoKey] = new MockRow
+            {
+                PlainDisplay = autoPlain,
                 EventId = eventId,
                 ExpiresAtUtc = expiresAtUtc,
                 Revoked = false,
@@ -62,7 +90,7 @@ public class MockEventInviteService : IEventInviteService
                 RegistrationCount = 0,
                 EventAttendanceClaimCount = 0,
             };
-            return Task.FromResult((plain, expiresAtUtc));
+            return Task.FromResult((autoPlain, expiresAtUtc));
         }
     }
 

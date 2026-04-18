@@ -66,6 +66,20 @@ public class MockEventInviteServiceTests
     }
 
     [Fact]
+    public async Task CreateOrRotate_WithCustomPlain_UsesCode()
+    {
+        var svc = Svc();
+        var (plain, _) = await svc.CreateOrRotateInviteAsync(
+            "evt-custom",
+            DateTime.UtcNow.AddDays(7),
+            plainCodeOverride: "MY-EVENT-CODE-1");
+        Assert.Equal("MY-EVENT-CODE-1", plain);
+        var r = await svc.ValidatePlainCodeAsync("my-event-code-1");
+        Assert.NotNull(r);
+        Assert.Equal("evt-custom", r!.EventId);
+    }
+
+    [Fact]
     public async Task IncrementRegistration_Increments()
     {
         var svc = Svc();

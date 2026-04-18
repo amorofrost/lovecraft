@@ -10,7 +10,7 @@
 ## Event invites
 
 - Tied to a real event id (e.g. seeded ids `1`, `2`, or generated `evt-…` from the admin API).
-- **Create / rotate:** `POST /api/v1/admin/events/{eventId}/invites` — generates a new readable code and **revokes** previous non-revoked codes for that event.
+- **Create / rotate:** `POST /api/v1/admin/events/{eventId}/invites` with `expiresAtUtc` and optional `plainCode`. If `plainCode` is omitted, a readable code is generated. Previous non-revoked codes for that event are **revoked** first.
 - **Validation:** `GET /api/v1/events/{id}?code=…` uses the code to unlock secret events for viewing.
 - **Registration:** If `inviteCode` is supplied at signup and matches an invite, `RegistrationSourceEventId` is set and the user is registered for the event **unless** the invite is a campaign-only code (see below).
 - **Counters:**
