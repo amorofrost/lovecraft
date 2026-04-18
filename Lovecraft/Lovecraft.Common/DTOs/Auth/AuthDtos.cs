@@ -18,7 +18,7 @@ public class RegisterRequestDto
     public string? InviteCode { get; set; }
 }
 
-public record RegistrationConfigDto(bool InviteCodeRequired);
+public record RegistrationConfigDto(bool RequireEventInvite);
 
 public class AuthResponseDto
 {
