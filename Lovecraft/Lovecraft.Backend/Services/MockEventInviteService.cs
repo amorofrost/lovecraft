@@ -78,4 +78,16 @@ public class MockEventInviteService : IEventInviteService
 
         return Task.FromResult((plain, expiresAtUtc));
     }
+
+    public Task DeleteAllInvitesForEventAsync(string eventId, CancellationToken cancellationToken = default)
+    {
+        lock (Gate)
+        {
+            var keys = ByHash.Where(kv => kv.Value.EventId == eventId).Select(kv => kv.Key).ToList();
+            foreach (var k in keys)
+                ByHash.Remove(k);
+            HashesByEvent.Remove(eventId);
+        }
+        return Task.CompletedTask;
+    }
 }

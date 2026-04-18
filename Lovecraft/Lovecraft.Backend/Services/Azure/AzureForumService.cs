@@ -100,7 +100,9 @@ public class AzureForumService : IForumService
 
     public async Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated)
     {
-        var ev = await _eventService.GetEventByIdAsync(eventId);
+        var ev = isElevated
+            ? await _eventService.GetEventByIdAdminAsync(eventId)
+            : await _eventService.GetEventByIdAsync(eventId);
         if (ev == null)
             return null;
         if (ev.Visibility == EventVisibility.SecretHidden && !isElevated && !ev.Attendees.Contains(userId))
@@ -360,6 +362,156 @@ public class AzureForumService : IForumService
         };
     }
 
+    public async Task<ForumTopicDto> CreateEventDiscussionTopicAsync(
+        string eventId,
+        string title,
+        string content,
+        string authorId,
+        string authorName,
+        bool? noviceVisible = null,
+        bool? noviceCanReply = null)
+    {
+        var ev = await _eventService.GetEventByIdAdminAsync(eventId).ConfigureAwait(false);
+        if (ev is null)
+            throw new KeyNotFoundException($"Event '{eventId}' not found.");
+
+        var topicId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow;
+        const string sectionId = EventSectionId;
+        var authorAvatar = await GetAuthorAvatarAsync(authorId).ConfigureAwait(false);
+
+        var topicEntity = new ForumTopicEntity
+        {
+            PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
+            RowKey = topicId,
+            SectionId = sectionId,
+            EventId = eventId,
+            Title = title,
+            Content = content,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            AuthorAvatar = authorAvatar ?? string.Empty,
+            IsPinned = false,
+            IsLocked = false,
+            ReplyCount = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+            NoviceVisible = noviceVisible ?? true,
+            NoviceCanReply = noviceCanReply ?? true
+        };
+
+        await _topicsTable.AddEntityAsync(topicEntity);
+
+        var indexEntity = new ForumTopicIndexEntity
+        {
+            PartitionKey = "TOPICINDEX",
+            RowKey = topicId,
+            SectionId = sectionId
+        };
+        await _topicIndexTable.AddEntityAsync(indexEntity);
+
+        return ToTopicDto(topicEntity);
+    }
+
+    public async Task<bool> DeleteTopicAsync(string topicId)
+    {
+        ForumTopicIndexEntity indexEntity;
+        try
+        {
+            var indexResponse = await _topicIndexTable.GetEntityAsync<ForumTopicIndexEntity>("TOPICINDEX", topicId);
+            indexEntity = indexResponse.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
+
+        var pk = ForumTopicEntity.GetPartitionKey(indexEntity.SectionId);
+        ForumTopicEntity topicEntity;
+        try
+        {
+            var topicResponse = await _topicsTable.GetEntityAsync<ForumTopicEntity>(pk, topicId);
+            topicEntity = topicResponse.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
+
+        var replyPk = ForumReplyEntity.GetPartitionKey(topicId);
+        var escapedReplyPk = replyPk.Replace("'", "''");
+        await foreach (var reply in _repliesTable.QueryAsync<ForumReplyEntity>(
+                     filter: $"PartitionKey eq '{escapedReplyPk}'"))
+        {
+            try
+            {
+                await _repliesTable.DeleteEntityAsync(reply.PartitionKey, reply.RowKey);
+            }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete reply {Row} for topic {TopicId}", reply.RowKey, topicId);
+            }
+        }
+
+        try
+        {
+            await _topicsTable.DeleteEntityAsync(pk, topicId);
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete topic row {TopicId}", topicId);
+            return false;
+        }
+
+        try
+        {
+            await _topicIndexTable.DeleteEntityAsync("TOPICINDEX", topicId);
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete topic index {TopicId}", topicId);
+        }
+
+        if (!string.Equals(indexEntity.SectionId, EventSectionId, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var secResp = await _sectionsTable.GetEntityAsync<ForumSectionEntity>("FORUM", indexEntity.SectionId);
+                var sec = secResp.Value;
+                if (sec.TopicCount > 0)
+                {
+                    sec.TopicCount--;
+                    await _sectionsTable.UpdateEntityAsync(sec, sec.ETag, TableUpdateMode.Merge);
+                }
+            }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogWarning(ex, "Failed to decrement topic count for section {SectionId}", indexEntity.SectionId);
+            }
+        }
+
+        return true;
+    }
+
+    public async Task<IReadOnlyList<string>> DeleteTopicsForEventAsync(string eventId)
+    {
+        var pk = ForumTopicEntity.GetPartitionKey(EventSectionId);
+        var escapedPk = pk.Replace("'", "''");
+        var ids = new List<string>();
+        await foreach (var entity in _topicsTable.QueryAsync<ForumTopicEntity>(
+                     filter: $"PartitionKey eq '{escapedPk}'"))
+        {
+            if (!TopicEntityBelongsToEvent(entity, eventId))
+                continue;
+            ids.Add(entity.RowKey);
+        }
+
+        foreach (var id in ids)
+            await DeleteTopicAsync(id).ConfigureAwait(false);
+
+        return ids;
+    }
+
     public async Task<ForumTopicDto> CreateTopicAsync(
         string sectionId, string authorId, string authorName, string title, string content,
         bool? noviceVisible = null, bool? noviceCanReply = null)
@@ -461,6 +613,10 @@ public class AzureForumService : IForumService
             return null;
         }
 
+        if (!string.IsNullOrWhiteSpace(update.Title))
+            topicEntity.Title = update.Title!;
+        if (!string.IsNullOrWhiteSpace(update.Content))
+            topicEntity.Content = update.Content!;
         if (update.NoviceVisible.HasValue) topicEntity.NoviceVisible = update.NoviceVisible.Value;
         if (update.NoviceCanReply.HasValue) topicEntity.NoviceCanReply = update.NoviceCanReply.Value;
         if (update.IsPinned.HasValue) topicEntity.IsPinned = update.IsPinned.Value;

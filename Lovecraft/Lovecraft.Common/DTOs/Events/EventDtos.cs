@@ -23,6 +23,9 @@ public class EventDto
     public EventVisibility Visibility { get; set; } = EventVisibility.Public;
 
     public string? ForumTopicId { get; set; }
+
+    /// <summary>When true, the event is hidden from public listings and detail APIs (admin can still manage it).</summary>
+    public bool Archived { get; set; }
 }
 
 public class EventRegistrationRequestDto

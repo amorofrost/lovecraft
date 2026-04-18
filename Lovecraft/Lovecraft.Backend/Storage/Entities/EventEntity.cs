@@ -27,4 +27,6 @@ public class EventEntity : ITableEntity
     public string Visibility { get; set; } = string.Empty;
 
     public string? ForumTopicId { get; set; }
+
+    public bool Archived { get; set; }
 }

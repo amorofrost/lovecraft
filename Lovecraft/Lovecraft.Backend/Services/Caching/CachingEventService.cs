@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Events;
 
 namespace Lovecraft.Backend.Services.Caching;
@@ -70,4 +71,60 @@ public class CachingEventService : IEventService
 
     public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
         => _inner.SetForumTopicIdAsync(eventId, forumTopicId);
+
+    public Task<List<EventDto>> GetEventsAdminAsync() => _inner.GetEventsAdminAsync();
+
+    public Task<EventDto?> GetEventByIdAdminAsync(string eventId) => _inner.GetEventByIdAdminAsync(eventId);
+
+    public async Task<EventDto> CreateEventAsync(AdminEventWriteDto dto)
+    {
+        var result = await _inner.CreateEventAsync(dto);
+        _cache.Remove(AllKey);
+        _cache.Remove(EventKey(result.Id));
+        return result;
+    }
+
+    public async Task<EventDto?> UpdateEventAsync(string eventId, AdminEventWriteDto dto)
+    {
+        var result = await _inner.UpdateEventAsync(eventId, dto);
+        _cache.Remove(AllKey);
+        _cache.Remove(EventKey(eventId));
+        return result;
+    }
+
+    public async Task<bool> DeleteEventAsync(string eventId)
+    {
+        var ok = await _inner.DeleteEventAsync(eventId);
+        if (ok)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(EventKey(eventId));
+        }
+        return ok;
+    }
+
+    public async Task<bool> SetEventArchivedAsync(string eventId, bool archived)
+    {
+        var ok = await _inner.SetEventArchivedAsync(eventId, archived);
+        if (ok)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(EventKey(eventId));
+        }
+        return ok;
+    }
+
+    public async Task<List<EventAttendeeAdminDto>> GetEventAttendeesAsync(string eventId)
+        => await _inner.GetEventAttendeesAsync(eventId);
+
+    public async Task<bool> RemoveEventAttendeeAsync(string eventId, string userId)
+    {
+        var ok = await _inner.RemoveEventAttendeeAsync(eventId, userId);
+        if (ok)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(EventKey(eventId));
+        }
+        return ok;
+    }
 }

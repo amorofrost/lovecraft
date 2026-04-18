@@ -125,4 +125,45 @@ public class CachingForumService : IForumService
 
         return result;
     }
+
+    public async Task<ForumTopicDto> CreateEventDiscussionTopicAsync(
+        string eventId,
+        string title,
+        string content,
+        string authorId,
+        string authorName,
+        bool? noviceVisible = null,
+        bool? noviceCanReply = null)
+    {
+        var result = await _inner.CreateEventDiscussionTopicAsync(
+            eventId, title, content, authorId, authorName, noviceVisible, noviceCanReply);
+        _cache.Remove(TopicKey(result.Id));
+        return result;
+    }
+
+    public async Task<bool> DeleteTopicAsync(string topicId)
+    {
+        var before = await _inner.GetTopicByIdAsync(topicId);
+        var ok = await _inner.DeleteTopicAsync(topicId);
+        if (ok)
+        {
+            _cache.Remove(TopicKey(topicId));
+            _cache.Remove(RepliesKey(topicId));
+            if (before is not null)
+                _cache.Remove(TopicsKey(before.SectionId));
+            _cache.Remove(SectionsKey);
+        }
+        return ok;
+    }
+
+    public async Task<IReadOnlyList<string>> DeleteTopicsForEventAsync(string eventId)
+    {
+        var ids = await _inner.DeleteTopicsForEventAsync(eventId);
+        foreach (var id in ids)
+        {
+            _cache.Remove(TopicKey(id));
+            _cache.Remove(RepliesKey(id));
+        }
+        return ids;
+    }
 }

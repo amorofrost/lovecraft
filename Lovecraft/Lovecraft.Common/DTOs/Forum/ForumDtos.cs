@@ -81,6 +81,8 @@ public class CreateReplyRequestDto
 
 public class UpdateTopicRequestDto
 {
+    public string? Title { get; set; }
+    public string? Content { get; set; }
     public bool? NoviceVisible { get; set; }
     public bool? NoviceCanReply { get; set; }
     public bool? IsPinned { get; set; }

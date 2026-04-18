@@ -105,4 +105,29 @@ public class AzureEventInviteService : IEventInviteService
             }
         }
     }
+
+    public async Task DeleteAllInvitesForEventAsync(string eventId, CancellationToken cancellationToken = default)
+    {
+        var escaped = eventId.Replace("'", "''");
+        var toDelete = new List<EventInviteEntity>();
+        await foreach (var e in _table.QueryAsync<EventInviteEntity>(
+            filter: $"PartitionKey eq '{EventInviteEntity.PartitionValue}' and EventId eq '{escaped}'",
+            cancellationToken: cancellationToken))
+        {
+            toDelete.Add(e);
+        }
+
+        foreach (var e in toDelete)
+        {
+            try
+            {
+                await _table.DeleteEntityAsync(e.PartitionKey, e.RowKey, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete invite row {RowKey} for event {EventId}", e.RowKey, eventId);
+            }
+        }
+    }
 }

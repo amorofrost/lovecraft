@@ -54,7 +54,9 @@ public class MockForumService : IForumService
 
     public async Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated)
     {
-        var ev = await _eventService.GetEventByIdAsync(eventId);
+        var ev = isElevated
+            ? await _eventService.GetEventByIdAdminAsync(eventId)
+            : await _eventService.GetEventByIdAsync(eventId);
         if (ev == null)
             return null;
         if (ev.Visibility == EventVisibility.SecretHidden && !isElevated && !ev.Attendees.Contains(userId))
@@ -203,6 +205,10 @@ public class MockForumService : IForumService
         var topic = MockDataStore.ForumTopics.FirstOrDefault(t => t.Id == topicId);
         if (topic is null) return Task.FromResult<ForumTopicDto?>(null);
 
+        if (!string.IsNullOrWhiteSpace(update.Title))
+            topic.Title = update.Title!;
+        if (!string.IsNullOrWhiteSpace(update.Content))
+            topic.Content = update.Content!;
         if (update.NoviceVisible.HasValue) topic.NoviceVisible = update.NoviceVisible.Value;
         if (update.NoviceCanReply.HasValue) topic.NoviceCanReply = update.NoviceCanReply.Value;
         if (update.IsPinned.HasValue) topic.IsPinned = update.IsPinned.Value;
@@ -210,6 +216,66 @@ public class MockForumService : IForumService
         topic.UpdatedAt = DateTime.UtcNow;
 
         return Task.FromResult<ForumTopicDto?>(topic);
+    }
+
+    public async Task<ForumTopicDto> CreateEventDiscussionTopicAsync(
+        string eventId,
+        string title,
+        string content,
+        string authorId,
+        string authorName,
+        bool? noviceVisible = null,
+        bool? noviceCanReply = null)
+    {
+        var ev = await _eventService.GetEventByIdAdminAsync(eventId).ConfigureAwait(false);
+        if (ev is null)
+            throw new KeyNotFoundException($"Event '{eventId}' not found.");
+
+        var topic = new ForumTopicDto
+        {
+            Id = Guid.NewGuid().ToString(),
+            SectionId = EventSectionId,
+            EventId = eventId,
+            Title = title,
+            Content = content,
+            AuthorId = authorId,
+            AuthorName = authorName,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            ReplyCount = 0,
+            IsPinned = false,
+            NoviceVisible = noviceVisible ?? true,
+            NoviceCanReply = noviceCanReply ?? true
+        };
+        MockDataStore.ForumTopics.Add(topic);
+        return topic;
+    }
+
+    public Task<bool> DeleteTopicAsync(string topicId)
+    {
+        var topic = MockDataStore.ForumTopics.FirstOrDefault(t => t.Id == topicId);
+        if (topic is null)
+            return Task.FromResult(false);
+        MockDataStore.ForumTopics.Remove(topic);
+        MockDataStore.ForumReplies.RemoveAll(r => r.TopicId == topicId);
+        if (!string.Equals(topic.SectionId, EventSectionId, StringComparison.OrdinalIgnoreCase))
+        {
+            var section = MockDataStore.ForumSections.FirstOrDefault(s => s.Id == topic.SectionId);
+            if (section is not null && section.TopicCount > 0)
+                section.TopicCount--;
+        }
+        return Task.FromResult(true);
+    }
+
+    public async Task<IReadOnlyList<string>> DeleteTopicsForEventAsync(string eventId)
+    {
+        var ids = MockDataStore.ForumTopics
+            .Where(t => t.SectionId == EventSectionId && string.Equals(ResolveEventId(t), eventId, StringComparison.Ordinal))
+            .Select(t => t.Id)
+            .ToList();
+        foreach (var id in ids)
+            await DeleteTopicAsync(id).ConfigureAwait(false);
+        return ids;
     }
 
     public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)

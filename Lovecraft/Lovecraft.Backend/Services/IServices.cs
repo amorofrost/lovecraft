@@ -1,3 +1,4 @@
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Matching;
@@ -31,6 +32,14 @@ public interface IEventService
 {
     Task<List<EventDto>> GetEventsAsync();
     Task<EventDto?> GetEventByIdAsync(string eventId);
+    Task<List<EventDto>> GetEventsAdminAsync();
+    Task<EventDto?> GetEventByIdAdminAsync(string eventId);
+    Task<EventDto> CreateEventAsync(AdminEventWriteDto dto);
+    Task<EventDto?> UpdateEventAsync(string eventId, AdminEventWriteDto dto);
+    Task<bool> DeleteEventAsync(string eventId);
+    Task<bool> SetEventArchivedAsync(string eventId, bool archived);
+    Task<List<EventAttendeeAdminDto>> GetEventAttendeesAsync(string eventId);
+    Task<bool> RemoveEventAttendeeAsync(string eventId, string userId);
     Task<bool> RegisterForEventAsync(string userId, string eventId);
     Task<bool> UnregisterFromEventAsync(string userId, string eventId);
     Task SetForumTopicIdAsync(string eventId, string forumTopicId);
@@ -75,6 +84,16 @@ public interface IForumService
         bool? noviceVisible = null,
         bool? noviceCanReply = null);
     Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update);
+    Task<ForumTopicDto> CreateEventDiscussionTopicAsync(
+        string eventId,
+        string title,
+        string content,
+        string authorId,
+        string authorName,
+        bool? noviceVisible = null,
+        bool? noviceCanReply = null);
+    Task<bool> DeleteTopicAsync(string topicId);
+    Task<IReadOnlyList<string>> DeleteTopicsForEventAsync(string eventId);
 }
 
 public interface IChatService
