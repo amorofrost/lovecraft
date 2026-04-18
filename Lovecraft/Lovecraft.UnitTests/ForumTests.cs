@@ -16,8 +16,11 @@ namespace Lovecraft.UnitTests;
 [Collection("ForumTests")]
 public class ForumTests : IDisposable
 {
-    private static MockForumService CreateService() =>
-        new MockForumService(new MockUserService(new MockAppConfigService()));
+    private static MockForumService CreateService()
+    {
+        var users = new MockUserService(new MockAppConfigService());
+        return new MockForumService(users, new MockEventService(users));
+    }
 
     private const string SectionId = "general";
 
@@ -226,7 +229,7 @@ public class ForumTests : IDisposable
     {
         MockDataStore.UserActivity.Clear();
         var userSvc = new MockUserService(new MockAppConfigService());
-        var service = new MockForumService(userSvc);
+        var service = new MockForumService(userSvc, new MockEventService(userSvc));
 
         await service.CreateReplyAsync("t1", "1", "Тест", "Some reply content that's fine.", null);
 

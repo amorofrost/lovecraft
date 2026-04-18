@@ -29,6 +29,20 @@ public class ForumTopicDto
     public string MinRank { get; set; } = "novice";
     public bool NoviceVisible { get; set; } = true;
     public bool NoviceCanReply { get; set; } = true;
+
+    /// <summary>When <see cref="SectionId"/> is <c>events</c>, the owning event id.</summary>
+    public string? EventId { get; set; }
+}
+
+/// <summary>One row per event for the Talks → event discussions tab (not a static forum section).</summary>
+public class EventDiscussionSectionDto
+{
+    public string EventId { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public DateTime Date { get; set; }
+    public EventVisibility Visibility { get; set; }
+    public bool IsAttending { get; set; }
+    public int TopicCount { get; set; }
 }
 
 public class ForumReplyDto

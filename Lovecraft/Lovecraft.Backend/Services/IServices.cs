@@ -59,6 +59,8 @@ public interface IBlogService
 public interface IForumService
 {
     Task<List<ForumSectionDto>> GetSectionsAsync();
+    Task<List<EventDiscussionSectionDto>> GetEventDiscussionSectionsAsync(string userId, bool isElevated);
+    Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated);
     Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId);
     Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
     Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);

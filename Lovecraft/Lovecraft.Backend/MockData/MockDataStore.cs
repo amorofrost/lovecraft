@@ -335,13 +335,13 @@ public static class MockDataStore
         // offtopic
         new() { Id = "t11", SectionId = "offtopic", Title = "Кто смотрел новый фильм?", Content = "Обсуждаем кино и сериалы", AuthorId = "1", AuthorName = "Алексей", ReplyCount = 12, CreatedAt = new DateTime(2024, 2, 20), UpdatedAt = new DateTime(2024, 2, 22, 20, 15, 0) },
         new() { Id = "t12", SectionId = "offtopic", Title = "Рекомендации книг", Content = "Что почитать?", AuthorId = "4", AuthorName = "Мария", ReplyCount = 9, CreatedAt = new DateTime(2024, 2, 19), UpdatedAt = new DateTime(2024, 2, 21, 18, 30, 0) },
-        // events (see EventDto.ForumTopicId — same ids)
-        new() { Id = "evt-1", SectionId = "events", Title = "Концерт «Новые горизонты» — планы и встречи", Content = "Кто идёт в театр «Мир»? Делимся билетами и транспортом.", AuthorId = "1", AuthorName = "Анна", IsPinned = true, ReplyCount = 2, CreatedAt = new DateTime(2024, 10, 1, 10, 0, 0), UpdatedAt = new DateTime(2024, 10, 5, 12, 0, 0) },
-        new() { Id = "evt-2", SectionId = "events", Title = "Фан-встреча в Сокольниках", Content = "Неформальная встреча — берём пледы и термосы ☕", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 1, CreatedAt = new DateTime(2024, 10, 15, 9, 0, 0), UpdatedAt = new DateTime(2024, 10, 20, 14, 0, 0) },
-        new() { Id = "evt-3", SectionId = "events", Title = "AloeVera Fest 2024 — билеты и логистика", Content = "Обсуждаем сцены, кемпинг и расписание.", AuthorId = "3", AuthorName = "Елена", IsPinned = true, ReplyCount = 2, CreatedAt = new DateTime(2024, 11, 1, 8, 0, 0), UpdatedAt = new DateTime(2024, 11, 10, 18, 0, 0) },
-        new() { Id = "evt-9", SectionId = "events", Title = "Яхтинг в Австралии — организационный тред", Content = "Только для участников с доступом. Визы, перелёты, экипировка.", AuthorId = "1", AuthorName = "Анна", ReplyCount = 1, CreatedAt = new DateTime(2025, 1, 10, 12, 0, 0), UpdatedAt = new DateTime(2025, 2, 1, 9, 0, 0) },
-        new() { Id = "evt-10", SectionId = "events", Title = "Акустический вечер — вход и саундчек", Content = "Вопросы по рассадке и времени.", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 0, CreatedAt = new DateTime(2025, 6, 1, 15, 0, 0), UpdatedAt = new DateTime(2025, 6, 1, 15, 0, 0) },
-        new() { Id = "evt-11", SectionId = "events", Title = "Студия: закрытая прослушивание", Content = "Правила NDA и список гостей.", AuthorId = "1", AuthorName = "Анна", IsLocked = true, ReplyCount = 0, CreatedAt = new DateTime(2025, 5, 1, 11, 0, 0), UpdatedAt = new DateTime(2025, 5, 1, 11, 0, 0) },
+        // events partition (Talks → event discussions tab; not listed as a static forum section)
+        new() { Id = "evt-1", SectionId = "events", EventId = "1", Title = "Концерт «Новые горизонты» — планы и встречи", Content = "Кто идёт в театр «Мир»? Делимся билетами и транспортом.", AuthorId = "1", AuthorName = "Анна", IsPinned = true, ReplyCount = 2, CreatedAt = new DateTime(2024, 10, 1, 10, 0, 0), UpdatedAt = new DateTime(2024, 10, 5, 12, 0, 0) },
+        new() { Id = "evt-2", SectionId = "events", EventId = "2", Title = "Фан-встреча в Сокольниках", Content = "Неформальная встреча — берём пледы и термосы ☕", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 1, CreatedAt = new DateTime(2024, 10, 15, 9, 0, 0), UpdatedAt = new DateTime(2024, 10, 20, 14, 0, 0) },
+        new() { Id = "evt-3", SectionId = "events", EventId = "3", Title = "AloeVera Fest 2024 — билеты и логистика", Content = "Обсуждаем сцены, кемпинг и расписание.", AuthorId = "3", AuthorName = "Елена", IsPinned = true, ReplyCount = 2, CreatedAt = new DateTime(2024, 11, 1, 8, 0, 0), UpdatedAt = new DateTime(2024, 11, 10, 18, 0, 0) },
+        new() { Id = "evt-9", SectionId = "events", EventId = "9", Title = "Яхтинг в Австралии — организационный тред", Content = "Только для участников с доступом. Визы, перелёты, экипировка.", AuthorId = "1", AuthorName = "Анна", ReplyCount = 1, CreatedAt = new DateTime(2025, 1, 10, 12, 0, 0), UpdatedAt = new DateTime(2025, 2, 1, 9, 0, 0) },
+        new() { Id = "evt-10", SectionId = "events", EventId = "10", Title = "Акустический вечер — вход и саундчек", Content = "Вопросы по рассадке и времени.", AuthorId = "2", AuthorName = "Дмитрий", ReplyCount = 0, CreatedAt = new DateTime(2025, 6, 1, 15, 0, 0), UpdatedAt = new DateTime(2025, 6, 1, 15, 0, 0) },
+        new() { Id = "evt-11", SectionId = "events", EventId = "11", Title = "Студия: закрытая прослушивание", Content = "Правила NDA и список гостей.", AuthorId = "1", AuthorName = "Анна", IsLocked = true, ReplyCount = 0, CreatedAt = new DateTime(2025, 5, 1, 11, 0, 0), UpdatedAt = new DateTime(2025, 5, 1, 11, 0, 0) },
     };
 
     public static List<ForumSectionDto> ForumSections { get; } = new()
@@ -350,7 +350,6 @@ public static class MockDataStore
         new() { Id = "music", Name = "🎵 Музыка и творчество", Description = "Разбор песен, каверы, творчество", TopicCount = 3 },
         new() { Id = "cities", Name = "🏙️ По городам", Description = "Общение по городам и регионам", TopicCount = 3 },
         new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2 },
-        new() { Id = "events", Name = "📅 События", Description = "Обсуждения концертов, фестивалей и встреч", TopicCount = 6 },
         new() { Id = "insiders",  Name = "🔒 Инсайдеры",       Description = "Только для Active Members+",        TopicCount = 0, MinRank = "activeMember" },
     };
 

@@ -200,6 +200,7 @@ if (useAzure)
         new AzureForumService(
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<IUserService>(),
+            sp.GetRequiredService<IEventService>(),
             sp.GetRequiredService<ILogger<AzureForumService>>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IChatService, AzureChatService>();
@@ -219,7 +220,9 @@ else
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
     builder.Services.AddSingleton<IForumService>(sp =>
-        new MockForumService(sp.GetRequiredService<IUserService>()));
+        new MockForumService(
+            sp.GetRequiredService<IUserService>(),
+            sp.GetRequiredService<IEventService>()));
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
 }

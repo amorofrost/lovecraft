@@ -38,6 +38,61 @@ public class ForumController : ControllerBase
     }
 
     /// <summary>
+    /// Event-linked discussion areas for the Talks → event discussions tab (visibility matches events API).
+    /// </summary>
+    [HttpGet("event-discussions/summary")]
+    public async Task<ActionResult<ApiResponse<List<EventDiscussionSectionDto>>>> GetEventDiscussionSummary()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<List<EventDiscussionSectionDto>>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        var staff = User.FindFirst("staffRole")?.Value ?? "none";
+        var isElevated = staff is "moderator" or "admin";
+        try
+        {
+            var list = await _forumService.GetEventDiscussionSectionsAsync(userId, isElevated);
+            return Ok(ApiResponse<List<EventDiscussionSectionDto>>.SuccessResponse(list));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting event discussion summary");
+            return StatusCode(500, ApiResponse<List<EventDiscussionSectionDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to load event discussions"));
+        }
+    }
+
+    /// <summary>
+    /// Topics for one event's discussion partition (same permission rules as summary).
+    /// </summary>
+    [HttpGet("event-discussions/{eventId}/topics")]
+    public async Task<ActionResult<ApiResponse<List<ForumTopicDto>>>> GetEventDiscussionTopics(string eventId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<List<ForumTopicDto>>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        var staff = User.FindFirst("staffRole")?.Value ?? "none";
+        var isElevated = staff is "moderator" or "admin";
+        try
+        {
+            var topics = await _forumService.GetEventDiscussionTopicsAsync(userId, eventId, isElevated);
+            if (topics is null)
+                return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Event discussions not available"));
+
+            var callerRank = await GetCallerRankAsync();
+            if (callerRank == UserRank.Novice)
+                topics = topics.Where(t => t.NoviceVisible).ToList();
+
+            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting event discussion topics for {EventId}", eventId);
+            return StatusCode(500, ApiResponse<List<ForumTopicDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to load topics"));
+        }
+    }
+
+    /// <summary>
     /// Get all forum sections
     /// </summary>
     [HttpGet("sections")]
@@ -63,6 +118,9 @@ public class ForumController : ControllerBase
     {
         try
         {
+            if (sectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
+                return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Use GET /forum/event-discussions/{eventId}/topics"));
+
             var section = (await _forumService.GetSectionsAsync()).FirstOrDefault(s => s.Id == sectionId);
             if (section is null)
                 return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Section not found"));
@@ -144,6 +202,10 @@ public class ForumController : ControllerBase
     public async Task<IActionResult> CreateTopic(
         string sectionId, [FromBody] CreateTopicRequestDto request)
     {
+        if (sectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse(
+                "INVALID_SECTION", "Event discussions use seeded topics; create threads in standard forum sections."));
+
         if (!ModelState.IsValid)
             return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse(
                 "VALIDATION_ERROR", "Validation failed"));

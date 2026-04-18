@@ -273,6 +273,7 @@ foreach (var topic in MockDataStore.ForumTopics)
         PartitionKey = ForumTopicEntity.GetPartitionKey(topic.SectionId),
         RowKey       = topic.Id,
         SectionId    = topic.SectionId,
+        EventId      = topic.EventId ?? string.Empty,
         Title        = topic.Title,
         Content      = topic.Content,
         AuthorId     = topic.AuthorId,

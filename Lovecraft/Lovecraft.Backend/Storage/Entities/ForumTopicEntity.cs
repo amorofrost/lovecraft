@@ -12,6 +12,10 @@ public class ForumTopicEntity : ITableEntity
     public ETag ETag { get; set; }
 
     public string SectionId { get; set; } = string.Empty;
+
+    /// <summary>When <see cref="SectionId"/> is <c>events</c>, matches <see cref="EventEntity.RowKey"/>.</summary>
+    public string EventId { get; set; } = string.Empty;
+
     public string Title { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public string AuthorId { get; set; } = string.Empty;

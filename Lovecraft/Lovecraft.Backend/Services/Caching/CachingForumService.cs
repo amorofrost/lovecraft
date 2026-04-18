@@ -46,6 +46,12 @@ public class CachingForumService : IForumService
         return result;
     }
 
+    public Task<List<EventDiscussionSectionDto>> GetEventDiscussionSectionsAsync(string userId, bool isElevated) =>
+        _inner.GetEventDiscussionSectionsAsync(userId, isElevated);
+
+    public Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated) =>
+        _inner.GetEventDiscussionTopicsAsync(userId, eventId, isElevated);
+
     public async Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
     {
         var key = TopicsKey(sectionId);

@@ -7,20 +7,83 @@ namespace Lovecraft.Backend.Services;
 
 public class MockForumService : IForumService
 {
+    private const string EventSectionId = "events";
     private readonly IUserService _userService;
+    private readonly IEventService _eventService;
 
-    public MockForumService(IUserService userService)
+    public MockForumService(IUserService userService, IEventService eventService)
     {
         _userService = userService;
+        _eventService = eventService;
     }
 
     public Task<List<ForumSectionDto>> GetSectionsAsync()
     {
-        return Task.FromResult(MockDataStore.ForumSections);
+        var list = MockDataStore.ForumSections
+            .Where(s => !s.Id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return Task.FromResult(list);
+    }
+
+    public async Task<List<EventDiscussionSectionDto>> GetEventDiscussionSectionsAsync(string userId, bool isElevated)
+    {
+        var events = await _eventService.GetEventsAsync();
+        var list = new List<EventDiscussionSectionDto>();
+        foreach (var e in events)
+        {
+            if (e.Visibility == EventVisibility.SecretHidden && !isElevated && !e.Attendees.Contains(userId))
+                continue;
+
+            var n = MockDataStore.ForumTopics.Count(t =>
+                t.SectionId == EventSectionId &&
+                string.Equals(ResolveEventId(t), e.Id, StringComparison.Ordinal));
+
+            list.Add(new EventDiscussionSectionDto
+            {
+                EventId = e.Id,
+                Title = e.Title,
+                Date = e.Date,
+                Visibility = e.Visibility,
+                IsAttending = e.Attendees.Contains(userId),
+                TopicCount = n,
+            });
+        }
+
+        return list.OrderBy(x => x.Date).ToList();
+    }
+
+    public async Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated)
+    {
+        var ev = await _eventService.GetEventByIdAsync(eventId);
+        if (ev == null)
+            return null;
+        if (ev.Visibility == EventVisibility.SecretHidden && !isElevated && !ev.Attendees.Contains(userId))
+            return null;
+
+        var topics = MockDataStore.ForumTopics
+            .Where(t => t.SectionId == EventSectionId && string.Equals(ResolveEventId(t), eventId, StringComparison.Ordinal))
+            .OrderByDescending(t => t.IsPinned)
+            .ThenByDescending(t => t.UpdatedAt)
+            .ToList();
+        return topics;
+    }
+
+    private static string? ResolveEventId(ForumTopicDto t)
+    {
+        if (!string.IsNullOrEmpty(t.EventId))
+            return t.EventId;
+        if (t.Id.StartsWith("evt-", StringComparison.Ordinal) && t.Id.Length > 4)
+            return t.Id.Substring(4);
+        if (t.Id.StartsWith("event-topic-", StringComparison.Ordinal) && t.Id.Length > "event-topic-".Length)
+            return t.Id.Substring("event-topic-".Length);
+        return null;
     }
 
     public Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
     {
+        if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new List<ForumTopicDto>());
+
         var topics = MockDataStore.ForumTopics
             .Where(t => t.SectionId == sectionId)
             .OrderByDescending(t => t.IsPinned)
@@ -154,7 +217,8 @@ public class MockForumService : IForumService
         var topic = new ForumTopicDto
         {
             Id = $"event-topic-{eventId}",
-            SectionId = "events",
+            SectionId = EventSectionId,
+            EventId = eventId,
             Title = eventName,
             Content = $"Обсуждение события: {eventName}",
             AuthorId = "system",

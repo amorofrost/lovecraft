@@ -11,20 +11,25 @@ namespace Lovecraft.Backend.Services.Azure;
 
 public class AzureForumService : IForumService
 {
+    private const string EventSectionId = "events";
+
     private readonly TableClient _sectionsTable;
     private readonly TableClient _topicsTable;
     private readonly TableClient _topicIndexTable;
     private readonly TableClient _repliesTable;
     private readonly TableClient _usersTable;
     private readonly IUserService _userService;
+    private readonly IEventService _eventService;
     private readonly ILogger<AzureForumService> _logger;
 
     public AzureForumService(
         TableServiceClient tableServiceClient,
         IUserService userService,
+        IEventService eventService,
         ILogger<AzureForumService> logger)
     {
         _userService = userService;
+        _eventService = eventService;
         _logger = logger;
         _sectionsTable = tableServiceClient.GetTableClient(TableNames.ForumSections);
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
@@ -62,11 +67,97 @@ public class AzureForumService : IForumService
         {
             results.Add(ToSectionDto(entity));
         }
-        return results.OrderBy(s => s.Id).ToList();
+
+        return results
+            .Where(s => !s.Id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.Id)
+            .ToList();
+    }
+
+    public async Task<List<EventDiscussionSectionDto>> GetEventDiscussionSectionsAsync(string userId, bool isElevated)
+    {
+        var events = await _eventService.GetEventsAsync();
+        var list = new List<EventDiscussionSectionDto>();
+        foreach (var e in events)
+        {
+            if (e.Visibility == EventVisibility.SecretHidden && !isElevated && !e.Attendees.Contains(userId))
+                continue;
+
+            var n = await CountTopicsForEventAsync(e.Id);
+            list.Add(new EventDiscussionSectionDto
+            {
+                EventId = e.Id,
+                Title = e.Title,
+                Date = e.Date,
+                Visibility = e.Visibility,
+                IsAttending = e.Attendees.Contains(userId),
+                TopicCount = n,
+            });
+        }
+
+        return list.OrderBy(x => x.Date).ToList();
+    }
+
+    public async Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated)
+    {
+        var ev = await _eventService.GetEventByIdAsync(eventId);
+        if (ev == null)
+            return null;
+        if (ev.Visibility == EventVisibility.SecretHidden && !isElevated && !ev.Attendees.Contains(userId))
+            return null;
+
+        var pk = ForumTopicEntity.GetPartitionKey(EventSectionId);
+        var escapedPk = pk.Replace("'", "''");
+        var results = new List<ForumTopicDto>();
+        await foreach (var entity in _topicsTable.QueryAsync<ForumTopicEntity>(
+                     filter: $"PartitionKey eq '{escapedPk}'"))
+        {
+            if (!TopicEntityBelongsToEvent(entity, eventId))
+                continue;
+            results.Add(ToTopicDto(entity));
+        }
+
+        return results
+            .OrderByDescending(t => t.IsPinned)
+            .ThenByDescending(t => t.UpdatedAt)
+            .ToList();
+    }
+
+    private async Task<int> CountTopicsForEventAsync(string eventId)
+    {
+        var pk = ForumTopicEntity.GetPartitionKey(EventSectionId);
+        var escapedPk = pk.Replace("'", "''");
+        var n = 0;
+        await foreach (var entity in _topicsTable.QueryAsync<ForumTopicEntity>(
+                     filter: $"PartitionKey eq '{escapedPk}'"))
+        {
+            if (TopicEntityBelongsToEvent(entity, eventId))
+                n++;
+        }
+
+        return n;
+    }
+
+    private static bool TopicEntityBelongsToEvent(ForumTopicEntity e, string eventId) =>
+        string.Equals(ResolveEventIdFromTopicEntity(e), eventId, StringComparison.Ordinal);
+
+    /// <summary>Uses <see cref="ForumTopicEntity.EventId"/> or legacy topic id patterns.</summary>
+    private static string? ResolveEventIdFromTopicEntity(ForumTopicEntity e)
+    {
+        if (!string.IsNullOrEmpty(e.EventId))
+            return e.EventId;
+        if (e.RowKey.StartsWith("evt-", StringComparison.Ordinal) && e.RowKey.Length > 4)
+            return e.RowKey.Substring(4);
+        if (e.RowKey.StartsWith("event-topic-", StringComparison.Ordinal) && e.RowKey.Length > "event-topic-".Length)
+            return e.RowKey["event-topic-".Length..];
+        return null;
     }
 
     public async Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
     {
+        if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            return new List<ForumTopicDto>();
+
         var pk = ForumTopicEntity.GetPartitionKey(sectionId);
         var results = new List<ForumTopicDto>();
         await foreach (var entity in _topicsTable.QueryAsync<ForumTopicEntity>(
@@ -202,6 +293,7 @@ public class AzureForumService : IForumService
     {
         Id = entity.RowKey,
         SectionId = entity.SectionId,
+        EventId = string.IsNullOrEmpty(entity.EventId) ? null : entity.EventId,
         Title = entity.Title,
         Content = entity.Content,
         AuthorId = entity.AuthorId,
@@ -228,6 +320,7 @@ public class AzureForumService : IForumService
             PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
             RowKey = topicId,
             SectionId = sectionId,
+            EventId = eventId,
             Title = eventName,
             Content = $"Обсуждение события: {eventName}",
             AuthorId = "system",
@@ -255,6 +348,7 @@ public class AzureForumService : IForumService
         {
             Id = topicId,
             SectionId = sectionId,
+            EventId = eventId,
             Title = eventName,
             Content = $"Обсуждение события: {eventName}",
             AuthorId = "system",
@@ -293,6 +387,7 @@ public class AzureForumService : IForumService
             PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
             RowKey = topicId,
             SectionId = sectionId,
+            EventId = string.Empty,
             Title = title,
             Content = content,
             AuthorId = authorId,
