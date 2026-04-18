@@ -81,13 +81,26 @@ await SeedUserAsync(
     name: "Test User",
     password: TestPassword,
     age: 25, location: "Москва", gender: Gender.PreferNotToSay, bio: "Test account",
-    emailVerified: true);
+    emailVerified: true,
+    staffRole: "admin");
 seededUsers.Add(("test-user-001", "test@example.com", TestPassword));
 
 // Mock users from MockDataStore
 foreach (var u in MockDataStore.Users)
 {
     var email = $"user{u.Id}@mock.local";
+
+    // Per-user activity + staffRole per spec §Seeder table (see plan P7-T2)
+    // ids 1/2/3/4 are Anna/Dmitry/Elena/Maria
+    var (replyCount, likesReceived, eventsAttended, matchCount, staffRole) = u.Id switch
+    {
+        "1" => (120, 60, 12, 11, "none"),       // Anna     → Aloe Crew
+        "2" => (30,  18,  4,  0, "moderator"),  // Dmitry   → Friend of Aloe, demo moderator
+        "3" => (8,    4,  2,  0, "none"),       // Elena    → Active Member
+        "4" => (1,    0,  0,  0, "none"),       // Maria    → Novice
+        _   => (0,    0,  0,  0, "none"),
+    };
+
     await SeedUserAsync(
         usersTable, emailIndexTable,
         userId: u.Id,
@@ -102,7 +115,13 @@ foreach (var u in MockDataStore.Users)
         lastSeen: u.LastSeen,
         preferences: u.Preferences,
         settings: u.Settings,
-        favoriteSong: u.FavoriteSong);
+        favoriteSong: u.FavoriteSong,
+        replyCount: replyCount,
+        likesReceived: likesReceived,
+        eventsAttended: eventsAttended,
+        matchCount: matchCount,
+        staffRole: staffRole);
+
     seededUsers.Add((u.Id, email, SeedPassword));
 }
 Console.WriteLine($"  [users]         {seededUsers.Count} users + {seededUsers.Count} email index entries");
@@ -440,7 +459,12 @@ static async Task SeedUserAsync(
     DateTime? lastSeen = null,
     Lovecraft.Common.DTOs.Users.UserPreferencesDto? preferences = null,
     Lovecraft.Common.DTOs.Users.UserSettingsDto? settings = null,
-    Lovecraft.Common.DTOs.Users.AloeVeraSongDto? favoriteSong = null)
+    Lovecraft.Common.DTOs.Users.AloeVeraSongDto? favoriteSong = null,
+    int replyCount = 0,
+    int likesReceived = 0,
+    int eventsAttended = 0,
+    int matchCount = 0,
+    string staffRole = "none")
 {
     var now = DateTime.UtcNow;
     var userEntity = new UserEntity
@@ -465,6 +489,11 @@ static async Task SeedUserAsync(
         LastSeen      = DateTime.SpecifyKind(lastSeen ?? now, DateTimeKind.Utc),
         CreatedAt     = now,
         UpdatedAt     = now,
+        ReplyCount      = replyCount,
+        LikesReceived   = likesReceived,
+        EventsAttended  = eventsAttended,
+        MatchCount      = matchCount,
+        StaffRole       = staffRole,
     };
 
     var indexEntity = new UserEmailIndexEntity
