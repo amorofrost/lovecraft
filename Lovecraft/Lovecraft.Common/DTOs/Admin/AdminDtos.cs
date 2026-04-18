@@ -33,3 +33,24 @@ public class AdminEventWriteDto
 }
 
 public record EventAttendeeAdminDto(string UserId, string DisplayName);
+
+public record EventInviteAdminDto(
+    string PlainCode,
+    string EventId,
+    string? CampaignLabel,
+    DateTime ExpiresAtUtc,
+    bool Revoked,
+    DateTime CreatedAtUtc,
+    int RegistrationCount,
+    int EventAttendanceClaimCount);
+
+/// <summary>Creates a non-event invite tied to a negative campaign id (e.g. <c>-1</c>).</summary>
+public class CreateCampaignInviteRequestDto
+{
+    /// <summary>Negative integer as string, e.g. <c>-1</c>, <c>-2</c>.</summary>
+    public string CampaignId { get; set; } = string.Empty;
+    public string? CampaignLabel { get; set; }
+    public DateTime ExpiresAtUtc { get; set; }
+    /// <summary>If omitted, a readable code is generated.</summary>
+    public string? PlainCode { get; set; }
+}

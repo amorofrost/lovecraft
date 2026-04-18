@@ -170,9 +170,9 @@ foreach (var ev in MockDataStore.Events)
 Console.WriteLine($"  [events]        {MockDataStore.Events.Count} events");
 Console.WriteLine($"  [eventattendees]{attendeeCount} registrations");
 
-// Event invites (hashed RowKey — plaintext printed in summary; pepper = JWT_SECRET | JWT_SECRET_KEY)
-var invitePepper = Environment.GetEnvironmentVariable("JWT_SECRET")
-    ?? Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+// Event invites (plaintext RowKey = normalized code)
+var invitesTableSeed = service.GetTableClient(TableNames.EventInvites);
+var inviteExpiry = DateTime.UtcNow.AddYears(2);
 var seededInvitePairs = new (string Plain, string EventId)[]
 {
     ("SEED-ALOE-CONCERT-1", "1"),
@@ -182,29 +182,39 @@ var seededInvitePairs = new (string Plain, string EventId)[]
     ("SEED-ALOE-ACOUSTIC-10", "10"),
     ("SEED-ALOE-STUDIO-11", "11"),
 };
-if (string.IsNullOrEmpty(invitePepper))
+foreach (var (plain, eventId) in seededInvitePairs)
 {
-    Console.WriteLine("  [eventinvites]  skipped (set JWT_SECRET or JWT_SECRET_KEY in .env for hashed invite rows)");
-}
-else
-{
-    var invitesTableSeed = service.GetTableClient(TableNames.EventInvites);
-    var inviteExpiry = DateTime.UtcNow.AddYears(2);
-    foreach (var (plain, eventId) in seededInvitePairs)
+    var key = EventInviteNormalizer.Normalize(plain);
+    await invitesTableSeed.UpsertEntityAsync(new EventInviteEntity
     {
-        var hash = EventInviteHasher.Hash(plain, invitePepper);
-        await invitesTableSeed.UpsertEntityAsync(new EventInviteEntity
-        {
-            PartitionKey = EventInviteEntity.PartitionValue,
-            RowKey = hash,
-            EventId = eventId,
-            ExpiresAtUtc = inviteExpiry,
-            Revoked = false,
-            CreatedAtUtc = DateTime.UtcNow,
-        });
-    }
-    Console.WriteLine($"  [eventinvites]  {seededInvitePairs.Length} rows (plaintext codes listed after seed summary)");
+        PartitionKey = EventInviteEntity.PartitionValue,
+        RowKey = key,
+        PlainCode = key,
+        EventId = eventId,
+        CampaignLabel = string.Empty,
+        ExpiresAtUtc = inviteExpiry,
+        Revoked = false,
+        CreatedAtUtc = DateTime.UtcNow,
+        RegistrationCount = 0,
+        EventAttendanceClaimCount = 0,
+    });
 }
+var campPlain = "SEED-CAMPAIGN-NEG1";
+var campKey = EventInviteNormalizer.Normalize(campPlain);
+await invitesTableSeed.UpsertEntityAsync(new EventInviteEntity
+{
+    PartitionKey = EventInviteEntity.PartitionValue,
+    RowKey = campKey,
+    PlainCode = campKey,
+    EventId = "-1",
+    CampaignLabel = "Seeder example (negative campaign id)",
+    ExpiresAtUtc = inviteExpiry,
+    Revoked = false,
+    CreatedAtUtc = DateTime.UtcNow,
+    RegistrationCount = 0,
+    EventAttendanceClaimCount = 0,
+});
+Console.WriteLine($"  [eventinvites]  {seededInvitePairs.Length + 1} rows (plaintext codes listed after seed summary)");
 
 // Store items
 var storeTable = service.GetTableClient(TableNames.StoreItems);
@@ -400,14 +410,12 @@ Console.WriteLine($"  [refreshtokens / authtokens / matches] empty (ready to use
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 Console.WriteLine("\n✓ Seeding complete.\n");
-if (!string.IsNullOrEmpty(invitePepper))
-{
-    Console.WriteLine("Seeded event invite codes (use at registration or for secret event access):");
-    Console.WriteLine("  Plaintext          EventId  Notes");
-    foreach (var (plain, eventId) in seededInvitePairs)
-        Console.WriteLine($"  {plain,-20} {eventId,-8} mock seed");
-    Console.WriteLine();
-}
+Console.WriteLine("Seeded invite codes (registration and/or secret event access):");
+Console.WriteLine("  Plaintext          EventId  Notes");
+foreach (var (plain, eventId) in seededInvitePairs)
+    Console.WriteLine($"  {plain,-20} {eventId,-8} event seed");
+Console.WriteLine($"  {campPlain,-20} {"-1",-8} campaign (non-event) seed");
+Console.WriteLine();
 Console.WriteLine("Test credentials:");
 foreach (var (id, email, pw) in seededUsers)
     Console.WriteLine($"  {email,-38} password: {pw}   (id: {id})");

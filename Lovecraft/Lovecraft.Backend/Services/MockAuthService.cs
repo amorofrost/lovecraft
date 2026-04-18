@@ -103,8 +103,11 @@ public class MockAuthService : IAuthService
 
         _users[user.Email.ToLower()] = user;
 
-        if (sourceEventId is not null)
+        if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
             await _events.RegisterForEventAsync(userId, sourceEventId);
+
+        if (!string.IsNullOrWhiteSpace(request.InviteCode))
+            await _eventInvites.IncrementRegistrationCountAsync(request.InviteCode);
 
         // Generate email verification token
         var verificationToken = Guid.NewGuid().ToString();

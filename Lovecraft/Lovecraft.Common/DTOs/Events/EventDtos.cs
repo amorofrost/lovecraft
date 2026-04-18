@@ -32,3 +32,10 @@ public class EventRegistrationRequestDto
 {
     public string EventId { get; set; } = string.Empty;
 }
+
+/// <summary>Optional body for <c>POST /api/v1/events/{id}/register</c> when attributing attendance to an invite code.</summary>
+public class RegisterForEventRequestDto
+{
+    /// <summary>Must match this event when used; increments the invite&apos;s attendance-claim counter.</summary>
+    public string? InviteCode { get; set; }
+}

@@ -156,7 +156,7 @@ public class EventsController : ControllerBase
     /// Register for an event
     /// </summary>
     [HttpPost("{id}/register")]
-    public async Task<ActionResult<ApiResponse<bool>>> RegisterForEvent(string id)
+    public async Task<ActionResult<ApiResponse<bool>>> RegisterForEvent(string id, [FromBody] RegisterForEventRequestDto? body)
     {
         try
         {
@@ -165,12 +165,19 @@ public class EventsController : ControllerBase
                 return Unauthorized(ApiResponse<bool>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
 
             var result = await _eventService.RegisterForEventAsync(userId, id);
-            
+
             if (!result)
             {
                 return BadRequest(ApiResponse<bool>.ErrorResponse("REGISTRATION_FAILED", "Failed to register for event"));
             }
-            
+
+            if (!string.IsNullOrWhiteSpace(body?.InviteCode))
+            {
+                var v = await _eventInvites.ValidatePlainCodeAsync(body.InviteCode);
+                if (v is not null && v.EventId == id)
+                    await _eventInvites.IncrementEventAttendanceClaimCountAsync(body.InviteCode);
+            }
+
             return Ok(ApiResponse<bool>.SuccessResponse(true));
         }
         catch (Exception ex)

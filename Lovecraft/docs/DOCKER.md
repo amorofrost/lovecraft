@@ -165,9 +165,9 @@ This user is pre-seeded with `EmailVerified = true` so you can log in immediatel
 There is **no** `INVITE_CODE` environment variable. Whether new accounts must supply an event invite code is determined by **Azure Table** appconfig:
 
 - Partition: `registration`
-- Row key: `require_event_invite` — when `true`, `Register` requires a valid `inviteCode` tied to an event; when `false`, signup is open unless you choose to pass a code anyway.
+- Row key: `require_event_invite` — when `true`, `Register` requires a valid `inviteCode`; when `false`, signup is open unless you choose to pass a code anyway. Codes may be **event** invites or **campaign** (non-event) invites with a negative id (e.g. `-1`).
 
-The public endpoint `GET /api/v1/auth/registration-config` exposes this to the client as `requireEventInvite`. Event-scoped invites are created with `POST /api/v1/admin/events/{eventId}/invites` (admin).
+The public endpoint `GET /api/v1/auth/registration-config` exposes this to the client as `requireEventInvite`. Invite codes are stored as **readable plaintext** in Table Storage (see [INVITES.md](./INVITES.md)). Admins create event invites with `POST /api/v1/admin/events/{eventId}/invites` and campaign invites with `POST /api/v1/admin/invites/campaigns`.
 
 ### Next Steps
 

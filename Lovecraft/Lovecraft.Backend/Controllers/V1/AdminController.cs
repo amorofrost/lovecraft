@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Linq;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Admin;
@@ -161,7 +162,35 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse<bool>.SuccessResponse(true));
     }
 
-    /// <summary>Issue or rotate the shared invite code for an event (plaintext returned once).</summary>
+    [HttpGet("invites")]
+    public async Task<ActionResult<ApiResponse<List<EventInviteAdminDto>>>> ListInvites()
+    {
+        var list = await _eventInvites.ListInvitesAsync();
+        return Ok(ApiResponse<List<EventInviteAdminDto>>.SuccessResponse(list.ToList()));
+    }
+
+    [HttpGet("events/{eventId}/invites")]
+    public async Task<ActionResult<ApiResponse<List<EventInviteAdminDto>>>> ListInvitesForEvent(string eventId)
+    {
+        var all = await _eventInvites.ListInvitesAsync();
+        var filtered = all.Where(i => string.Equals(i.EventId, eventId, StringComparison.Ordinal)).ToList();
+        return Ok(ApiResponse<List<EventInviteAdminDto>>.SuccessResponse(filtered));
+    }
+
+    [HttpPost("invites/campaigns")]
+    public async Task<ActionResult<ApiResponse<CreateEventInviteResponseDto>>> CreateCampaignInvite(
+        [FromBody] CreateCampaignInviteRequestDto request)
+    {
+        var (plain, exp) = await _eventInvites.CreateCampaignInviteAsync(
+            request.CampaignId,
+            request.CampaignLabel,
+            request.ExpiresAtUtc,
+            request.PlainCode);
+        return Ok(ApiResponse<CreateEventInviteResponseDto>.SuccessResponse(
+            new CreateEventInviteResponseDto(plain, exp)));
+    }
+
+    /// <summary>Issue or rotate the invite for an event (plaintext stored in table; returned here).</summary>
     [HttpPost("events/{eventId}/invites")]
     public async Task<ActionResult<ApiResponse<CreateEventInviteResponseDto>>> CreateEventInvite(
         string eventId,
