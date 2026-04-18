@@ -44,9 +44,9 @@ builder.Services.AddControllers()
     });
 builder.Services.AddSignalR();
 
-// Allow up to 10 MB multipart bodies (business rule of 5 MB enforced in controller)
+// Allow up to 20 MB multipart bodies (profile image upload limit)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
-    o.MultipartBodyLengthLimit = 10 * 1024 * 1024);
+    o.MultipartBodyLengthLimit = 20 * 1024 * 1024);
 
 builder.Services.AddSwaggerGen(c =>
 {

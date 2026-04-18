@@ -74,7 +74,7 @@ public class ImageTests
 
         var mockFile = new Mock<IFormFile>();
         mockFile.Setup(f => f.ContentType).Returns("image/jpeg");
-        mockFile.Setup(f => f.Length).Returns(6 * 1024 * 1024); // 6 MB — over limit
+        mockFile.Setup(f => f.Length).Returns(21 * 1024 * 1024); // 21 MB — over limit
 
         var result = await controller.UploadProfileImage("user1", mockFile.Object);
 
