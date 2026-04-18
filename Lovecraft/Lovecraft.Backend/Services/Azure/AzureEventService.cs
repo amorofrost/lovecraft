@@ -125,20 +125,35 @@ public class AzureEventService : IEventService
         return attendees;
     }
 
-    private static EventDto ToDto(EventEntity entity, List<string> attendees) => new EventDto
+    private static EventDto ToDto(EventEntity entity, List<string> attendees)
     {
-        Id = entity.RowKey,
-        Title = entity.Title,
-        Description = entity.Description,
-        ImageUrl = entity.ImageUrl,
-        Date = entity.Date,
-        EndDate = entity.EndDate,
-        Location = entity.Location,
-        Capacity = entity.Capacity,
-        Attendees = attendees,
-        Category = Enum.TryParse<EventCategory>(entity.Category, true, out var cat) ? cat : EventCategory.Other,
-        Price = entity.Price.HasValue ? (decimal?)Convert.ToDecimal(entity.Price.Value) : null,
-        Organizer = entity.Organizer,
-        IsSecret = entity.IsSecret
-    };
+        var visibility = ResolveVisibility(entity);
+        return new EventDto
+        {
+            Id = entity.RowKey,
+            Title = entity.Title,
+            Description = entity.Description,
+            ImageUrl = entity.ImageUrl,
+            Date = entity.Date,
+            EndDate = entity.EndDate,
+            Location = entity.Location,
+            Capacity = entity.Capacity,
+            Attendees = attendees,
+            Category = Enum.TryParse<EventCategory>(entity.Category, true, out var cat) ? cat : EventCategory.Other,
+            Price = entity.Price.HasValue ? (decimal?)Convert.ToDecimal(entity.Price.Value) : null,
+            Organizer = entity.Organizer,
+            Visibility = visibility,
+            IsSecret = visibility != EventVisibility.Public,
+            ForumTopicId = entity.ForumTopicId,
+        };
+    }
+
+    private static EventVisibility ResolveVisibility(EventEntity entity)
+    {
+        if (!string.IsNullOrWhiteSpace(entity.Visibility)
+            && Enum.TryParse<EventVisibility>(entity.Visibility, ignoreCase: true, out var parsed))
+            return parsed;
+
+        return entity.IsSecret ? EventVisibility.SecretHidden : EventVisibility.Public;
+    }
 }

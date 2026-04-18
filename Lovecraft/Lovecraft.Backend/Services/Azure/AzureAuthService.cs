@@ -22,6 +22,9 @@ public class AzureAuthService : IAuthService
     private readonly JwtSettings _jwtSettings;
     private readonly ILogger<AzureAuthService> _logger;
     private readonly IEmailService _emailService;
+    private readonly IAppConfigService _appConfig;
+    private readonly IEventInviteService _eventInvites;
+    private readonly IEventService _events;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
@@ -29,13 +32,19 @@ public class AzureAuthService : IAuthService
         IPasswordHasher passwordHasher,
         JwtSettings jwtSettings,
         ILogger<AzureAuthService> logger,
-        IEmailService emailService)
+        IEmailService emailService,
+        IAppConfigService appConfig,
+        IEventInviteService eventInvites,
+        IEventService events)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _jwtSettings = jwtSettings;
         _logger = logger;
         _emailService = emailService;
+        _appConfig = appConfig;
+        _eventInvites = eventInvites;
+        _events = events;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
@@ -57,6 +66,20 @@ public class AzureAuthService : IAuthService
 
     public async Task<AuthResponseDto?> RegisterAsync(RegisterRequestDto request)
     {
+        var cfg = await _appConfig.GetConfigAsync();
+        string? sourceEventId = null;
+        if (!string.IsNullOrWhiteSpace(request.InviteCode))
+        {
+            var val = await _eventInvites.ValidatePlainCodeAsync(request.InviteCode);
+            if (val is null)
+                throw new InvalidInviteCodeException();
+            sourceEventId = val.EventId;
+        }
+        else if (cfg.Registration.RequireEventInvite)
+        {
+            throw new InviteRequiredException();
+        }
+
         var emailLower = request.Email.ToLower();
 
         // Check if email already exists
@@ -92,7 +115,9 @@ public class AzureAuthService : IAuthService
             CreatedAt = now,
             UpdatedAt = now,
             IsOnline = false,
-            LastSeen = now
+            LastSeen = now,
+            RegistrationSourceEventId = sourceEventId,
+            RegistrationSourceRedeemedAtUtc = sourceEventId is not null ? DateTime.UtcNow : null,
         };
 
         var emailIndexEntity = new UserEmailIndexEntity
@@ -102,10 +127,31 @@ public class AzureAuthService : IAuthService
             UserId = userId
         };
 
-        await Task.WhenAll(
-            _usersTable.UpsertEntityAsync(userEntity),
-            _emailIndexTable.UpsertEntityAsync(emailIndexEntity)
-        );
+        try
+        {
+            await Task.WhenAll(
+                _usersTable.UpsertEntityAsync(userEntity),
+                _emailIndexTable.UpsertEntityAsync(emailIndexEntity)
+            );
+
+            if (sourceEventId is not null)
+                await _events.RegisterForEventAsync(userId, sourceEventId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Registration failed after user row for {Email}", request.Email);
+            try
+            {
+                await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX");
+            }
+            catch { /* ignore */ }
+            try
+            {
+                await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId);
+            }
+            catch { /* ignore */ }
+            throw;
+        }
 
         // Write email verification token
         var verificationToken = Guid.NewGuid().ToString();

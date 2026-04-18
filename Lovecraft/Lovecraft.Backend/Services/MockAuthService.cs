@@ -10,6 +10,9 @@ public class MockAuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<MockAuthService> _logger;
     private readonly IEmailService _emailService;
+    private readonly IAppConfigService _appConfig;
+    private readonly IEventInviteService _eventInvites;
+    private readonly IEventService _events;
 
     // Mock in-memory storage
     private static readonly Dictionary<string, MockUser> _users = new();
@@ -21,12 +24,18 @@ public class MockAuthService : IAuthService
         IJwtService jwtService,
         IPasswordHasher passwordHasher,
         ILogger<MockAuthService> logger,
-        IEmailService emailService)
+        IEmailService emailService,
+        IAppConfigService appConfig,
+        IEventInviteService eventInvites,
+        IEventService events)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
         _logger = logger;
         _emailService = emailService;
+        _appConfig = appConfig;
+        _eventInvites = eventInvites;
+        _events = events;
 
         // Seed with test user
         SeedTestUsers();
@@ -54,6 +63,20 @@ public class MockAuthService : IAuthService
     {
         await Task.Delay(100); // Simulate async operation
 
+        var cfg = await _appConfig.GetConfigAsync();
+        string? sourceEventId = null;
+        if (!string.IsNullOrWhiteSpace(request.InviteCode))
+        {
+            var val = await _eventInvites.ValidatePlainCodeAsync(request.InviteCode);
+            if (val is null)
+                throw new InvalidInviteCodeException();
+            sourceEventId = val.EventId;
+        }
+        else if (cfg.Registration.RequireEventInvite)
+        {
+            throw new InviteRequiredException();
+        }
+
         // Validate email doesn't exist
         if (_users.ContainsKey(request.Email.ToLower()))
         {
@@ -79,6 +102,9 @@ public class MockAuthService : IAuthService
         };
 
         _users[user.Email.ToLower()] = user;
+
+        if (sourceEventId is not null)
+            await _events.RegisterForEventAsync(userId, sourceEventId);
 
         // Generate email verification token
         var verificationToken = Guid.NewGuid().ToString();

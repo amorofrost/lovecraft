@@ -34,7 +34,15 @@ public class AuthenticationTests
 
         _jwtService = new JwtService(jwtSettings, jwtLogger);
         _passwordHasher = new PasswordHasher();
-        _authService = new MockAuthService(_jwtService, _passwordHasher, authLogger, new NullEmailService(NullLogger<NullEmailService>.Instance));
+        var (app, invites, events) = TestAuthDependencies.CreateMockStack();
+        _authService = new MockAuthService(
+            _jwtService,
+            _passwordHasher,
+            authLogger,
+            new NullEmailService(NullLogger<NullEmailService>.Instance),
+            app,
+            invites,
+            events);
     }
 
     [Fact]
@@ -263,7 +271,7 @@ public class AuthenticationTests
         {
             Email = "open-reg@example.com", Password = "Test123!@#",
             Name = "Open User", Age = 25, Location = "City", Gender = "Male", Bio = "",
-            InviteCode = "anything"
+            InviteCode = null
         };
 
         var result = await _authService.RegisterAsync(request);

@@ -172,6 +172,7 @@ if (useAzure)
     builder.Services.AddSingleton(new BlobServiceClient(connectionString));
     builder.Services.AddSingleton<IAppConfigService, AzureAppConfigService>();
     builder.Services.AddSingleton<IImageService, AzureImageService>();
+    builder.Services.AddSingleton<IEventInviteService, AzureEventInviteService>();
     builder.Services.AddSingleton<IAuthService, AzureAuthService>();
     builder.Services.AddSingleton<IUserService, AzureUserService>();
     builder.Services.AddSingleton<IMatchingService>(sp => new AzureMatchingService(
@@ -206,6 +207,7 @@ if (useAzure)
 else
 {
     builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
+    builder.Services.AddSingleton<IEventInviteService, MockEventInviteService>();
     builder.Services.AddSingleton<IAuthService, MockAuthService>();
     builder.Services.AddSingleton<IUserService>(sp => new MockUserService(
         sp.GetRequiredService<IAppConfigService>()));

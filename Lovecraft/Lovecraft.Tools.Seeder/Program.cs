@@ -54,6 +54,7 @@ var allTables = new[]
     TableNames.ForumTopicIndex,
     TableNames.ForumReplies,
     TableNames.AppConfig,
+    TableNames.EventInvites,
 };
 
 Console.WriteLine("Resetting tables (ensure exists, then wipe entities)...");
@@ -148,6 +149,7 @@ foreach (var ev in MockDataStore.Events)
         Price        = ev.Price.HasValue ? (double?)Convert.ToDouble(ev.Price.Value) : null,
         Organizer    = ev.Organizer,
         IsSecret     = ev.IsSecret,
+        Visibility   = ev.Visibility.ToString(),
     };
     await eventsTable.UpsertEntityAsync(entity);
 

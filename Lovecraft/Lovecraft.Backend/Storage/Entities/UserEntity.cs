@@ -36,6 +36,11 @@ public class UserEntity : ITableEntity
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    /// <summary>Set when the account was created using a valid event invite code (immutable).</summary>
+    public string? RegistrationSourceEventId { get; set; }
+
+    public DateTime? RegistrationSourceRedeemedAtUtc { get; set; }
+
     public static string GetPartitionKey(string userId) =>
         $"user-{userId[0].ToString().ToLower()}";
 }

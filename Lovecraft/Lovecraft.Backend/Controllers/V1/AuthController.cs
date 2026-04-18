@@ -59,6 +59,12 @@ public class AuthController : ControllerBase
                 "INVALID_INVITE_CODE",
                 "Invalid invite code"));
         }
+        catch (InviteRequiredException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INVITE_REQUIRED",
+                "Event invite code is required for registration"));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during registration");

@@ -59,11 +59,15 @@ public class MockAuthServiceEmailTests
             AccessTokenLifetimeMinutes = 15,
             RefreshTokenLifetimeDays = 7
         };
+        var (app, invites, events) = TestAuthDependencies.CreateMockStack();
         return new MockAuthService(
             new JwtService(jwtSettings, NullLogger<JwtService>.Instance),
             new PasswordHasher(),
             NullLogger<MockAuthService>.Instance,
-            emailSvc);
+            emailSvc,
+            app,
+            invites,
+            events);
     }
 
     [Fact]
