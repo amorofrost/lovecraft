@@ -319,6 +319,7 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<AppConfigDto>>();
         Assert.Equal("5", payload!.Data!.RankThresholds["active_replies"]);
         Assert.Equal("activeMember", payload.Data.Permissions["create_topic"]);
+        Assert.Equal("false", payload.Data.Registration["require_event_invite"]);
     }
 
     [Fact]

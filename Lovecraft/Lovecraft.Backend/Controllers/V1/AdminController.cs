@@ -14,10 +14,23 @@ namespace Lovecraft.Backend.Controllers.V1;
 public class AdminController : ControllerBase
 {
     private readonly IAppConfigService _appConfig;
+    private readonly IEventInviteService _eventInvites;
 
-    public AdminController(IAppConfigService appConfig)
+    public AdminController(IAppConfigService appConfig, IEventInviteService eventInvites)
     {
         _appConfig = appConfig;
+        _eventInvites = eventInvites;
+    }
+
+    /// <summary>Issue or rotate the shared invite code for an event (plaintext returned once).</summary>
+    [HttpPost("events/{eventId}/invites")]
+    public async Task<ActionResult<ApiResponse<CreateEventInviteResponseDto>>> CreateEventInvite(
+        string eventId,
+        [FromBody] CreateEventInviteRequestDto request)
+    {
+        var (plain, exp) = await _eventInvites.CreateOrRotateInviteAsync(eventId, request.ExpiresAtUtc);
+        return Ok(ApiResponse<CreateEventInviteResponseDto>.SuccessResponse(
+            new CreateEventInviteResponseDto(plain, exp)));
     }
 
     [HttpGet("config")]
@@ -51,6 +64,10 @@ public class AdminController : ControllerBase
                 ["manage_events"] = cfg.Permissions.ManageEvents,
                 ["manage_blog"] = cfg.Permissions.ManageBlog,
                 ["manage_store"] = cfg.Permissions.ManageStore,
+            },
+            Registration: new()
+            {
+                ["require_event_invite"] = cfg.Registration.RequireEventInvite ? "true" : "false",
             });
         return Ok(ApiResponse<AppConfigDto>.SuccessResponse(dto));
     }

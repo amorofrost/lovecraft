@@ -1,6 +1,14 @@
 namespace Lovecraft.Backend.Services;
 
-public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions);
+public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration);
+
+/// <summary>
+/// Site-wide registration policy (Azure Table appconfig partition <c>registration</c>).
+/// </summary>
+public record RegistrationConfig(bool RequireEventInvite)
+{
+    public static RegistrationConfig Defaults => new(RequireEventInvite: false);
+}
 
 public record RankThresholds(
     int ActiveReplies,
@@ -83,5 +91,10 @@ public static class AppConfigKeys
         public const string ManageEvents = "manage_events";
         public const string ManageBlog = "manage_blog";
         public const string ManageStore = "manage_store";
+    }
+
+    public static class RegistrationKeys
+    {
+        public const string RequireEventInvite = "require_event_invite";
     }
 }

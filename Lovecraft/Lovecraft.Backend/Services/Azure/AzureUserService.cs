@@ -214,7 +214,8 @@ public class AzureUserService : IUserService
             Settings = settings,
             FavoriteSong = song,
             Rank = RankCalculator.Compute(entity, ranks),
-            StaffRole = staffRole
+            StaffRole = staffRole,
+            RegistrationSourceEventId = entity.RegistrationSourceEventId,
         };
     }
 }

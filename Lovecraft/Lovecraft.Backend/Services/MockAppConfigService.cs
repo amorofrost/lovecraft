@@ -4,7 +4,8 @@ public class MockAppConfigService : IAppConfigService
 {
     private static readonly AppConfig _config = new(
         RankThresholds.Defaults,
-        PermissionConfig.Defaults);
+        PermissionConfig.Defaults,
+        RegistrationConfig.Defaults);
 
     public Task<AppConfig> GetConfigAsync() => Task.FromResult(_config);
 }

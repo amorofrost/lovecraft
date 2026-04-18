@@ -65,7 +65,8 @@ public static class MockDataStore
             Category = EventCategory.Concert,
             Price = 2500m,
             Organizer = "AloeVera Official",
-            IsSecret = false
+            IsSecret = false,
+            Visibility = EventVisibility.Public
         },
         new()
         {
@@ -79,7 +80,8 @@ public static class MockDataStore
             Attendees = new List<string> { "4", "5", "6", "7" },
             Category = EventCategory.Meetup,
             Organizer = "Фан-клуб AloeVera",
-            IsSecret = false
+            IsSecret = false,
+            Visibility = EventVisibility.Public
         },
         new()
         {
@@ -95,7 +97,8 @@ public static class MockDataStore
             Category = EventCategory.Festival,
             Price = 5000m,
             Organizer = "AloeVera Official",
-            IsSecret = false
+            IsSecret = true,
+            Visibility = EventVisibility.SecretTeaser
         },
         new()
         {
@@ -111,7 +114,8 @@ public static class MockDataStore
             Category = EventCategory.Yachting,
             Price = 25000m,
             Organizer = "Veter Veter",
-            IsSecret = true
+            IsSecret = true,
+            Visibility = EventVisibility.SecretHidden
         },
     };
 

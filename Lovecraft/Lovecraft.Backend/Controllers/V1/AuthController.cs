@@ -14,13 +14,16 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly ILogger<AuthController> _logger;
-    private readonly IConfiguration _configuration;
+    private readonly IAppConfigService _appConfig;
 
-    public AuthController(IAuthService authService, ILogger<AuthController> logger, IConfiguration configuration)
+    public AuthController(
+        IAuthService authService,
+        ILogger<AuthController> logger,
+        IAppConfigService appConfig)
     {
         _authService = authService;
         _logger = logger;
-        _configuration = configuration;
+        _appConfig = appConfig;
     }
 
     /// <summary>
@@ -56,6 +59,12 @@ public class AuthController : ControllerBase
                 "INVALID_INVITE_CODE",
                 "Invalid invite code"));
         }
+        catch (InviteRequiredException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INVITE_REQUIRED",
+                "Event invite code is required for registration"));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during registration");
@@ -66,14 +75,15 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Returns whether an invite code is required for registration
+    /// Returns whether a valid event invite code is required for new account registration (see appconfig partition <c>registration</c>).
     /// </summary>
     [HttpGet("registration-config")]
     [AllowAnonymous]
-    public ActionResult<ApiResponse<RegistrationConfigDto>> GetRegistrationConfig()
+    public async Task<ActionResult<ApiResponse<RegistrationConfigDto>>> GetRegistrationConfig()
     {
-        var inviteCodeRequired = !string.IsNullOrEmpty(_configuration["INVITE_CODE"]);
-        return Ok(ApiResponse<RegistrationConfigDto>.SuccessResponse(new RegistrationConfigDto(inviteCodeRequired)));
+        var cfg = await _appConfig.GetConfigAsync();
+        return Ok(ApiResponse<RegistrationConfigDto>.SuccessResponse(
+            new RegistrationConfigDto(cfg.Registration.RequireEventInvite)));
     }
 
     /// <summary>

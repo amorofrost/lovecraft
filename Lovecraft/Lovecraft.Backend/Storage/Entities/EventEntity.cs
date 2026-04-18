@@ -22,5 +22,9 @@ public class EventEntity : ITableEntity
     public double? Price { get; set; }
     public string Organizer { get; set; } = string.Empty;
     public bool IsSecret { get; set; }
+
+    /// <summary>Stored enum name: <c>Public</c>, <c>SecretHidden</c>, <c>SecretTeaser</c>. Empty falls back to <see cref="IsSecret"/>.</summary>
+    public string Visibility { get; set; } = string.Empty;
+
     public string? ForumTopicId { get; set; }
 }

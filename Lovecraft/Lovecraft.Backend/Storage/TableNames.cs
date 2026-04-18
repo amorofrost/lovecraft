@@ -28,4 +28,5 @@ public static class TableNames
     public static string UserChats       => Prefix + "userchats";
     public static string Messages        => Prefix + "messages";
     public static string AppConfig       => Prefix + "appconfig";
+    public static string EventInvites    => Prefix + "eventinvites";
 }

@@ -121,6 +121,8 @@ ALLOWED_ORIGINS=http://localhost:8080,https://aloevera-meet.com
 USE_MOCK_DATA=true
 ```
 
+Registration is **not** controlled by a global `INVITE_CODE` environment variable. The frontend reads `GET /api/v1/auth/registration-config` (`requireEventInvite`), which mirrors the **appconfig** row `registration` / `require_event_invite`. Per-event invite codes are issued via the admin API and validated at registration. See [DOCKER.md](./Lovecraft/docs/DOCKER.md#registration-policy-appconfig).
+
 ### appsettings.json
 
 ```json

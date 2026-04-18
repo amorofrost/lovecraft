@@ -4,7 +4,6 @@ using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lovecraft.UnitTests;
@@ -35,7 +34,15 @@ public class AuthenticationTests
 
         _jwtService = new JwtService(jwtSettings, jwtLogger);
         _passwordHasher = new PasswordHasher();
-        _authService = new MockAuthService(_jwtService, _passwordHasher, authLogger, new NullEmailService(NullLogger<NullEmailService>.Instance), new ConfigurationBuilder().Build());
+        var (app, invites, events) = TestAuthDependencies.CreateMockStack();
+        _authService = new MockAuthService(
+            _jwtService,
+            _passwordHasher,
+            authLogger,
+            new NullEmailService(NullLogger<NullEmailService>.Instance),
+            app,
+            invites,
+            events);
     }
 
     [Fact]
@@ -257,84 +264,20 @@ public class AuthenticationTests
         Assert.Contains(methods, m => m.Provider == "local");
     }
 
-    // --- Invite code tests ---
-
-    private static IConfiguration EmptyConfig() =>
-        new ConfigurationBuilder().Build();
-
-    private static IConfiguration WithInviteCode(string code) =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["INVITE_CODE"] = code })
-            .Build();
-
-    private MockAuthService BuildServiceWith(IConfiguration config) =>
-        new MockAuthService(
-            _jwtService,
-            _passwordHasher,
-            NullLogger<MockAuthService>.Instance,
-            new NullEmailService(NullLogger<NullEmailService>.Instance),
-            config);
-
     [Fact]
-    public async Task Register_WithNoInviteCodeConfigured_SucceedsRegardlessOfSubmittedCode()
+    public async Task Register_WithOptionalInviteField_Succeeds()
     {
-        var service = BuildServiceWith(EmptyConfig());
         var request = new RegisterRequestDto
         {
             Email = "open-reg@example.com", Password = "Test123!@#",
             Name = "Open User", Age = 25, Location = "City", Gender = "Male", Bio = "",
-            InviteCode = "anything"
-        };
-
-        var result = await service.RegisterAsync(request);
-
-        Assert.NotNull(result);
-        Assert.Equal(request.Email, result.User.Email);
-    }
-
-    [Fact]
-    public async Task Register_WithValidInviteCode_Succeeds()
-    {
-        var service = BuildServiceWith(WithInviteCode("SECRET123"));
-        var request = new RegisterRequestDto
-        {
-            Email = "valid-invite@example.com", Password = "Test123!@#",
-            Name = "Invited User", Age = 25, Location = "City", Gender = "Male", Bio = "",
-            InviteCode = "SECRET123"
-        };
-
-        var result = await service.RegisterAsync(request);
-
-        Assert.NotNull(result);
-        Assert.Equal(request.Email, result.User.Email);
-    }
-
-    [Fact]
-    public async Task Register_WithWrongInviteCode_ThrowsInvalidInviteCodeException()
-    {
-        var service = BuildServiceWith(WithInviteCode("SECRET123"));
-        var request = new RegisterRequestDto
-        {
-            Email = "wrong-invite@example.com", Password = "Test123!@#",
-            Name = "Bad User", Age = 25, Location = "City", Gender = "Male", Bio = "",
-            InviteCode = "WRONGCODE"
-        };
-
-        await Assert.ThrowsAsync<InvalidInviteCodeException>(() => service.RegisterAsync(request));
-    }
-
-    [Fact]
-    public async Task Register_WithNullInviteCodeWhenCodeConfigured_ThrowsInvalidInviteCodeException()
-    {
-        var service = BuildServiceWith(WithInviteCode("SECRET123"));
-        var request = new RegisterRequestDto
-        {
-            Email = "null-invite@example.com", Password = "Test123!@#",
-            Name = "Null Code User", Age = 25, Location = "City", Gender = "Male", Bio = "",
             InviteCode = null
         };
 
-        await Assert.ThrowsAsync<InvalidInviteCodeException>(() => service.RegisterAsync(request));
+        var result = await _authService.RegisterAsync(request);
+
+        Assert.NotNull(result);
+        Assert.Equal(request.Email, result.User.Email);
     }
 
     [Fact]

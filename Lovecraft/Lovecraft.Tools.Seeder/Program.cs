@@ -54,6 +54,7 @@ var allTables = new[]
     TableNames.ForumTopicIndex,
     TableNames.ForumReplies,
     TableNames.AppConfig,
+    TableNames.EventInvites,
 };
 
 Console.WriteLine("Resetting tables (ensure exists, then wipe entities)...");
@@ -148,6 +149,7 @@ foreach (var ev in MockDataStore.Events)
         Price        = ev.Price.HasValue ? (double?)Convert.ToDouble(ev.Price.Value) : null,
         Organizer    = ev.Organizer,
         IsSecret     = ev.IsSecret,
+        Visibility   = ev.Visibility.ToString(),
     };
     await eventsTable.UpsertEntityAsync(entity);
 
@@ -314,7 +316,10 @@ await UpsertAppConfigAsync("permissions", "override_rank", "admin");
 await UpsertAppConfigAsync("permissions", "manage_events", "admin");
 await UpsertAppConfigAsync("permissions", "manage_blog", "admin");
 await UpsertAppConfigAsync("permissions", "manage_store", "admin");
-Console.WriteLine("  [appconfig]     10 rank_thresholds + 11 permissions");
+
+// registration (site-wide — see spec: require_event_invite)
+await UpsertAppConfigAsync("registration", "require_event_invite", "false");
+Console.WriteLine("  [appconfig]     10 rank_thresholds + 11 permissions + 1 registration");
 
 // Likes + LikesReceived
 // Scenarios:

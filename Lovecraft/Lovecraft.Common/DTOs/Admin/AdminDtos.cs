@@ -6,4 +6,9 @@ public record AssignRoleRequestDto(StaffRole Role);
 public record SetRankOverrideRequestDto(UserRank? Rank);
 public record AppConfigDto(
     Dictionary<string, string> RankThresholds,
-    Dictionary<string, string> Permissions);
+    Dictionary<string, string> Permissions,
+    Dictionary<string, string> Registration);
+
+public record CreateEventInviteRequestDto(DateTime ExpiresAtUtc);
+
+public record CreateEventInviteResponseDto(string PlainCode, DateTime ExpiresAtUtc);

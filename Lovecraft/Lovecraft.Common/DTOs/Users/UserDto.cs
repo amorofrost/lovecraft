@@ -20,6 +20,9 @@ public class UserDto
     public UserSettingsDto Settings { get; set; } = new();
     public UserRank Rank { get; set; } = UserRank.Novice;
     public StaffRole StaffRole { get; set; } = StaffRole.None;
+
+    /// <summary>Event id for the invite used at signup, if any.</summary>
+    public string? RegistrationSourceEventId { get; set; }
 }
 
 public class UserPreferencesDto

@@ -160,6 +160,15 @@ Password: Test123!@#
 
 This user is pre-seeded with `EmailVerified = true` so you can log in immediately.
 
+### Registration policy (appconfig)
+
+There is **no** `INVITE_CODE` environment variable. Whether new accounts must supply an event invite code is determined by **Azure Table** appconfig:
+
+- Partition: `registration`
+- Row key: `require_event_invite` — when `true`, `Register` requires a valid `inviteCode` tied to an event; when `false`, signup is open unless you choose to pass a code anyway.
+
+The public endpoint `GET /api/v1/auth/registration-config` exposes this to the client as `requireEventInvite`. Event-scoped invites are created with `POST /api/v1/admin/events/{eventId}/invites` (admin).
+
 ### Next Steps
 
 See the main [README.md](../../README.md) and:

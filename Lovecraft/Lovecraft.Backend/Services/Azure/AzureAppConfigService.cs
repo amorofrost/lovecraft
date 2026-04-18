@@ -47,6 +47,9 @@ public class AzureAppConfigService : IAppConfigService
         var perms = rows
             .Where(r => r.PartitionKey == AppConfigEntity.PartitionPermissions)
             .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
+        var registration = rows
+            .Where(r => r.PartitionKey == AppConfigEntity.PartitionRegistration)
+            .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
 
         int I(string key, int fallback)
         {
@@ -64,6 +67,17 @@ public class AzureAppConfigService : IAppConfigService
             _logger.LogWarning(
                 "AppConfig permission {Key} is empty/whitespace; falling back to {Fallback}",
                 key, fallback);
+            return fallback;
+        }
+
+        var regDefaults = RegistrationConfig.Defaults;
+        bool Reg(string key, bool fallback)
+        {
+            if (!registration.TryGetValue(key, out var v)) return fallback;
+            if (bool.TryParse(v, out var b)) return b;
+            _logger.LogWarning(
+                "AppConfig registration {Key} has non-boolean value {Value}; falling back to {Fallback}",
+                key, v, fallback);
             return fallback;
         }
 
@@ -92,6 +106,8 @@ public class AzureAppConfigService : IAppConfigService
                 OverrideRank: S(AppConfigKeys.PermissionKeys.OverrideRank, p.OverrideRank),
                 ManageEvents: S(AppConfigKeys.PermissionKeys.ManageEvents, p.ManageEvents),
                 ManageBlog: S(AppConfigKeys.PermissionKeys.ManageBlog, p.ManageBlog),
-                ManageStore: S(AppConfigKeys.PermissionKeys.ManageStore, p.ManageStore)));
+                ManageStore: S(AppConfigKeys.PermissionKeys.ManageStore, p.ManageStore)),
+            new RegistrationConfig(
+                RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)));
     }
 }

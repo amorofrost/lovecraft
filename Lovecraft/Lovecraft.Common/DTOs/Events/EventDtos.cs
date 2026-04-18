@@ -16,7 +16,12 @@ public class EventDto
     public EventCategory Category { get; set; }
     public decimal? Price { get; set; }
     public string Organizer { get; set; } = string.Empty;
+
+    /// <summary>Legacy clients: true when <see cref="Visibility"/> is not <see cref="EventVisibility.Public"/>.</summary>
     public bool IsSecret { get; set; }
+
+    public EventVisibility Visibility { get; set; } = EventVisibility.Public;
+
     public string? ForumTopicId { get; set; }
 }
 

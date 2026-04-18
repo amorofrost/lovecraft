@@ -31,10 +31,11 @@ public class RefreshTokenTests
         };
 
         _jwtService  = new JwtService(jwtSettings, NullLogger<JwtService>.Instance);
+        var (app, invites, events) = TestAuthDependencies.CreateMockStack();
         _authService = new MockAuthService(_jwtService, new PasswordHasher(),
                                            NullLogger<MockAuthService>.Instance,
                                            new NullEmailService(NullLogger<NullEmailService>.Instance),
-                                           new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+                                           app, invites, events);
     }
 
     /// <summary>
