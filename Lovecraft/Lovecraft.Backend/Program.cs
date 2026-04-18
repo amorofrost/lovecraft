@@ -24,7 +24,8 @@ Lovecraft.Backend.Storage.TableNames.Prefix =
 // JWT Settings
 var jwtSettings = new JwtSettings
 {
-    SecretKey = builder.Configuration["JWT_SECRET_KEY"] ?? "your-super-secret-key-min-32-chars!!",
+    SecretKey = builder.Configuration["JWT_SECRET_KEY"]
+        ?? throw new InvalidOperationException("JWT_SECRET_KEY environment variable is required"),
     Issuer = "AloeVeraAPI",
     Audience = "AloeVeraClients",
     AccessTokenLifetimeMinutes = 15,
