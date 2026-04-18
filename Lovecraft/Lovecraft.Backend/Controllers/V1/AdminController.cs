@@ -51,6 +51,10 @@ public class AdminController : ControllerBase
                 ["manage_events"] = cfg.Permissions.ManageEvents,
                 ["manage_blog"] = cfg.Permissions.ManageBlog,
                 ["manage_store"] = cfg.Permissions.ManageStore,
+            },
+            Registration: new()
+            {
+                ["require_event_invite"] = cfg.Registration.RequireEventInvite ? "true" : "false",
             });
         return Ok(ApiResponse<AppConfigDto>.SuccessResponse(dto));
     }

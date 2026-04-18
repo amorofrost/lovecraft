@@ -36,6 +36,15 @@ public class MockAppConfigServiceTests
         Assert.Equal("moderator", config.Permissions.DeleteAnyReply);
         Assert.Equal("admin", config.Permissions.AssignRole);
     }
+
+    [Fact]
+    public async Task GetConfigAsync_ReturnsDefaultRegistration()
+    {
+        var service = new MockAppConfigService();
+        var config = await service.GetConfigAsync();
+
+        Assert.False(config.Registration.RequireEventInvite);
+    }
 }
 
 public class AzureAppConfigServiceTests
@@ -106,5 +115,21 @@ public class AzureAppConfigServiceTests
         var config = await svc.GetConfigAsync();
 
         Assert.Equal(5, config.Ranks.ActiveReplies); // default
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_OverridesRegistrationFromTable()
+    {
+        var entities = new[]
+        {
+            Row(AppConfigEntity.PartitionRegistration, AppConfigKeys.RegistrationKeys.RequireEventInvite, "true"),
+        };
+        var (tsc, _) = BuildClientMocks(entities);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.True(config.Registration.RequireEventInvite);
     }
 }
