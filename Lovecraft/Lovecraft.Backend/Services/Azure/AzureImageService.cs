@@ -6,6 +6,7 @@ using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Processing;
 
 namespace Lovecraft.Backend.Services.Azure;
@@ -99,7 +100,7 @@ public class AzureImageService : IImageService
 
     public async Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType)
     {
-        // 1. Resize image
+        // 1. Resize (same max edge for forum attachments and admin badge uploads)
         using var image = await Image.LoadAsync(imageStream);
         const int maxDimension = 1200;
         if (image.Width > maxDimension || image.Height > maxDimension)
@@ -108,18 +109,33 @@ public class AzureImageService : IImageService
             image.Mutate(x => x.Resize((int)(image.Width * ratio), (int)(image.Height * ratio)));
         }
 
-        // 2. Encode to JPEG
+        // 2. Encode: JPEG has no alpha — converting PNG/WebP/GIF with transparency used to flatten onto an
+        //    unintended background. Preserve alpha as PNG for those types; JPEG uploads stay JPEG.
         using var outputStream = new MemoryStream();
-        var encoder = new JpegEncoder { Quality = JpegQuality };
-        await image.SaveAsync(outputStream, encoder);
+        string blobExtension;
+        string outputContentType;
+
+        if (contentType is "image/png" or "image/webp" or "image/gif")
+        {
+            await image.SaveAsync(outputStream, new PngEncoder());
+            blobExtension = ".png";
+            outputContentType = "image/png";
+        }
+        else
+        {
+            await image.SaveAsync(outputStream, new JpegEncoder { Quality = JpegQuality });
+            blobExtension = ".jpg";
+            outputContentType = "image/jpeg";
+        }
+
         outputStream.Position = 0;
 
         // 3. Upload to Blob Storage
-        var blobName = $"{userId}/{Guid.NewGuid()}.jpg";
+        var blobName = $"{userId}/{Guid.NewGuid()}{blobExtension}";
         var containerClient = _blobServiceClient.GetBlobContainerClient("content-images");
         await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
         var blobClient = containerClient.GetBlobClient(blobName);
-        await blobClient.UploadAsync(outputStream, new BlobHttpHeaders { ContentType = "image/jpeg" });
+        await blobClient.UploadAsync(outputStream, new BlobHttpHeaders { ContentType = outputContentType });
 
         return blobClient.Uri.ToString();
     }
