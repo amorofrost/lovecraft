@@ -16,6 +16,7 @@ using Lovecraft.Backend.Hubs;
 using Lovecraft.Common.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+Lovecraft.Backend.Helpers.AppRuntime.AppStartedAtUtc = DateTime.UtcNow;
 
 // Table prefix — must be set before any Azure service is constructed
 Lovecraft.Backend.Storage.TableNames.Prefix =

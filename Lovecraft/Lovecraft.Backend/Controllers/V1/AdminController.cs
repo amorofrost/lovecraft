@@ -551,6 +551,10 @@ public class AdminController : ControllerBase
     {
         var up = ReadProcUptimeSeconds();
         var startedAt = nowUtc.AddSeconds(-up);
+        var appStarted = Lovecraft.Backend.Helpers.AppRuntime.AppStartedAtUtc == default
+            ? nowUtc
+            : Lovecraft.Backend.Helpers.AppRuntime.AppStartedAtUtc;
+        var appUp = Math.Max(0, (nowUtc - appStarted).TotalSeconds);
 
         var cpuPct = ReadCpuPercentFromCgroup(nowUtc);
         var (memUsage, memLimit) = ReadMemoryFromCgroup();
@@ -560,6 +564,8 @@ public class AdminController : ControllerBase
             Name = name,
             StartedAtUtc = startedAt,
             UptimeSeconds = up,
+            AppStartedAtUtc = appStarted,
+            AppUptimeSeconds = appUp,
             CpuPercent = cpuPct,
             MemoryUsageBytes = memUsage,
             MemoryLimitBytes = memLimit,
@@ -572,6 +578,8 @@ public class AdminController : ControllerBase
         public string? Name { get; set; }
         public string? StartedAtUtc { get; set; }
         public double UptimeSeconds { get; set; }
+        public string? AppStartedAtUtc { get; set; }
+        public double AppUptimeSeconds { get; set; }
         public double CpuPercent { get; set; }
         public long MemoryUsageBytes { get; set; }
         public long MemoryLimitBytes { get; set; }
@@ -598,11 +606,17 @@ public class AdminController : ControllerBase
         if (!string.IsNullOrWhiteSpace(dto.StartedAtUtc) && DateTime.TryParse(dto.StartedAtUtc, out var parsed))
             startedAt = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
 
+        var appStartedAt = startedAt;
+        if (!string.IsNullOrWhiteSpace(dto.AppStartedAtUtc) && DateTime.TryParse(dto.AppStartedAtUtc, out var appParsed))
+            appStartedAt = DateTime.SpecifyKind(appParsed, DateTimeKind.Utc);
+
         return new ContainerInfrastructureDto
         {
             Name = string.IsNullOrWhiteSpace(dto.Name) ? "aloevera-frontend" : dto.Name!,
             StartedAtUtc = startedAt,
             UptimeSeconds = dto.UptimeSeconds,
+            AppStartedAtUtc = appStartedAt,
+            AppUptimeSeconds = dto.AppUptimeSeconds,
             CpuPercent = dto.CpuPercent,
             MemoryUsageBytes = dto.MemoryUsageBytes,
             MemoryLimitBytes = dto.MemoryLimitBytes,
