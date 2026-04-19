@@ -30,5 +30,10 @@ public class ForumTopicEntity : ITableEntity
     public bool? NoviceVisible { get; set; }
     public bool? NoviceCanReply { get; set; }
 
+    /// <summary>Stored values: <c>public</c>, <c>attendeesOnly</c>, <c>specificUsers</c>.</summary>
+    public string EventTopicVisibility { get; set; } = "public";
+
+    public string AllowedUserIdsJson { get; set; } = "[]";
+
     public static string GetPartitionKey(string sectionId) => $"section-{sectionId}";
 }

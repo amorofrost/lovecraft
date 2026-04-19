@@ -423,8 +423,9 @@ public class AzureEventService : IEventService
             Attendees = attendees,
             InterestedUserIds = interestedUserIds,
             Category = Enum.TryParse<EventCategory>(entity.Category, true, out var cat) ? cat : EventCategory.Other,
-            Price = entity.Price.HasValue ? (decimal?)Convert.ToDecimal(entity.Price.Value) : null,
+            Price = entity.Price ?? string.Empty,
             Organizer = entity.Organizer,
+            ExternalUrl = entity.ExternalUrl ?? string.Empty,
             Visibility = visibility,
             IsSecret = visibility != EventVisibility.Public,
             ForumTopicId = entity.ForumTopicId,
@@ -444,8 +445,9 @@ public class AzureEventService : IEventService
         entity.Location = dto.Location;
         entity.Capacity = dto.Capacity;
         entity.Category = dto.Category.ToString();
-        entity.Price = dto.Price.HasValue ? (double?)Convert.ToDouble(dto.Price.Value) : null;
+        entity.Price = dto.Price?.Trim() ?? string.Empty;
         entity.Organizer = dto.Organizer;
+        entity.ExternalUrl = dto.ExternalUrl?.Trim() ?? string.Empty;
         entity.Visibility = visibility.ToString();
         entity.IsSecret = visibility != EventVisibility.Public;
         entity.Archived = dto.Archived;

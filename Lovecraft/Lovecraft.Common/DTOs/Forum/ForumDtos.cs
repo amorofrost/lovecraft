@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Common.DTOs.Forum;
@@ -32,6 +33,13 @@ public class ForumTopicDto
 
     /// <summary>When <see cref="SectionId"/> is <c>events</c>, the owning event id.</summary>
     public string? EventId { get; set; }
+
+    /// <summary>Access scope for event-linked topics; ignored for non-event sections.</summary>
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public EventTopicVisibility EventTopicVisibility { get; set; } = EventTopicVisibility.Public;
+
+    /// <summary>When <see cref="EventTopicVisibility"/> is <see cref="EventTopicVisibility.SpecificUsers"/>.</summary>
+    public List<string> AllowedUserIds { get; set; } = new();
 }
 
 /// <summary>One row per event for the Talks → event discussions tab (not a static forum section).</summary>
@@ -77,6 +85,9 @@ public class CreateTopicRequestDto
     public string Content { get; set; } = string.Empty;
     public bool? NoviceVisible { get; set; }
     public bool? NoviceCanReply { get; set; }
+
+    public EventTopicVisibility? EventTopicVisibility { get; set; }
+    public List<string>? AllowedUserIds { get; set; }
 }
 
 public class CreateReplyRequestDto
@@ -93,4 +104,8 @@ public class UpdateTopicRequestDto
     public bool? NoviceCanReply { get; set; }
     public bool? IsPinned { get; set; }
     public bool? IsLocked { get; set; }
+
+    public EventTopicVisibility? EventTopicVisibility { get; set; }
+    /// <summary>When set, replaces the allow-list (use empty list to clear).</summary>
+    public List<string>? AllowedUserIds { get; set; }
 }

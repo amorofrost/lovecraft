@@ -360,7 +360,7 @@ public class ForumController : ControllerBase
         if (ev is null)
             return false;
 
-        return EventForumAccess.CanViewTopicsAndReplies(ev, userId, isElevated);
+        return EventTopicAccess.CanViewEventTopic(ev, topic, userId, isElevated);
     }
 
     private static string? ResolveEventIdFromTopic(ForumTopicDto t)

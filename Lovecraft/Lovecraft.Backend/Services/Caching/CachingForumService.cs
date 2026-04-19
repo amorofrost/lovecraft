@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services.Caching;
 
@@ -133,10 +134,13 @@ public class CachingForumService : IForumService
         string authorId,
         string authorName,
         bool? noviceVisible = null,
-        bool? noviceCanReply = null)
+        bool? noviceCanReply = null,
+        EventTopicVisibility? eventTopicVisibility = null,
+        IReadOnlyList<string>? allowedUserIds = null)
     {
         var result = await _inner.CreateEventDiscussionTopicAsync(
-            eventId, title, content, authorId, authorName, noviceVisible, noviceCanReply);
+            eventId, title, content, authorId, authorName, noviceVisible, noviceCanReply,
+            eventTopicVisibility, allowedUserIds);
         _cache.Remove(TopicKey(result.Id));
         return result;
     }

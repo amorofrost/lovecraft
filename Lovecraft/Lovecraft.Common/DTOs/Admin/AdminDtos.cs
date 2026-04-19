@@ -34,8 +34,15 @@ public class AdminEventWriteDto
     public string Location { get; set; } = string.Empty;
     public int? Capacity { get; set; }
     public EventCategory Category { get; set; }
-    public decimal? Price { get; set; }
+
+    /// <summary>Free-text price / currency display.</summary>
+    public string Price { get; set; } = string.Empty;
+
     public string Organizer { get; set; } = string.Empty;
+
+    /// <summary>Official event or ticketing page (optional).</summary>
+    public string ExternalUrl { get; set; } = string.Empty;
+
     public EventVisibility Visibility { get; set; } = EventVisibility.Public;
     public bool Archived { get; set; }
 }

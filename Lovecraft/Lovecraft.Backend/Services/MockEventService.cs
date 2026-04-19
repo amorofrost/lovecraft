@@ -53,8 +53,9 @@ public class MockEventService : IEventService
             Capacity = dto.Capacity,
             Attendees = new List<string>(),
             Category = dto.Category,
-            Price = dto.Price,
+            Price = dto.Price?.Trim() ?? string.Empty,
             Organizer = dto.Organizer,
+            ExternalUrl = dto.ExternalUrl?.Trim() ?? string.Empty,
             Visibility = dto.Visibility,
             IsSecret = dto.Visibility != EventVisibility.Public,
             ForumTopicId = null,
@@ -78,8 +79,9 @@ public class MockEventService : IEventService
         eventDto.Location = dto.Location;
         eventDto.Capacity = dto.Capacity;
         eventDto.Category = dto.Category;
-        eventDto.Price = dto.Price;
+        eventDto.Price = dto.Price?.Trim() ?? string.Empty;
         eventDto.Organizer = dto.Organizer;
+        eventDto.ExternalUrl = dto.ExternalUrl?.Trim() ?? string.Empty;
         eventDto.Visibility = dto.Visibility;
         eventDto.IsSecret = dto.Visibility != EventVisibility.Public;
         eventDto.Archived = dto.Archived;

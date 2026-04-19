@@ -168,6 +168,7 @@ public class UsersController : ControllerBase
         Category = e.Category,
         Price = e.Price,
         Organizer = e.Organizer,
+        ExternalUrl = e.ExternalUrl,
         IsSecret = e.IsSecret,
         Visibility = e.Visibility,
         ForumTopicId = e.ForumTopicId,

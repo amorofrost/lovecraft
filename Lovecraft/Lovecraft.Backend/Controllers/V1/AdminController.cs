@@ -138,7 +138,9 @@ public class AdminController : ControllerBase
             userId,
             name,
             body.NoviceVisible,
-            body.NoviceCanReply);
+            body.NoviceCanReply,
+            body.EventTopicVisibility,
+            body.AllowedUserIds);
         return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(topic));
     }
 

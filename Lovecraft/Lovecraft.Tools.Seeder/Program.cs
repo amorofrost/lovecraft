@@ -148,8 +148,9 @@ foreach (var ev in MockDataStore.Events)
         Location     = ev.Location,
         Capacity     = ev.Capacity,
         Category     = ev.Category.ToString(),
-        Price        = ev.Price.HasValue ? (double?)Convert.ToDouble(ev.Price.Value) : null,
+        Price        = ev.Price ?? string.Empty,
         Organizer    = ev.Organizer,
+        ExternalUrl  = ev.ExternalUrl ?? string.Empty,
         IsSecret     = ev.IsSecret,
         Visibility   = ev.Visibility.ToString(),
         ForumTopicId = ev.ForumTopicId,
@@ -279,6 +280,12 @@ var topicIdxTable  = service.GetTableClient(TableNames.ForumTopicIndex);
 
 foreach (var topic in MockDataStore.ForumTopics)
 {
+    var visStored = topic.EventTopicVisibility switch
+    {
+        EventTopicVisibility.AttendeesOnly => "attendeesOnly",
+        EventTopicVisibility.SpecificUsers => "specificUsers",
+        _ => "public",
+    };
     var topicEntity = new ForumTopicEntity
     {
         PartitionKey = ForumTopicEntity.GetPartitionKey(topic.SectionId),
@@ -295,6 +302,8 @@ foreach (var topic in MockDataStore.ForumTopics)
         ReplyCount   = topic.ReplyCount,
         CreatedAt    = DateTime.SpecifyKind(topic.CreatedAt, DateTimeKind.Utc),
         UpdatedAt    = DateTime.SpecifyKind(topic.UpdatedAt, DateTimeKind.Utc),
+        EventTopicVisibility = visStored,
+        AllowedUserIdsJson = JsonSerializer.Serialize(topic.AllowedUserIds ?? new List<string>()),
     };
     var indexEntity = new ForumTopicIndexEntity
     {

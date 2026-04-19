@@ -21,8 +21,15 @@ public class EventEntity : ITableEntity
     public string Location { get; set; } = string.Empty;
     public int? Capacity { get; set; }
     public string Category { get; set; } = string.Empty;
-    public double? Price { get; set; }
+
+    /// <summary>Free-text price (currency as entered).</summary>
+    public string Price { get; set; } = string.Empty;
+
     public string Organizer { get; set; } = string.Empty;
+
+    /// <summary>Official event / ticket URL.</summary>
+    public string ExternalUrl { get; set; } = string.Empty;
+
     public bool IsSecret { get; set; }
 
     /// <summary>Stored enum name: <c>Public</c>, <c>SecretHidden</c>, <c>SecretTeaser</c>. Empty falls back to <see cref="IsSecret"/>.</summary>

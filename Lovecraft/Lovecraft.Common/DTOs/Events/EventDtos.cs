@@ -21,8 +21,14 @@ public class EventDto
     public List<string> InterestedUserIds { get; set; } = new();
 
     public EventCategory Category { get; set; }
-    public decimal? Price { get; set; }
+
+    /// <summary>Free-text price (e.g. &quot;2500 ₽&quot;, &quot;from $100&quot;).</summary>
+    public string Price { get; set; } = string.Empty;
+
     public string Organizer { get; set; } = string.Empty;
+
+    /// <summary>Official event page or ticket purchase URL (optional).</summary>
+    public string ExternalUrl { get; set; } = string.Empty;
 
     /// <summary>Legacy clients: true when <see cref="Visibility"/> is not <see cref="EventVisibility.Public"/>.</summary>
     public bool IsSecret { get; set; }

@@ -4,6 +4,7 @@ using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
+using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
@@ -84,7 +85,7 @@ public class AzureForumService : IForumService
             if (!EventForumAccess.CanViewEventDiscussionSummary(e, userId, isElevated))
                 continue;
 
-            var n = await CountTopicsForEventAsync(e.Id);
+            var n = await CountVisibleEventDiscussionTopicsAsync(e, userId, isElevated);
             list.Add(new EventDiscussionSectionDto
             {
                 EventId = e.Id,
@@ -108,8 +109,6 @@ public class AzureForumService : IForumService
             return null;
         if (!EventForumAccess.CanViewEventDiscussionSummary(ev, userId, isElevated))
             return null;
-        if (!EventForumAccess.CanViewTopicsAndReplies(ev, userId, isElevated))
-            return new List<ForumTopicDto>();
 
         var pk = ForumTopicEntity.GetPartitionKey(EventSectionId);
         var escapedPk = pk.Replace("'", "''");
@@ -119,7 +118,10 @@ public class AzureForumService : IForumService
         {
             if (!TopicEntityBelongsToEvent(entity, eventId))
                 continue;
-            results.Add(ToTopicDto(entity));
+            var dto = ToTopicDto(entity);
+            if (!EventTopicAccess.CanViewEventTopic(ev, dto, userId, isElevated))
+                continue;
+            results.Add(dto);
         }
 
         return results
@@ -128,7 +130,7 @@ public class AzureForumService : IForumService
             .ToList();
     }
 
-    private async Task<int> CountTopicsForEventAsync(string eventId)
+    private async Task<int> CountVisibleEventDiscussionTopicsAsync(EventDto ev, string userId, bool isElevated)
     {
         var pk = ForumTopicEntity.GetPartitionKey(EventSectionId);
         var escapedPk = pk.Replace("'", "''");
@@ -136,7 +138,10 @@ public class AzureForumService : IForumService
         await foreach (var entity in _topicsTable.QueryAsync<ForumTopicEntity>(
                      filter: $"PartitionKey eq '{escapedPk}'"))
         {
-            if (TopicEntityBelongsToEvent(entity, eventId))
+            if (!TopicEntityBelongsToEvent(entity, ev.Id))
+                continue;
+            var dto = ToTopicDto(entity);
+            if (EventTopicAccess.CanViewEventTopic(ev, dto, userId, isElevated))
                 n++;
         }
 
@@ -301,33 +306,54 @@ public class AzureForumService : IForumService
         MinRank = string.IsNullOrWhiteSpace(entity.MinRank) ? "novice" : entity.MinRank
     };
 
-    private static ForumTopicDto ToTopicDto(ForumTopicEntity entity) => new ForumTopicDto
+    private static ForumTopicDto ToTopicDto(ForumTopicEntity entity)
     {
-        Id = entity.RowKey,
-        SectionId = entity.SectionId,
-        EventId = string.IsNullOrEmpty(entity.EventId) ? null : entity.EventId,
-        Title = entity.Title,
-        Content = entity.Content,
-        AuthorId = entity.AuthorId,
-        AuthorName = entity.AuthorName,
-        AuthorAvatar = string.IsNullOrEmpty(entity.AuthorAvatar) ? null : entity.AuthorAvatar,
-        IsPinned = entity.IsPinned,
-        IsLocked = entity.IsLocked,
-        ReplyCount = entity.ReplyCount,
-        CreatedAt = entity.CreatedAt,
-        UpdatedAt = entity.UpdatedAt,
-        MinRank = string.IsNullOrWhiteSpace(entity.MinRank) ? "novice" : entity.MinRank,
-        NoviceVisible = entity.NoviceVisible ?? true,
-        NoviceCanReply = entity.NoviceCanReply ?? true
+        var allowed = JsonSerializer.Deserialize<List<string>>(entity.AllowedUserIdsJson ?? "[]") ?? new List<string>();
+        return new ForumTopicDto
+        {
+            Id = entity.RowKey,
+            SectionId = entity.SectionId,
+            EventId = string.IsNullOrEmpty(entity.EventId) ? null : entity.EventId,
+            Title = entity.Title,
+            Content = entity.Content,
+            AuthorId = entity.AuthorId,
+            AuthorName = entity.AuthorName,
+            AuthorAvatar = string.IsNullOrEmpty(entity.AuthorAvatar) ? null : entity.AuthorAvatar,
+            IsPinned = entity.IsPinned,
+            IsLocked = entity.IsLocked,
+            ReplyCount = entity.ReplyCount,
+            CreatedAt = entity.CreatedAt,
+            UpdatedAt = entity.UpdatedAt,
+            MinRank = string.IsNullOrWhiteSpace(entity.MinRank) ? "novice" : entity.MinRank,
+            NoviceVisible = entity.NoviceVisible ?? true,
+            NoviceCanReply = entity.NoviceCanReply ?? true,
+            EventTopicVisibility = ParseStoredVisibility(entity.EventTopicVisibility),
+            AllowedUserIds = allowed,
+        };
+    }
+
+    private static EventTopicVisibility ParseStoredVisibility(string? s) => s switch
+    {
+        "attendeesOnly" => EventTopicVisibility.AttendeesOnly,
+        "specificUsers" => EventTopicVisibility.SpecificUsers,
+        _ => EventTopicVisibility.Public,
+    };
+
+    private static string VisibilityToStorage(EventTopicVisibility v) => v switch
+    {
+        EventTopicVisibility.AttendeesOnly => "attendeesOnly",
+        EventTopicVisibility.SpecificUsers => "specificUsers",
+        _ => "public",
     };
 
     public async Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
     {
         var topicId = $"event-topic-{eventId}";
+        var attendeesTopicId = $"event-attendees-{eventId}";
         var now = DateTime.UtcNow;
         const string sectionId = "events";
 
-        var topicEntity = new ForumTopicEntity
+        var publicEntity = new ForumTopicEntity
         {
             PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
             RowKey = topicId,
@@ -342,34 +368,50 @@ public class AzureForumService : IForumService
             IsLocked = false,
             ReplyCount = 0,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            EventTopicVisibility = VisibilityToStorage(EventTopicVisibility.Public),
+            AllowedUserIdsJson = "[]",
         };
 
-        await _topicsTable.UpsertEntityAsync(topicEntity);
+        await _topicsTable.UpsertEntityAsync(publicEntity);
 
-        // Upsert index entry so GetTopicByIdAsync can resolve this topic
-        var indexEntity = new ForumTopicIndexEntity
+        await _topicIndexTable.UpsertEntityAsync(new ForumTopicIndexEntity
         {
             PartitionKey = "TOPICINDEX",
             RowKey = topicId,
             SectionId = sectionId
-        };
-        await _topicIndexTable.UpsertEntityAsync(indexEntity);
+        });
 
-        return new ForumTopicDto
+        var attendeesEntity = new ForumTopicEntity
         {
-            Id = topicId,
+            PartitionKey = ForumTopicEntity.GetPartitionKey(sectionId),
+            RowKey = attendeesTopicId,
             SectionId = sectionId,
             EventId = eventId,
-            Title = eventName,
-            Content = $"Обсуждение события: {eventName}",
+            Title = $"{eventName} — для участников",
+            Content = $"Обсуждение только для зарегистрированных участников события: {eventName}",
             AuthorId = "system",
             AuthorName = "AloeVera",
+            AuthorAvatar = string.Empty,
+            IsPinned = false,
+            IsLocked = false,
+            ReplyCount = 0,
             CreatedAt = now,
             UpdatedAt = now,
-            ReplyCount = 0,
-            IsPinned = false
+            EventTopicVisibility = VisibilityToStorage(EventTopicVisibility.AttendeesOnly),
+            AllowedUserIdsJson = "[]",
         };
+
+        await _topicsTable.UpsertEntityAsync(attendeesEntity);
+
+        await _topicIndexTable.UpsertEntityAsync(new ForumTopicIndexEntity
+        {
+            PartitionKey = "TOPICINDEX",
+            RowKey = attendeesTopicId,
+            SectionId = sectionId
+        });
+
+        return ToTopicDto(publicEntity);
     }
 
     public async Task<ForumTopicDto> CreateEventDiscussionTopicAsync(
@@ -379,7 +421,9 @@ public class AzureForumService : IForumService
         string authorId,
         string authorName,
         bool? noviceVisible = null,
-        bool? noviceCanReply = null)
+        bool? noviceCanReply = null,
+        EventTopicVisibility? eventTopicVisibility = null,
+        IReadOnlyList<string>? allowedUserIds = null)
     {
         var ev = await _eventService.GetEventByIdAdminAsync(eventId).ConfigureAwait(false);
         if (ev is null)
@@ -389,6 +433,8 @@ public class AzureForumService : IForumService
         var now = DateTime.UtcNow;
         const string sectionId = EventSectionId;
         var authorAvatar = await GetAuthorAvatarAsync(authorId).ConfigureAwait(false);
+        var vis = eventTopicVisibility ?? EventTopicVisibility.Public;
+        var ids = allowedUserIds != null ? allowedUserIds.Distinct().ToList() : new List<string>();
 
         var topicEntity = new ForumTopicEntity
         {
@@ -407,7 +453,9 @@ public class AzureForumService : IForumService
             CreatedAt = now,
             UpdatedAt = now,
             NoviceVisible = noviceVisible ?? true,
-            NoviceCanReply = noviceCanReply ?? true
+            NoviceCanReply = noviceCanReply ?? true,
+            EventTopicVisibility = VisibilityToStorage(vis),
+            AllowedUserIdsJson = JsonSerializer.Serialize(ids),
         };
 
         await _topicsTable.AddEntityAsync(topicEntity);
@@ -561,7 +609,9 @@ public class AzureForumService : IForumService
             CreatedAt = now,
             UpdatedAt = now,
             NoviceVisible = noviceVisible,
-            NoviceCanReply = noviceCanReply
+            NoviceCanReply = noviceCanReply,
+            EventTopicVisibility = VisibilityToStorage(EventTopicVisibility.Public),
+            AllowedUserIdsJson = "[]",
         };
         await _topicsTable.AddEntityAsync(topicEntity);
 
@@ -594,7 +644,9 @@ public class AzureForumService : IForumService
             CreatedAt = now,
             UpdatedAt = now,
             NoviceVisible = noviceVisible ?? true,
-            NoviceCanReply = noviceCanReply ?? true
+            NoviceCanReply = noviceCanReply ?? true,
+            EventTopicVisibility = EventTopicVisibility.Public,
+            AllowedUserIds = new List<string>(),
         };
     }
 
@@ -631,6 +683,10 @@ public class AzureForumService : IForumService
         if (update.NoviceCanReply.HasValue) topicEntity.NoviceCanReply = update.NoviceCanReply.Value;
         if (update.IsPinned.HasValue) topicEntity.IsPinned = update.IsPinned.Value;
         if (update.IsLocked.HasValue) topicEntity.IsLocked = update.IsLocked.Value;
+        if (update.EventTopicVisibility.HasValue)
+            topicEntity.EventTopicVisibility = VisibilityToStorage(update.EventTopicVisibility.Value);
+        if (update.AllowedUserIds is not null)
+            topicEntity.AllowedUserIdsJson = JsonSerializer.Serialize(update.AllowedUserIds.Distinct().ToList());
         topicEntity.UpdatedAt = DateTime.UtcNow;
 
         await _topicsTable.UpdateEntityAsync(topicEntity, topicEntity.ETag);

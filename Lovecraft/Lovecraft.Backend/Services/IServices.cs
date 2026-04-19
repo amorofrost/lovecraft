@@ -104,7 +104,9 @@ public interface IForumService
         string authorId,
         string authorName,
         bool? noviceVisible = null,
-        bool? noviceCanReply = null);
+        bool? noviceCanReply = null,
+        EventTopicVisibility? eventTopicVisibility = null,
+        IReadOnlyList<string>? allowedUserIds = null);
     Task<bool> DeleteTopicAsync(string topicId);
     Task<IReadOnlyList<string>> DeleteTopicsForEventAsync(string eventId);
 }

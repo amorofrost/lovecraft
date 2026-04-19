@@ -1,3 +1,4 @@
+using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
@@ -37,7 +38,8 @@ public class MockForumService : IForumService
 
             var n = MockDataStore.ForumTopics.Count(t =>
                 t.SectionId == EventSectionId &&
-                string.Equals(ResolveEventId(t), e.Id, StringComparison.Ordinal));
+                string.Equals(ResolveEventId(t), e.Id, StringComparison.Ordinal) &&
+                EventTopicAccess.CanViewEventTopic(e, t, userId, isElevated));
 
             list.Add(new EventDiscussionSectionDto
             {
@@ -62,11 +64,10 @@ public class MockForumService : IForumService
             return null;
         if (!EventForumAccess.CanViewEventDiscussionSummary(ev, userId, isElevated))
             return null;
-        if (!EventForumAccess.CanViewTopicsAndReplies(ev, userId, isElevated))
-            return new List<ForumTopicDto>();
 
         var topics = MockDataStore.ForumTopics
             .Where(t => t.SectionId == EventSectionId && string.Equals(ResolveEventId(t), eventId, StringComparison.Ordinal))
+            .Where(t => EventTopicAccess.CanViewEventTopic(ev, t, userId, isElevated))
             .OrderByDescending(t => t.IsPinned)
             .ThenByDescending(t => t.UpdatedAt)
             .ToList();
@@ -209,7 +210,9 @@ public class MockForumService : IForumService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
             NoviceVisible = noviceVisible ?? true,
-            NoviceCanReply = noviceCanReply ?? true
+            NoviceCanReply = noviceCanReply ?? true,
+            EventTopicVisibility = EventTopicVisibility.Public,
+            AllowedUserIds = new List<string>(),
         };
 
         MockDataStore.ForumTopics.Add(topic);
@@ -230,6 +233,9 @@ public class MockForumService : IForumService
         if (update.NoviceCanReply.HasValue) topic.NoviceCanReply = update.NoviceCanReply.Value;
         if (update.IsPinned.HasValue) topic.IsPinned = update.IsPinned.Value;
         if (update.IsLocked.HasValue) topic.IsLocked = update.IsLocked.Value;
+        if (update.EventTopicVisibility.HasValue) topic.EventTopicVisibility = update.EventTopicVisibility.Value;
+        if (update.AllowedUserIds is not null)
+            topic.AllowedUserIds = update.AllowedUserIds.Distinct().ToList();
         topic.UpdatedAt = DateTime.UtcNow;
 
         return Task.FromResult<ForumTopicDto?>(topic);
@@ -242,12 +248,16 @@ public class MockForumService : IForumService
         string authorId,
         string authorName,
         bool? noviceVisible = null,
-        bool? noviceCanReply = null)
+        bool? noviceCanReply = null,
+        EventTopicVisibility? eventTopicVisibility = null,
+        IReadOnlyList<string>? allowedUserIds = null)
     {
         var ev = await _eventService.GetEventByIdAdminAsync(eventId).ConfigureAwait(false);
         if (ev is null)
             throw new KeyNotFoundException($"Event '{eventId}' not found.");
 
+        var vis = eventTopicVisibility ?? EventTopicVisibility.Public;
+        var ids = allowedUserIds != null ? allowedUserIds.Distinct().ToList() : new List<string>();
         var topic = new ForumTopicDto
         {
             Id = Guid.NewGuid().ToString(),
@@ -262,7 +272,9 @@ public class MockForumService : IForumService
             ReplyCount = 0,
             IsPinned = false,
             NoviceVisible = noviceVisible ?? true,
-            NoviceCanReply = noviceCanReply ?? true
+            NoviceCanReply = noviceCanReply ?? true,
+            EventTopicVisibility = vis,
+            AllowedUserIds = ids,
         };
         MockDataStore.ForumTopics.Add(topic);
         return topic;
@@ -297,7 +309,8 @@ public class MockForumService : IForumService
 
     public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
     {
-        var topic = new ForumTopicDto
+        var now = DateTime.UtcNow;
+        var publicTopic = new ForumTopicDto
         {
             Id = $"event-topic-{eventId}",
             SectionId = EventSectionId,
@@ -306,12 +319,33 @@ public class MockForumService : IForumService
             Content = $"Обсуждение события: {eventName}",
             AuthorId = "system",
             AuthorName = "AloeVera",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
+            CreatedAt = now,
+            UpdatedAt = now,
             ReplyCount = 0,
-            IsPinned = false
+            IsPinned = false,
+            EventTopicVisibility = EventTopicVisibility.Public,
+            AllowedUserIds = new List<string>(),
         };
-        MockDataStore.ForumTopics.Add(topic);
-        return Task.FromResult(topic);
+        MockDataStore.ForumTopics.Add(publicTopic);
+
+        var attendeesTopic = new ForumTopicDto
+        {
+            Id = $"event-attendees-{eventId}",
+            SectionId = EventSectionId,
+            EventId = eventId,
+            Title = $"{eventName} — для участников",
+            Content = $"Обсуждение только для зарегистрированных участников события: {eventName}",
+            AuthorId = "system",
+            AuthorName = "AloeVera",
+            CreatedAt = now,
+            UpdatedAt = now,
+            ReplyCount = 0,
+            IsPinned = false,
+            EventTopicVisibility = EventTopicVisibility.AttendeesOnly,
+            AllowedUserIds = new List<string>(),
+        };
+        MockDataStore.ForumTopics.Add(attendeesTopic);
+
+        return Task.FromResult(publicTopic);
     }
 }
