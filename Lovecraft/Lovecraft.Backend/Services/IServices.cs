@@ -70,6 +70,9 @@ public interface IStoreService
 {
     Task<List<StoreItemDto>> GetStoreItemsAsync();
     Task<StoreItemDto?> GetStoreItemByIdAsync(string itemId);
+    Task<StoreItemDto> CreateStoreItemAsync(StoreItemDto item);
+    Task<StoreItemDto?> UpdateStoreItemAsync(string itemId, StoreItemDto item);
+    Task<bool> DeleteStoreItemAsync(string itemId);
 }
 
 public interface IBlogService

@@ -51,4 +51,67 @@ public class AzureStoreService : IStoreService
         Category = entity.Category,
         ExternalPurchaseUrl = entity.ExternalPurchaseUrl
     };
+
+    private static StoreItemEntity FromDto(StoreItemDto dto, string rowKey) => new StoreItemEntity
+    {
+        PartitionKey = "STORE",
+        RowKey = rowKey,
+        Title = dto.Title,
+        Description = dto.Description,
+        Price = (double)dto.Price,
+        ImageUrl = dto.ImageUrl,
+        Category = dto.Category,
+        ExternalPurchaseUrl = dto.ExternalPurchaseUrl ?? string.Empty,
+    };
+
+    public async Task<StoreItemDto> CreateStoreItemAsync(StoreItemDto item)
+    {
+        try
+        {
+            await _storeTable.GetEntityAsync<StoreItemEntity>("STORE", item.Id);
+            throw new InvalidOperationException($"Store item '{item.Id}' already exists.");
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+        }
+
+        var entity = FromDto(item, item.Id);
+        await _storeTable.AddEntityAsync(entity);
+        return ToDto(entity);
+    }
+
+    public async Task<StoreItemDto?> UpdateStoreItemAsync(string itemId, StoreItemDto item)
+    {
+        try
+        {
+            var response = await _storeTable.GetEntityAsync<StoreItemEntity>("STORE", itemId);
+            var entity = response.Value;
+            entity.Title = item.Title;
+            entity.Description = item.Description;
+            entity.Price = (double)item.Price;
+            entity.ImageUrl = item.ImageUrl;
+            entity.Category = item.Category;
+            entity.ExternalPurchaseUrl = item.ExternalPurchaseUrl ?? string.Empty;
+            await _storeTable.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
+            return ToDto(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    public async Task<bool> DeleteStoreItemAsync(string itemId)
+    {
+        try
+        {
+            await _storeTable.DeleteEntityAsync("STORE", itemId, ETag.All);
+            return true;
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogWarning(ex, "Delete store item {ItemId}", itemId);
+            return false;
+        }
+    }
 }

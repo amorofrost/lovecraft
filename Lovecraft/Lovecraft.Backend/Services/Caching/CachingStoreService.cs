@@ -4,10 +4,8 @@ using Lovecraft.Common.DTOs.Store;
 namespace Lovecraft.Backend.Services.Caching;
 
 /// <summary>
-/// Caching decorator for IStoreService. The merchandise catalog is read-only through
-/// the API, so a long TTL is safe — no write-side invalidation is needed.
-///
-/// TTL: 5 minutes.
+/// Caching decorator for IStoreService. Reads use a 5-minute TTL; writes invalidate
+/// the all-items cache and the affected item key.
 /// </summary>
 public class CachingStoreService : IStoreService
 {
@@ -44,5 +42,34 @@ public class CachingStoreService : IStoreService
         if (result is not null)
             _cache.Set(key, result, Ttl);
         return result;
+    }
+
+    public async Task<StoreItemDto> CreateStoreItemAsync(StoreItemDto item)
+    {
+        var r = await _inner.CreateStoreItemAsync(item);
+        _cache.Remove(AllKey);
+        _cache.Remove(ItemKey(r.Id));
+        return r;
+    }
+
+    public async Task<StoreItemDto?> UpdateStoreItemAsync(string itemId, StoreItemDto item)
+    {
+        var r = await _inner.UpdateStoreItemAsync(itemId, item);
+        _cache.Remove(AllKey);
+        _cache.Remove(ItemKey(itemId));
+        if (r is not null)
+            _cache.Remove(ItemKey(r.Id));
+        return r;
+    }
+
+    public async Task<bool> DeleteStoreItemAsync(string itemId)
+    {
+        var ok = await _inner.DeleteStoreItemAsync(itemId);
+        if (ok)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(ItemKey(itemId));
+        }
+        return ok;
     }
 }

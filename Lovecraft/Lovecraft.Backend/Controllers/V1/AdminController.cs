@@ -6,6 +6,7 @@ using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
+using Lovecraft.Common.DTOs.Store;
 using Lovecraft.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,17 +23,20 @@ public class AdminController : ControllerBase
     private readonly IEventInviteService _eventInvites;
     private readonly IEventService _events;
     private readonly IForumService _forum;
+    private readonly IStoreService _store;
 
     public AdminController(
         IAppConfigService appConfig,
         IEventInviteService eventInvites,
         IEventService events,
-        IForumService forum)
+        IForumService forum,
+        IStoreService store)
     {
         _appConfig = appConfig;
         _eventInvites = eventInvites;
         _events = events;
         _forum = forum;
+        _store = store;
     }
 
     [HttpGet("events")]
@@ -273,6 +277,84 @@ public class AdminController : ControllerBase
         {
             return StatusCode(500, ApiResponse<ForumTopicDto>.ErrorResponse("INTERNAL_ERROR", ex.Message));
         }
+    }
+
+    [HttpGet("store-items")]
+    public async Task<ActionResult<ApiResponse<List<StoreItemDto>>>> ListStoreItems()
+    {
+        var items = await _store.GetStoreItemsAsync();
+        return Ok(ApiResponse<List<StoreItemDto>>.SuccessResponse(items));
+    }
+
+    [HttpGet("store-items/{itemId}")]
+    public async Task<ActionResult<ApiResponse<StoreItemDto>>> GetStoreItem(string itemId)
+    {
+        var item = await _store.GetStoreItemByIdAsync(itemId);
+        if (item is null)
+            return NotFound(ApiResponse<StoreItemDto>.ErrorResponse("NOT_FOUND", "Store item not found"));
+        return Ok(ApiResponse<StoreItemDto>.SuccessResponse(item));
+    }
+
+    [HttpPost("store-items")]
+    public async Task<ActionResult<ApiResponse<StoreItemDto>>> CreateStoreItem([FromBody] CreateStoreItemRequestDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<StoreItemDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+
+        var dto = new StoreItemDto
+        {
+            Id = body.Id,
+            Title = body.Title,
+            Description = body.Description,
+            Price = body.Price,
+            ImageUrl = body.ImageUrl,
+            Category = body.Category,
+            ExternalPurchaseUrl = body.ExternalPurchaseUrl ?? string.Empty,
+        };
+
+        try
+        {
+            var created = await _store.CreateStoreItemAsync(dto);
+            return Ok(ApiResponse<StoreItemDto>.SuccessResponse(created));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ApiResponse<StoreItemDto>.ErrorResponse("DUPLICATE", ex.Message));
+        }
+    }
+
+    [HttpPut("store-items/{itemId}")]
+    public async Task<ActionResult<ApiResponse<StoreItemDto>>> UpdateStoreItem(
+        string itemId,
+        [FromBody] StoreItemMutationDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<StoreItemDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+
+        var dto = new StoreItemDto
+        {
+            Id = itemId,
+            Title = body.Title,
+            Description = body.Description,
+            Price = body.Price,
+            ImageUrl = body.ImageUrl,
+            Category = body.Category,
+            ExternalPurchaseUrl = body.ExternalPurchaseUrl ?? string.Empty,
+        };
+
+        var updated = await _store.UpdateStoreItemAsync(itemId, dto);
+        if (updated is null)
+            return NotFound(ApiResponse<StoreItemDto>.ErrorResponse("NOT_FOUND", "Store item not found"));
+        return Ok(ApiResponse<StoreItemDto>.SuccessResponse(updated));
+    }
+
+    [HttpDelete("store-items/{itemId}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteStoreItem(string itemId)
+    {
+        var ok = await _store.DeleteStoreItemAsync(itemId);
+        if (!ok)
+            return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Store item not found"));
+        return Ok(ApiResponse<bool>.SuccessResponse(true));
     }
 
     [HttpGet("invites")]
