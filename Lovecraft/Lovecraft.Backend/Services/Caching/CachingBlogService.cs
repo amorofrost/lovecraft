@@ -4,10 +4,8 @@ using Lovecraft.Common.DTOs.Blog;
 namespace Lovecraft.Backend.Services.Caching;
 
 /// <summary>
-/// Caching decorator for IBlogService. Blog content is read-only through the API,
-/// so a long TTL is safe — no write-side invalidation is needed.
-///
-/// TTL: 5 minutes.
+/// Caching decorator for IBlogService. Reads use a 5-minute TTL; writes invalidate
+/// the all-posts cache and the affected post key.
 /// </summary>
 public class CachingBlogService : IBlogService
 {
@@ -44,5 +42,32 @@ public class CachingBlogService : IBlogService
         if (result is not null)
             _cache.Set(key, result, Ttl);
         return result;
+    }
+
+    public async Task<BlogPostDto> CreateBlogPostAsync(BlogPostDto post)
+    {
+        var r = await _inner.CreateBlogPostAsync(post);
+        _cache.Remove(AllKey);
+        _cache.Remove(PostKey(r.Id));
+        return r;
+    }
+
+    public async Task<BlogPostDto?> UpdateBlogPostAsync(string postId, BlogPostDto post)
+    {
+        var r = await _inner.UpdateBlogPostAsync(postId, post);
+        _cache.Remove(AllKey);
+        _cache.Remove(PostKey(postId));
+        return r;
+    }
+
+    public async Task<bool> DeleteBlogPostAsync(string postId)
+    {
+        var ok = await _inner.DeleteBlogPostAsync(postId);
+        if (ok)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(PostKey(postId));
+        }
+        return ok;
     }
 }

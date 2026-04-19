@@ -79,6 +79,9 @@ public interface IBlogService
 {
     Task<List<BlogPostDto>> GetBlogPostsAsync();
     Task<BlogPostDto?> GetBlogPostByIdAsync(string postId);
+    Task<BlogPostDto> CreateBlogPostAsync(BlogPostDto post);
+    Task<BlogPostDto?> UpdateBlogPostAsync(string postId, BlogPostDto post);
+    Task<bool> DeleteBlogPostAsync(string postId);
 }
 
 public interface IForumService

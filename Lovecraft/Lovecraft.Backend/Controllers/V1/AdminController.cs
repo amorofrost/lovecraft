@@ -4,6 +4,7 @@ using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Admin;
+using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Store;
@@ -24,19 +25,22 @@ public class AdminController : ControllerBase
     private readonly IEventService _events;
     private readonly IForumService _forum;
     private readonly IStoreService _store;
+    private readonly IBlogService _blog;
 
     public AdminController(
         IAppConfigService appConfig,
         IEventInviteService eventInvites,
         IEventService events,
         IForumService forum,
-        IStoreService store)
+        IStoreService store,
+        IBlogService blog)
     {
         _appConfig = appConfig;
         _eventInvites = eventInvites;
         _events = events;
         _forum = forum;
         _store = store;
+        _blog = blog;
     }
 
     [HttpGet("events")]
@@ -354,6 +358,86 @@ public class AdminController : ControllerBase
         var ok = await _store.DeleteStoreItemAsync(itemId);
         if (!ok)
             return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Store item not found"));
+        return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    [HttpGet("blog-posts")]
+    public async Task<ActionResult<ApiResponse<List<BlogPostDto>>>> ListBlogPosts()
+    {
+        var posts = await _blog.GetBlogPostsAsync();
+        return Ok(ApiResponse<List<BlogPostDto>>.SuccessResponse(posts));
+    }
+
+    [HttpGet("blog-posts/{postId}")]
+    public async Task<ActionResult<ApiResponse<BlogPostDto>>> GetBlogPost(string postId)
+    {
+        var post = await _blog.GetBlogPostByIdAsync(postId);
+        if (post is null)
+            return NotFound(ApiResponse<BlogPostDto>.ErrorResponse("NOT_FOUND", "Blog post not found"));
+        return Ok(ApiResponse<BlogPostDto>.SuccessResponse(post));
+    }
+
+    [HttpPost("blog-posts")]
+    public async Task<ActionResult<ApiResponse<BlogPostDto>>> CreateBlogPost([FromBody] CreateBlogPostRequestDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<BlogPostDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+
+        var dto = new BlogPostDto
+        {
+            Id = body.Id,
+            Title = body.Title,
+            Excerpt = body.Excerpt,
+            Content = body.Content,
+            ImageUrl = body.ImageUrl,
+            Author = body.Author,
+            Tags = body.Tags ?? new List<string>(),
+            Date = body.Date,
+        };
+
+        try
+        {
+            var created = await _blog.CreateBlogPostAsync(dto);
+            return Ok(ApiResponse<BlogPostDto>.SuccessResponse(created));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ApiResponse<BlogPostDto>.ErrorResponse("DUPLICATE", ex.Message));
+        }
+    }
+
+    [HttpPut("blog-posts/{postId}")]
+    public async Task<ActionResult<ApiResponse<BlogPostDto>>> UpdateBlogPost(
+        string postId,
+        [FromBody] BlogPostMutationDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<BlogPostDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+
+        var dto = new BlogPostDto
+        {
+            Id = postId,
+            Title = body.Title,
+            Excerpt = body.Excerpt,
+            Content = body.Content,
+            ImageUrl = body.ImageUrl,
+            Author = body.Author,
+            Tags = body.Tags ?? new List<string>(),
+            Date = body.Date,
+        };
+
+        var updated = await _blog.UpdateBlogPostAsync(postId, dto);
+        if (updated is null)
+            return NotFound(ApiResponse<BlogPostDto>.ErrorResponse("NOT_FOUND", "Blog post not found"));
+        return Ok(ApiResponse<BlogPostDto>.SuccessResponse(updated));
+    }
+
+    [HttpDelete("blog-posts/{postId}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteBlogPost(string postId)
+    {
+        var ok = await _blog.DeleteBlogPostAsync(postId);
+        if (!ok)
+            return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Blog post not found"));
         return Ok(ApiResponse<bool>.SuccessResponse(true));
     }
 

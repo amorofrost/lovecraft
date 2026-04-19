@@ -32,14 +32,82 @@ public class AzureBlogService : IBlogService
 
     public async Task<BlogPostDto?> GetBlogPostByIdAsync(string postId)
     {
-        // Need to scan because we don't know the reversed-ticks portion of the RK
-        await foreach (var entity in _blogTable.QueryAsync<BlogPostEntity>(
-            filter: $"PartitionKey eq 'BLOG' and PostId eq '{postId}'"))
+        var entity = await FindEntityByPostIdAsync(postId);
+        return entity is null ? null : ToDto(entity);
+    }
+
+    public async Task<BlogPostDto> CreateBlogPostAsync(BlogPostDto post)
+    {
+        if (await FindEntityByPostIdAsync(post.Id) is not null)
+            throw new InvalidOperationException($"Blog post '{post.Id}' already exists.");
+
+        var date = DateTime.SpecifyKind(post.Date, DateTimeKind.Utc);
+        var entity = new BlogPostEntity
         {
-            return ToDto(entity);
+            PartitionKey = "BLOG",
+            RowKey = BlogPostEntity.BuildRowKey(date, post.Id),
+            PostId = post.Id,
+            Title = post.Title,
+            Excerpt = post.Excerpt,
+            Content = post.Content,
+            ImageUrl = post.ImageUrl,
+            Author = post.Author,
+            TagsJson = JsonSerializer.Serialize(post.Tags ?? new List<string>()),
+            Date = date,
+        };
+        await _blogTable.AddEntityAsync(entity);
+        return ToDto(entity);
+    }
+
+    public async Task<BlogPostDto?> UpdateBlogPostAsync(string postId, BlogPostDto post)
+    {
+        var existing = await FindEntityByPostIdAsync(postId);
+        if (existing is null)
+            return null;
+
+        var date = DateTime.SpecifyKind(post.Date, DateTimeKind.Utc);
+        var newRowKey = BlogPostEntity.BuildRowKey(date, postId);
+
+        if (!string.Equals(existing.RowKey, newRowKey, StringComparison.Ordinal))
+        {
+            await _blogTable.DeleteEntityAsync(existing.PartitionKey, existing.RowKey, ETag.All);
+            existing.RowKey = newRowKey;
+        }
+
+        existing.PostId = postId;
+        existing.Title = post.Title;
+        existing.Excerpt = post.Excerpt;
+        existing.Content = post.Content;
+        existing.ImageUrl = post.ImageUrl;
+        existing.Author = post.Author;
+        existing.TagsJson = JsonSerializer.Serialize(post.Tags ?? new List<string>());
+        existing.Date = date;
+
+        await _blogTable.UpsertEntityAsync(existing, TableUpdateMode.Replace);
+        return ToDto(existing);
+    }
+
+    public async Task<bool> DeleteBlogPostAsync(string postId)
+    {
+        var entity = await FindEntityByPostIdAsync(postId);
+        if (entity is null)
+            return false;
+        await _blogTable.DeleteEntityAsync(entity.PartitionKey, entity.RowKey, ETag.All);
+        return true;
+    }
+
+    private async Task<BlogPostEntity?> FindEntityByPostIdAsync(string postId)
+    {
+        var escaped = ODataEscape(postId);
+        await foreach (var entity in _blogTable.QueryAsync<BlogPostEntity>(
+            filter: $"PartitionKey eq 'BLOG' and PostId eq '{escaped}'"))
+        {
+            return entity;
         }
         return null;
     }
+
+    private static string ODataEscape(string s) => s.Replace("'", "''");
 
     private static BlogPostDto ToDto(BlogPostEntity entity)
     {
