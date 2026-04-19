@@ -357,11 +357,11 @@ public static class MockDataStore
 
     public static List<ForumSectionDto> ForumSections { get; } = new()
     {
-        new() { Id = "general", Name = "💬 Общие обсуждения", Description = "Свободное общение на любые темы", TopicCount = 4 },
-        new() { Id = "music", Name = "🎵 Музыка и творчество", Description = "Разбор песен, каверы, творчество", TopicCount = 3 },
-        new() { Id = "cities", Name = "🏙️ По городам", Description = "Общение по городам и регионам", TopicCount = 3 },
-        new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2 },
-        new() { Id = "insiders",  Name = "🔒 Инсайдеры",       Description = "Только для Active Members+",        TopicCount = 0, MinRank = "activeMember" },
+        new() { Id = "general", Name = "💬 Общие обсуждения", Description = "Свободное общение на любые темы", TopicCount = 4, OrderIndex = 0 },
+        new() { Id = "music", Name = "🎵 Музыка и творчество", Description = "Разбор песен, каверы, творчество", TopicCount = 3, OrderIndex = 1 },
+        new() { Id = "cities", Name = "🏙️ По городам", Description = "Общение по городам и регионам", TopicCount = 3, OrderIndex = 2 },
+        new() { Id = "offtopic", Name = "🎨 Оффтопик", Description = "Всё, что не связано с музыкой", TopicCount = 2, OrderIndex = 3 },
+        new() { Id = "insiders",  Name = "🔒 Инсайдеры",       Description = "Только для Active Members+",        TopicCount = 0, OrderIndex = 4, MinRank = "activeMember" },
     };
 
     public static List<ForumReplyDto> ForumReplies { get; } = new()

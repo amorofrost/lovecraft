@@ -10,7 +10,47 @@ public class ForumSectionDto
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int TopicCount { get; set; }
+    /// <summary>Display order among non-event sections (lower first).</summary>
+    public int OrderIndex { get; set; }
     public string MinRank { get; set; } = "novice";
+}
+
+public class CreateForumSectionRequestDto
+{
+    [Required]
+    [StringLength(64, MinimumLength = 2)]
+    [RegularExpression(@"^[a-z][a-z0-9-]{1,62}$", ErrorMessage = "Id must be lowercase slug (a-z, digits, hyphen).")]
+    public string Id { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(200, MinimumLength = 1)]
+    public string Name { get; set; } = string.Empty;
+
+    [StringLength(2000)]
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>novice | activeMember | friendOfAloe | aloeCrew</summary>
+    [Required]
+    public string MinRank { get; set; } = "novice";
+}
+
+public class UpdateForumSectionRequestDto
+{
+    [StringLength(200, MinimumLength = 1)]
+    public string? Name { get; set; }
+
+    [StringLength(2000)]
+    public string? Description { get; set; }
+
+    /// <summary>novice | activeMember | friendOfAloe | aloeCrew</summary>
+    public string? MinRank { get; set; }
+}
+
+public class ReorderForumSectionsRequestDto
+{
+    [Required]
+    [MinLength(1)]
+    public List<string> SectionIds { get; set; } = new();
 }
 
 public class ForumTopicDto

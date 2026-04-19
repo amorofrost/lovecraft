@@ -23,6 +23,8 @@ public class MockForumService : IForumService
     {
         var list = MockDataStore.ForumSections
             .Where(s => !s.Id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.OrderIndex)
+            .ThenBy(s => s.Id, StringComparer.Ordinal)
             .ToList();
         return Task.FromResult(list);
     }
@@ -347,5 +349,96 @@ public class MockForumService : IForumService
         MockDataStore.ForumTopics.Add(attendeesTopic);
 
         return Task.FromResult(publicTopic);
+    }
+
+    public Task<ForumSectionDto> CreateSectionAsync(string id, string name, string description, string minRank)
+    {
+        if (id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Reserved section id", nameof(id));
+        if (MockDataStore.ForumSections.Any(s => s.Id == id))
+            throw new InvalidOperationException($"Section '{id}' already exists.");
+
+        var maxOrder = MockDataStore.ForumSections
+            .Where(s => !s.Id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.OrderIndex)
+            .DefaultIfEmpty(-1)
+            .Max();
+
+        var dto = new ForumSectionDto
+        {
+            Id = id,
+            Name = name,
+            Description = description ?? string.Empty,
+            TopicCount = 0,
+            OrderIndex = maxOrder + 1,
+            MinRank = NormalizeSectionMinRank(minRank),
+        };
+        MockDataStore.ForumSections.Add(dto);
+        return Task.FromResult(dto);
+    }
+
+    public Task<ForumSectionDto?> UpdateSectionAsync(string sectionId, string? name, string? description, string? minRank)
+    {
+        if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult<ForumSectionDto?>(null);
+        var section = MockDataStore.ForumSections.FirstOrDefault(s => s.Id == sectionId);
+        if (section is null)
+            return Task.FromResult<ForumSectionDto?>(null);
+        if (!string.IsNullOrWhiteSpace(name))
+            section.Name = name.Trim();
+        if (description is not null)
+            section.Description = description;
+        if (!string.IsNullOrWhiteSpace(minRank))
+            section.MinRank = NormalizeSectionMinRank(minRank);
+        return Task.FromResult<ForumSectionDto?>(section);
+    }
+
+    public async Task<bool> DeleteSectionAsync(string sectionId)
+    {
+        if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var section = MockDataStore.ForumSections.FirstOrDefault(s => s.Id == sectionId);
+        if (section is null)
+            return false;
+        var topics = MockDataStore.ForumTopics.Where(t => t.SectionId == sectionId).ToList();
+        foreach (var t in topics)
+            await DeleteTopicAsync(t.Id).ConfigureAwait(false);
+        MockDataStore.ForumSections.Remove(section);
+        return true;
+    }
+
+    public Task<bool> ReorderSectionsAsync(IReadOnlyList<string> orderedSectionIds)
+    {
+        var nonEvent = MockDataStore.ForumSections
+            .Where(s => !s.Id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (orderedSectionIds.Count != nonEvent.Count)
+            return Task.FromResult(false);
+        var set = new HashSet<string>(nonEvent.Select(s => s.Id), StringComparer.Ordinal);
+        foreach (var id in orderedSectionIds)
+        {
+            if (!set.Contains(id))
+                return Task.FromResult(false);
+        }
+
+        for (var i = 0; i < orderedSectionIds.Count; i++)
+        {
+            var s = MockDataStore.ForumSections.First(x => x.Id == orderedSectionIds[i]);
+            s.OrderIndex = i;
+        }
+
+        return Task.FromResult(true);
+    }
+
+    private static string NormalizeSectionMinRank(string minRank)
+    {
+        if (string.IsNullOrWhiteSpace(minRank))
+            return "novice";
+        var r = minRank.Trim();
+        return r switch
+        {
+            "novice" or "activeMember" or "friendOfAloe" or "aloeCrew" => r,
+            _ => "novice",
+        };
     }
 }

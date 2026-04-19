@@ -259,7 +259,7 @@ Console.WriteLine($"  [blogposts]     {MockDataStore.BlogPosts.Count} posts");
 
 // Forum sections
 var sectionsTable = service.GetTableClient(TableNames.ForumSections);
-foreach (var (section, order) in MockDataStore.ForumSections.Select((s, i) => (s, i)))
+foreach (var section in MockDataStore.ForumSections)
 {
     await sectionsTable.UpsertEntityAsync(new ForumSectionEntity
     {
@@ -268,7 +268,7 @@ foreach (var (section, order) in MockDataStore.ForumSections.Select((s, i) => (s
         Name         = section.Name,
         Description  = section.Description,
         TopicCount   = section.TopicCount,
-        OrderIndex   = order,
+        OrderIndex   = section.OrderIndex,
         MinRank      = section.MinRank,
     });
 }

@@ -72,7 +72,8 @@ public class AzureForumService : IForumService
 
         return results
             .Where(s => !s.Id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(s => s.Id)
+            .OrderBy(s => s.OrderIndex)
+            .ThenBy(s => s.Id, StringComparer.Ordinal)
             .ToList();
     }
 
@@ -303,6 +304,7 @@ public class AzureForumService : IForumService
         Name = entity.Name,
         Description = entity.Description,
         TopicCount = entity.TopicCount,
+        OrderIndex = entity.OrderIndex,
         MinRank = string.IsNullOrWhiteSpace(entity.MinRank) ? "novice" : entity.MinRank
     };
 
@@ -691,6 +693,153 @@ public class AzureForumService : IForumService
 
         await _topicsTable.UpdateEntityAsync(topicEntity, topicEntity.ETag);
         return ToTopicDto(topicEntity);
+    }
+
+    public async Task<ForumSectionDto> CreateSectionAsync(string id, string name, string description, string minRank)
+    {
+        if (id.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Reserved section id", nameof(id));
+
+        try
+        {
+            await _sectionsTable.GetEntityAsync<ForumSectionEntity>("FORUM", id);
+            throw new InvalidOperationException($"Section '{id}' already exists.");
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+        }
+
+        var maxOrder = -1;
+        await foreach (var e in _sectionsTable.QueryAsync<ForumSectionEntity>("PartitionKey eq 'FORUM'"))
+        {
+            if (e.RowKey.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (e.OrderIndex > maxOrder)
+                maxOrder = e.OrderIndex;
+        }
+
+        var entity = new ForumSectionEntity
+        {
+            PartitionKey = "FORUM",
+            RowKey = id,
+            Name = name,
+            Description = description ?? string.Empty,
+            TopicCount = 0,
+            OrderIndex = maxOrder + 1,
+            MinRank = NormalizeSectionMinRank(minRank),
+        };
+        await _sectionsTable.AddEntityAsync(entity);
+        return ToSectionDto(entity);
+    }
+
+    public async Task<ForumSectionDto?> UpdateSectionAsync(string sectionId, string? name, string? description, string? minRank)
+    {
+        if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        ForumSectionEntity entity;
+        try
+        {
+            var resp = await _sectionsTable.GetEntityAsync<ForumSectionEntity>("FORUM", sectionId);
+            entity = resp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(name))
+            entity.Name = name.Trim();
+        if (description is not null)
+            entity.Description = description;
+        if (!string.IsNullOrWhiteSpace(minRank))
+            entity.MinRank = NormalizeSectionMinRank(minRank);
+
+        await _sectionsTable.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Merge);
+        return ToSectionDto(entity);
+    }
+
+    public async Task<bool> DeleteSectionAsync(string sectionId)
+    {
+        if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        try
+        {
+            await _sectionsTable.GetEntityAsync<ForumSectionEntity>("FORUM", sectionId);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
+
+        var topics = await GetTopicsAsync(sectionId);
+        foreach (var t in topics)
+            await DeleteTopicAsync(t.Id).ConfigureAwait(false);
+
+        try
+        {
+            await _sectionsTable.DeleteEntityAsync("FORUM", sectionId, ETag.All);
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete forum section {SectionId}", sectionId);
+            return false;
+        }
+
+        return true;
+    }
+
+    public async Task<bool> ReorderSectionsAsync(IReadOnlyList<string> orderedSectionIds)
+    {
+        var nonEventIds = new List<string>();
+        await foreach (var e in _sectionsTable.QueryAsync<ForumSectionEntity>("PartitionKey eq 'FORUM'"))
+        {
+            if (e.RowKey.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            nonEventIds.Add(e.RowKey);
+        }
+
+        if (orderedSectionIds.Count != nonEventIds.Count)
+            return false;
+
+        var expected = new HashSet<string>(nonEventIds, StringComparer.Ordinal);
+        foreach (var id in orderedSectionIds)
+        {
+            if (!expected.Contains(id))
+                return false;
+        }
+
+        for (var i = 0; i < orderedSectionIds.Count; i++)
+        {
+            var id = orderedSectionIds[i];
+            try
+            {
+                var resp = await _sectionsTable.GetEntityAsync<ForumSectionEntity>("FORUM", id);
+                var ent = resp.Value;
+                ent.OrderIndex = i;
+                await _sectionsTable.UpdateEntityAsync(ent, ent.ETag, TableUpdateMode.Merge);
+            }
+            catch (RequestFailedException ex)
+            {
+                _logger.LogWarning(ex, "Reorder: failed to update section {Id}", id);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string NormalizeSectionMinRank(string minRank)
+    {
+        if (string.IsNullOrWhiteSpace(minRank))
+            return "novice";
+        var r = minRank.Trim();
+        return r switch
+        {
+            "novice" or "activeMember" or "friendOfAloe" or "aloeCrew" => r,
+            _ => "novice",
+        };
     }
 
     private async Task<ForumReplyDto> ToReplyDtoAsync(ForumReplyEntity entity, string? currentAvatar = null, UserDto? author = null)

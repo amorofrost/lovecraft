@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Linq;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Events;
@@ -162,6 +163,116 @@ public class AdminController : ControllerBase
         if (!ok)
             return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Topic not found"));
         return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    [HttpGet("forum-sections")]
+    public async Task<ActionResult<ApiResponse<List<ForumSectionDto>>>> ListForumSections()
+    {
+        var list = await _forum.GetSectionsAsync();
+        return Ok(ApiResponse<List<ForumSectionDto>>.SuccessResponse(list));
+    }
+
+    [HttpPost("forum-sections")]
+    public async Task<ActionResult<ApiResponse<ForumSectionDto>>> CreateForumSection([FromBody] CreateForumSectionRequestDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<ForumSectionDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+        if (body.Id.Equals("events", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse<ForumSectionDto>.ErrorResponse("INVALID_ID", "Reserved section id"));
+        try
+        {
+            var s = await _forum.CreateSectionAsync(body.Id, body.Name, body.Description, body.MinRank);
+            return Ok(ApiResponse<ForumSectionDto>.SuccessResponse(s));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<ForumSectionDto>.ErrorResponse("INVALID_ID", ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ApiResponse<ForumSectionDto>.ErrorResponse("DUPLICATE", ex.Message));
+        }
+    }
+
+    [HttpPut("forum-sections/{sectionId}")]
+    public async Task<ActionResult<ApiResponse<ForumSectionDto>>> UpdateForumSection(
+        string sectionId,
+        [FromBody] UpdateForumSectionRequestDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<ForumSectionDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+        var s = await _forum.UpdateSectionAsync(sectionId, body.Name, body.Description, body.MinRank);
+        if (s is null)
+            return NotFound(ApiResponse<ForumSectionDto>.ErrorResponse("NOT_FOUND", "Section not found"));
+        return Ok(ApiResponse<ForumSectionDto>.SuccessResponse(s));
+    }
+
+    [HttpDelete("forum-sections/{sectionId}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteForumSection(string sectionId)
+    {
+        var ok = await _forum.DeleteSectionAsync(sectionId);
+        if (!ok)
+            return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Section not found or not allowed"));
+        return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    [HttpPut("forum-sections/order")]
+    public async Task<ActionResult<ApiResponse<bool>>> ReorderForumSections([FromBody] ReorderForumSectionsRequestDto body)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<bool>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+        var ok = await _forum.ReorderSectionsAsync(body.SectionIds);
+        if (!ok)
+            return BadRequest(ApiResponse<bool>.ErrorResponse("REORDER_FAILED", "Section list must match existing non-event sections."));
+        return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    [HttpGet("forum-sections/{sectionId}/topics")]
+    public async Task<ActionResult<ApiResponse<List<ForumTopicDto>>>> GetForumSectionTopics(string sectionId)
+    {
+        if (sectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse<List<ForumTopicDto>>.ErrorResponse("INVALID_SECTION", "Manage event threads in Events."));
+        var section = (await _forum.GetSectionsAsync()).FirstOrDefault(s => s.Id == sectionId);
+        if (section is null)
+            return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Section not found"));
+        var topics = await _forum.GetTopicsAsync(sectionId);
+        return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
+    }
+
+    [HttpPost("forum-sections/{sectionId}/topics")]
+    public async Task<ActionResult<ApiResponse<ForumTopicDto>>> CreateForumSectionTopic(
+        string sectionId,
+        [FromBody] CreateTopicRequestDto request)
+    {
+        if (sectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("INVALID_SECTION", "Use Events admin for event threads."));
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+        if (HtmlGuard.ContainsHtml(request.Title))
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in topic title"));
+        if (HtmlGuard.ContainsHtml(request.Content))
+            return BadRequest(ApiResponse<ForumTopicDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in topic content"));
+
+        var authorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var authorName = User.FindFirstValue(ClaimTypes.Name) ?? authorId;
+        if (string.IsNullOrEmpty(authorId))
+            return Unauthorized(ApiResponse<ForumTopicDto>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        try
+        {
+            var result = await _forum.CreateTopicAsync(
+                sectionId, authorId, authorName!, request.Title, request.Content,
+                request.NoviceVisible, request.NoviceCanReply);
+            return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(result));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Section not found"));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<ForumTopicDto>.ErrorResponse("INTERNAL_ERROR", ex.Message));
+        }
     }
 
     [HttpGet("invites")]

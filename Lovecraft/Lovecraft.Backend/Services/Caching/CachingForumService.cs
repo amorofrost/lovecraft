@@ -170,4 +170,43 @@ public class CachingForumService : IForumService
         }
         return ids;
     }
+
+    public async Task<ForumSectionDto> CreateSectionAsync(string id, string name, string description, string minRank)
+    {
+        var result = await _inner.CreateSectionAsync(id, name, description, minRank);
+        _cache.Remove(SectionsKey);
+        return result;
+    }
+
+    public async Task<ForumSectionDto?> UpdateSectionAsync(string sectionId, string? name, string? description, string? minRank)
+    {
+        var result = await _inner.UpdateSectionAsync(sectionId, name, description, minRank);
+        _cache.Remove(SectionsKey);
+        return result;
+    }
+
+    public async Task<bool> DeleteSectionAsync(string sectionId)
+    {
+        var before = await _inner.GetTopicsAsync(sectionId);
+        var ok = await _inner.DeleteSectionAsync(sectionId);
+        if (ok)
+        {
+            _cache.Remove(SectionsKey);
+            foreach (var t in before)
+            {
+                _cache.Remove(TopicKey(t.Id));
+                _cache.Remove(RepliesKey(t.Id));
+            }
+        }
+
+        return ok;
+    }
+
+    public async Task<bool> ReorderSectionsAsync(IReadOnlyList<string> orderedSectionIds)
+    {
+        var ok = await _inner.ReorderSectionsAsync(orderedSectionIds);
+        if (ok)
+            _cache.Remove(SectionsKey);
+        return ok;
+    }
 }

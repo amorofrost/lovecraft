@@ -109,6 +109,11 @@ public interface IForumService
         IReadOnlyList<string>? allowedUserIds = null);
     Task<bool> DeleteTopicAsync(string topicId);
     Task<IReadOnlyList<string>> DeleteTopicsForEventAsync(string eventId);
+
+    Task<ForumSectionDto> CreateSectionAsync(string id, string name, string description, string minRank);
+    Task<ForumSectionDto?> UpdateSectionAsync(string sectionId, string? name, string? description, string? minRank);
+    Task<bool> DeleteSectionAsync(string sectionId);
+    Task<bool> ReorderSectionsAsync(IReadOnlyList<string> orderedSectionIds);
 }
 
 public interface IChatService
