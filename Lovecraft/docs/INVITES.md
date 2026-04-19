@@ -1,5 +1,7 @@
 # Event and campaign invite codes
 
+For event **visibility**, **forum discussions**, and **attendance vs interest**, see **[EVENTS.md](./EVENTS.md)**.
+
 ## Storage (Azure Table)
 
 - Table: `eventinvites` (with optional `AZURE_TABLE_PREFIX`).

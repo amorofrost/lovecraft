@@ -4,7 +4,7 @@
 
 A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM at `https://aloeve.club` behind Cloudflare (DNS proxy + DDoS protection) and nginx (TLS termination, HTTP→HTTPS redirect).
 
-> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, HTTPS via Cloudflare Origin Certificate, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. Last updated March 20, 2026.
+> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, HTTPS via Cloudflare Origin Certificate, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. For **events** (visibility, invites, forum), see [EVENTS.md](./EVENTS.md). Last updated April 18, 2026.
 
 ### Solution Structure
 
@@ -54,10 +54,15 @@ All endpoints return data in the format:
 - `PUT /api/v1/users/{id}/rank-override` - Override computed rank. **Admin-only.**
 
 #### Events (`/api/v1/events`)
-- `GET /api/v1/events` - List all events
-- `GET /api/v1/events/{id}` - Get event by ID
-- `POST /api/v1/events/{id}/register` - Register for event
-- `DELETE /api/v1/events/{id}/register` - Unregister from event
+- `GET /api/v1/events` - List all events (filtered by `visibility`: public, secret teaser, secret hidden)
+- `GET /api/v1/events/{id}` - Get event by ID; optional `?code=` invite; may auto-create default forum topics
+- `POST /api/v1/events/{id}/register` - Register as attendee (invite code in body for non-staff)
+- `DELETE /api/v1/events/{id}/register` - Unregister
+- `POST` / `DELETE` `/api/v1/events/{id}/interest` - Interested flag (not attendance)
+
+**Fields:** `price` is free text; `externalUrl` optional; `interestedUserIds` vs `attendees`; `forumTopicId` points at the primary public discussion thread.
+
+**Forum:** Event-linked topics use per-topic visibility (`public`, `attendeesOnly`, `specificUsers`). See **[EVENTS.md](./EVENTS.md)** for rules and admin endpoints.
 
 #### Matching (`/api/v1/matching`)
 - `POST /api/v1/matching/likes` - Send a like
@@ -74,8 +79,10 @@ All endpoints return data in the format:
 - `GET /api/v1/blog/{id}` - Get blog post
 
 #### Forum (`/api/v1/forum`)
+- `GET /api/v1/forum/event-discussions/summary` - One row per event the user may see in Talks (includes filtered topic counts)
+- `GET /api/v1/forum/event-discussions/{eventId}/topics` - Topics for that event (`sectionId` `events`), filtered by per-topic visibility — see **[EVENTS.md](./EVENTS.md)**
 - `GET /api/v1/forum/sections` - List forum sections
-- `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section
+- `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section (not used for `events`; use event-discussions path)
 - `POST /api/v1/forum/sections/{sectionId}/topics` - Create topic in section
 - `GET /api/v1/forum/topics/{topicId}` - Get topic detail (title, content, author, pin status)
 - `PUT /api/v1/forum/topics/{topicId}` - Update topic (author + moderator; `IsPinned`/`IsLocked` require moderator+). Returns `INSUFFICIENT_RANK` or `MODERATOR_REQUIRED` on rejection.
@@ -84,6 +91,7 @@ All endpoints return data in the format:
 
 #### Admin (`/api/v1/admin`)
 - `GET /api/v1/admin/config` - Read `appconfig` values. **Admin-only.**
+- Event CRUD, archive, attendees, per-event invites, and **event forum topics** (list/create/update/delete) — see Swagger and **[EVENTS.md](./EVENTS.md)**.
 
 #### Chats (`/api/v1/chats`)
 - `GET /api/v1/chats` - List user's chats

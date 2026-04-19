@@ -3,8 +3,10 @@
 **AloeVera Harmony Meet** - Technical Backend Architecture
 
 **Version**: 1.0  
-**Last Updated**: February 17, 2026  
+**Last Updated**: April 18, 2026  
 **Technology**: .NET 10, Azure Storage, Docker
+
+**Domain docs:** [EVENTS.md](./EVENTS.md) (events, forum topic access), [INVITES.md](./INVITES.md) (invite codes).
 
 ---
 

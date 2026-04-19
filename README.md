@@ -65,6 +65,7 @@ Comprehensive documentation is available in the `Lovecraft/docs/` folder:
 - **[API_TESTING.md](./Lovecraft/docs/API_TESTING.md)** - API testing with curl/Swagger
 - **[ARCHITECTURE.md](./Lovecraft/docs/ARCHITECTURE.md)** - System architecture
 - **[AZURE_STORAGE.md](./Lovecraft/docs/AZURE_STORAGE.md)** - Data schema and storage patterns
+- **[EVENTS.md](./Lovecraft/docs/EVENTS.md)** - Events: visibility, registration, interest, forum topics & per-topic access
 
 ---
 
