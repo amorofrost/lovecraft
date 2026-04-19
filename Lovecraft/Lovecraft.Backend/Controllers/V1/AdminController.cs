@@ -1,5 +1,9 @@
 using System.Security.Claims;
 using System.Linq;
+using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services;
@@ -441,6 +445,30 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse<bool>.SuccessResponse(true));
     }
 
+    /// <summary>
+    /// Infrastructure snapshot for the frontend + backend containers.
+    /// Uses the Docker Engine API via <c>/var/run/docker.sock</c>.
+    /// </summary>
+    [HttpGet("infrastructure")]
+    public async Task<ActionResult<ApiResponse<InfrastructureStatusDto>>> GetInfrastructure()
+    {
+        var now = DateTime.UtcNow;
+        var status = new InfrastructureStatusDto { GeneratedAtUtc = now };
+
+        try
+        {
+            // These match docker-compose.yml container_name values.
+            status.Containers.Add(await GetContainerInfraAsync("aloevera-backend", now));
+            status.Containers.Add(await GetContainerInfraAsync("aloevera-frontend", now));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, ApiResponse<InfrastructureStatusDto>.ErrorResponse("INFRA_ERROR", ex.Message));
+        }
+
+        return Ok(ApiResponse<InfrastructureStatusDto>.SuccessResponse(status));
+    }
+
     [HttpGet("invites")]
     public async Task<ActionResult<ApiResponse<List<EventInviteAdminDto>>>> ListInvites()
     {
@@ -517,5 +545,142 @@ public class AdminController : ControllerBase
                 ["require_event_invite"] = cfg.Registration.RequireEventInvite ? "true" : "false",
             });
         return Ok(ApiResponse<AppConfigDto>.SuccessResponse(dto));
+    }
+
+    private static async Task<ContainerInfrastructureDto> GetContainerInfraAsync(string containerName, DateTime nowUtc)
+    {
+        var socketPath = "/var/run/docker.sock";
+        if (!System.IO.File.Exists(socketPath))
+            throw new InvalidOperationException("Docker socket not available. Mount /var/run/docker.sock into the backend container (read-only).");
+
+        using var http = CreateDockerHttpClient(socketPath);
+
+        var inspect = await http.GetFromJsonAsync<DockerInspectResponse>(
+            $"/containers/{Uri.EscapeDataString(containerName)}/json") ?? throw new InvalidOperationException($"Docker inspect returned null for '{containerName}'.");
+
+        var startedAt = inspect.State?.StartedAt ?? throw new InvalidOperationException($"Docker inspect missing StartedAt for '{containerName}'.");
+        var uptime = Math.Max(0, (nowUtc - startedAt).TotalSeconds);
+
+        var stats = await http.GetFromJsonAsync<DockerStatsResponse>(
+            $"/containers/{Uri.EscapeDataString(containerName)}/stats?stream=false") ?? throw new InvalidOperationException($"Docker stats returned null for '{containerName}'.");
+
+        var cpuPct = ComputeDockerCpuPercent(stats);
+        var (memUsage, memLimit) = ComputeDockerMemory(stats);
+
+        return new ContainerInfrastructureDto
+        {
+            Name = containerName,
+            StartedAtUtc = startedAt,
+            UptimeSeconds = uptime,
+            CpuPercent = cpuPct,
+            MemoryUsageBytes = memUsage,
+            MemoryLimitBytes = memLimit,
+        };
+    }
+
+    private static HttpClient CreateDockerHttpClient(string socketPath)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (context, cancellationToken) =>
+            {
+                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), cancellationToken).ConfigureAwait(false);
+                return new NetworkStream(socket, ownsSocket: true);
+            },
+        };
+        var http = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+            Timeout = TimeSpan.FromSeconds(2),
+        };
+        return http;
+    }
+
+    private static double ComputeDockerCpuPercent(DockerStatsResponse stats)
+    {
+        var cpuDelta = (stats.CpuStats?.CpuUsage?.TotalUsage ?? 0) - (stats.PreCpuStats?.CpuUsage?.TotalUsage ?? 0);
+        var systemDelta = (stats.CpuStats?.SystemCpuUsage ?? 0) - (stats.PreCpuStats?.SystemCpuUsage ?? 0);
+        if (cpuDelta <= 0 || systemDelta <= 0)
+            return 0;
+
+        var online = stats.CpuStats?.OnlineCpus;
+        if (online is null || online <= 0)
+        {
+            // Fallback for older engines.
+            online = stats.CpuStats?.CpuUsage?.PercpuUsage?.Count ?? 1;
+        }
+
+        return (cpuDelta / (double)systemDelta) * online.Value * 100.0;
+    }
+
+    private static (long usage, long limit) ComputeDockerMemory(DockerStatsResponse stats)
+    {
+        var usage = stats.MemoryStats?.Usage ?? 0;
+        var limit = stats.MemoryStats?.Limit ?? 0;
+
+        // On Linux, Docker's "usage" includes cache; subtract if present.
+        var cache = stats.MemoryStats?.Stats != null && stats.MemoryStats.Stats.TryGetValue("cache", out var c) ? c : 0;
+        var effective = usage - cache;
+        if (effective < 0) effective = usage;
+
+        return (effective, limit);
+    }
+
+    // --- Minimal Docker API response models (only what we need) ----------------
+
+    private sealed class DockerInspectResponse
+    {
+        public DockerInspectState? State { get; set; }
+    }
+
+    private sealed class DockerInspectState
+    {
+        public DateTime StartedAt { get; set; }
+    }
+
+    private sealed class DockerStatsResponse
+    {
+        [JsonPropertyName("cpu_stats")]
+        public DockerCpuStats? CpuStats { get; set; }
+
+        [JsonPropertyName("precpu_stats")]
+        public DockerCpuStats? PreCpuStats { get; set; }
+
+        [JsonPropertyName("memory_stats")]
+        public DockerMemoryStats? MemoryStats { get; set; }
+    }
+
+    private sealed class DockerCpuStats
+    {
+        [JsonPropertyName("cpu_usage")]
+        public DockerCpuUsage? CpuUsage { get; set; }
+
+        [JsonPropertyName("system_cpu_usage")]
+        public long SystemCpuUsage { get; set; }
+
+        [JsonPropertyName("online_cpus")]
+        public int? OnlineCpus { get; set; }
+    }
+
+    private sealed class DockerCpuUsage
+    {
+        [JsonPropertyName("total_usage")]
+        public long TotalUsage { get; set; }
+
+        [JsonPropertyName("percpu_usage")]
+        public List<long>? PercpuUsage { get; set; }
+    }
+
+    private sealed class DockerMemoryStats
+    {
+        [JsonPropertyName("usage")]
+        public long Usage { get; set; }
+
+        [JsonPropertyName("limit")]
+        public long Limit { get; set; }
+
+        [JsonPropertyName("stats")]
+        public Dictionary<string, long>? Stats { get; set; }
     }
 }
