@@ -1,9 +1,6 @@
 using System.Security.Claims;
 using System.Linq;
 using System.Net.Http.Json;
-using System.Net.Sockets;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services;
@@ -457,9 +454,12 @@ public class AdminController : ControllerBase
 
         try
         {
-            // These match docker-compose.yml container_name values.
-            status.Containers.Add(await GetContainerInfraAsync("aloevera-backend", now));
-            status.Containers.Add(await GetContainerInfraAsync("aloevera-frontend", now));
+            status.Containers.Add(GetSelfInfra("aloevera-backend", now));
+
+            // Frontend reports its own container-local stats as a JSON file.
+            var frontend = await TryFetchFrontendInfraAsync();
+            if (frontend is not null)
+                status.Containers.Add(frontend);
         }
         catch (Exception ex)
         {
@@ -547,140 +547,178 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse<AppConfigDto>.SuccessResponse(dto));
     }
 
-    private static async Task<ContainerInfrastructureDto> GetContainerInfraAsync(string containerName, DateTime nowUtc)
+    private static ContainerInfrastructureDto GetSelfInfra(string name, DateTime nowUtc)
     {
-        var socketPath = "/var/run/docker.sock";
-        if (!System.IO.File.Exists(socketPath))
-            throw new InvalidOperationException("Docker socket not available. Mount /var/run/docker.sock into the backend container (read-only).");
+        var up = ReadProcUptimeSeconds();
+        var startedAt = nowUtc.AddSeconds(-up);
 
-        using var http = CreateDockerHttpClient(socketPath);
-
-        var inspect = await http.GetFromJsonAsync<DockerInspectResponse>(
-            $"/containers/{Uri.EscapeDataString(containerName)}/json") ?? throw new InvalidOperationException($"Docker inspect returned null for '{containerName}'.");
-
-        var startedAt = inspect.State?.StartedAt ?? throw new InvalidOperationException($"Docker inspect missing StartedAt for '{containerName}'.");
-        var uptime = Math.Max(0, (nowUtc - startedAt).TotalSeconds);
-
-        var stats = await http.GetFromJsonAsync<DockerStatsResponse>(
-            $"/containers/{Uri.EscapeDataString(containerName)}/stats?stream=false") ?? throw new InvalidOperationException($"Docker stats returned null for '{containerName}'.");
-
-        var cpuPct = ComputeDockerCpuPercent(stats);
-        var (memUsage, memLimit) = ComputeDockerMemory(stats);
+        var cpuPct = ReadCpuPercentFromCgroup(nowUtc);
+        var (memUsage, memLimit) = ReadMemoryFromCgroup();
 
         return new ContainerInfrastructureDto
         {
-            Name = containerName,
+            Name = name,
             StartedAtUtc = startedAt,
-            UptimeSeconds = uptime,
+            UptimeSeconds = up,
             CpuPercent = cpuPct,
             MemoryUsageBytes = memUsage,
             MemoryLimitBytes = memLimit,
         };
     }
 
-    private static HttpClient CreateDockerHttpClient(string socketPath)
+    private sealed class FrontendInfraFileDto
     {
-        var handler = new SocketsHttpHandler
-        {
-            ConnectCallback = async (context, cancellationToken) =>
-            {
-                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), cancellationToken).ConfigureAwait(false);
-                return new NetworkStream(socket, ownsSocket: true);
-            },
-        };
-        var http = new HttpClient(handler)
-        {
-            BaseAddress = new Uri("http://localhost"),
-            Timeout = TimeSpan.FromSeconds(2),
-        };
-        return http;
+        public string? GeneratedAtUtc { get; set; }
+        public string? Name { get; set; }
+        public string? StartedAtUtc { get; set; }
+        public double UptimeSeconds { get; set; }
+        public double CpuPercent { get; set; }
+        public long MemoryUsageBytes { get; set; }
+        public long MemoryLimitBytes { get; set; }
     }
 
-    private static double ComputeDockerCpuPercent(DockerStatsResponse stats)
+    private static async Task<ContainerInfrastructureDto?> TryFetchFrontendInfraAsync()
     {
-        var cpuDelta = (stats.CpuStats?.CpuUsage?.TotalUsage ?? 0) - (stats.PreCpuStats?.CpuUsage?.TotalUsage ?? 0);
-        var systemDelta = (stats.CpuStats?.SystemCpuUsage ?? 0) - (stats.PreCpuStats?.SystemCpuUsage ?? 0);
-        if (cpuDelta <= 0 || systemDelta <= 0)
-            return 0;
-
-        var online = stats.CpuStats?.OnlineCpus;
-        if (online is null || online <= 0)
+        // Available only on the internal docker network via nginx allow/deny.
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        FrontendInfraFileDto? dto;
+        try
         {
-            // Fallback for older engines.
-            online = stats.CpuStats?.CpuUsage?.PercpuUsage?.Count ?? 1;
+            dto = await http.GetFromJsonAsync<FrontendInfraFileDto>("http://frontend/__infra.json");
+        }
+        catch
+        {
+            return null;
         }
 
-        return (cpuDelta / (double)systemDelta) * online.Value * 100.0;
+        if (dto is null)
+            return null;
+
+        var startedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(dto.StartedAtUtc) && DateTime.TryParse(dto.StartedAtUtc, out var parsed))
+            startedAt = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+
+        return new ContainerInfrastructureDto
+        {
+            Name = string.IsNullOrWhiteSpace(dto.Name) ? "aloevera-frontend" : dto.Name!,
+            StartedAtUtc = startedAt,
+            UptimeSeconds = dto.UptimeSeconds,
+            CpuPercent = dto.CpuPercent,
+            MemoryUsageBytes = dto.MemoryUsageBytes,
+            MemoryLimitBytes = dto.MemoryLimitBytes,
+        };
     }
 
-    private static (long usage, long limit) ComputeDockerMemory(DockerStatsResponse stats)
+    private static double ReadProcUptimeSeconds()
     {
-        var usage = stats.MemoryStats?.Usage ?? 0;
-        var limit = stats.MemoryStats?.Limit ?? 0;
-
-        // On Linux, Docker's "usage" includes cache; subtract if present.
-        var cache = stats.MemoryStats?.Stats != null && stats.MemoryStats.Stats.TryGetValue("cache", out var c) ? c : 0;
-        var effective = usage - cache;
-        if (effective < 0) effective = usage;
-
-        return (effective, limit);
+        try
+        {
+            var text = System.IO.File.ReadAllText("/proc/uptime");
+            var first = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (first is null) return 0;
+            if (double.TryParse(first, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                return v;
+        }
+        catch { }
+        return 0;
     }
 
-    // --- Minimal Docker API response models (only what we need) ----------------
-
-    private sealed class DockerInspectResponse
+    private static double ReadCpuPercentFromCgroup(DateTime nowUtc)
     {
-        public DockerInspectState? State { get; set; }
+        // Best-effort point-in-time CPU%: take two samples of cpu.stat usage_usec.
+        var s1 = ReadCgroupCpuUsageUsec();
+        var t1 = DateTime.UtcNow;
+        Thread.Sleep(200);
+        var s2 = ReadCgroupCpuUsageUsec();
+        var t2 = DateTime.UtcNow;
+
+        if (s1 <= 0 || s2 <= s1) return 0;
+        var deltaUsageSec = (s2 - s1) / 1_000_000.0;
+        var deltaWallSec = Math.Max(0.001, (t2 - t1).TotalSeconds);
+
+        var allowedCores = ReadCgroupAllowedCores();
+        if (allowedCores <= 0) allowedCores = Environment.ProcessorCount;
+        if (allowedCores <= 0) allowedCores = 1;
+
+        var pct = (deltaUsageSec / (deltaWallSec * allowedCores)) * 100.0;
+        if (pct < 0) pct = 0;
+        return pct;
     }
 
-    private sealed class DockerInspectState
+    private static long ReadCgroupCpuUsageUsec()
     {
-        public DateTime StartedAt { get; set; }
+        // cgroup v2: /sys/fs/cgroup/cpu.stat usage_usec
+        try
+        {
+            var path = "/sys/fs/cgroup/cpu.stat";
+            if (System.IO.File.Exists(path))
+            {
+                foreach (var line in System.IO.File.ReadAllLines(path))
+                {
+                    var parts = line.Split(' ', '\t', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 2 && parts[0] == "usage_usec" && long.TryParse(parts[1], out var v))
+                        return v;
+                }
+            }
+        }
+        catch { }
+        return 0;
     }
 
-    private sealed class DockerStatsResponse
+    private static double ReadCgroupAllowedCores()
     {
-        [JsonPropertyName("cpu_stats")]
-        public DockerCpuStats? CpuStats { get; set; }
-
-        [JsonPropertyName("precpu_stats")]
-        public DockerCpuStats? PreCpuStats { get; set; }
-
-        [JsonPropertyName("memory_stats")]
-        public DockerMemoryStats? MemoryStats { get; set; }
+        // cgroup v2: /sys/fs/cgroup/cpu.max => "max <period>" OR "<quota> <period>"
+        try
+        {
+            var path = "/sys/fs/cgroup/cpu.max";
+            if (!System.IO.File.Exists(path)) return 0;
+            var parts = System.IO.File.ReadAllText(path).Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) return 0;
+            if (parts[0] == "max") return 0;
+            if (!double.TryParse(parts[0], out var quota)) return 0;
+            if (!double.TryParse(parts[1], out var period) || period <= 0) return 0;
+            return quota / period;
+        }
+        catch { }
+        return 0;
     }
 
-    private sealed class DockerCpuStats
+    private static (long usage, long limit) ReadMemoryFromCgroup()
     {
-        [JsonPropertyName("cpu_usage")]
-        public DockerCpuUsage? CpuUsage { get; set; }
+        // cgroup v2: memory.current, memory.max
+        try
+        {
+            var curPath = "/sys/fs/cgroup/memory.current";
+            var maxPath = "/sys/fs/cgroup/memory.max";
+            if (System.IO.File.Exists(curPath))
+            {
+                var usage = long.TryParse(System.IO.File.ReadAllText(curPath).Trim(), out var u) ? u : 0;
+                long limit = 0;
+                if (System.IO.File.Exists(maxPath))
+                {
+                    var raw = System.IO.File.ReadAllText(maxPath).Trim();
+                    if (raw != "max")
+                        limit = long.TryParse(raw, out var l) ? l : 0;
+                }
+                return (usage, limit);
+            }
+        }
+        catch { }
 
-        [JsonPropertyName("system_cpu_usage")]
-        public long SystemCpuUsage { get; set; }
+        // cgroup v1 fallback
+        try
+        {
+            var curPath = "/sys/fs/cgroup/memory/memory.usage_in_bytes";
+            var maxPath = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
+            if (System.IO.File.Exists(curPath))
+            {
+                var usage = long.TryParse(System.IO.File.ReadAllText(curPath).Trim(), out var u) ? u : 0;
+                var limit = System.IO.File.Exists(maxPath) && long.TryParse(System.IO.File.ReadAllText(maxPath).Trim(), out var l) ? l : 0;
+                return (usage, limit);
+            }
+        }
+        catch { }
 
-        [JsonPropertyName("online_cpus")]
-        public int? OnlineCpus { get; set; }
-    }
-
-    private sealed class DockerCpuUsage
-    {
-        [JsonPropertyName("total_usage")]
-        public long TotalUsage { get; set; }
-
-        [JsonPropertyName("percpu_usage")]
-        public List<long>? PercpuUsage { get; set; }
-    }
-
-    private sealed class DockerMemoryStats
-    {
-        [JsonPropertyName("usage")]
-        public long Usage { get; set; }
-
-        [JsonPropertyName("limit")]
-        public long Limit { get; set; }
-
-        [JsonPropertyName("stats")]
-        public Dictionary<string, long>? Stats { get; set; }
+        return (0, 0);
     }
 }
