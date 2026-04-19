@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Xunit;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.MockData;
@@ -201,15 +202,30 @@ public class ServiceTests
         var svc = new MockUserService(new MockAppConfigService());
 
         // Seed the user's actual activity to ActiveMember tier (5 replies meets default threshold)
-        var userId = MockDataStore.Users.First().Id;
+        var existing = MockDataStore.Users.First();
+        var userId = existing.Id;
         MockDataStore.UserActivity[userId] = new MockUserActivity { ReplyCount = 5 };
 
-        // Caller sends a payload claiming AloeCrew rank
+        // MockUserService.UpdateUserAsync copies every field from the payload onto the stored user.
+        // A sparse DTO would wipe ProfileImage, Age, etc. — corrupting shared MockDataStore for
+        // other tests (e.g. ImageTests). Clone the current profile and only override what this
+        // test cares about; attacker-supplied Rank must still be ignored for persistence.
         var payload = new UserDto
         {
-            Id = userId,
+            Id = existing.Id,
             Name = "Test",
-            Rank = UserRank.AloeCrew,  // attacker-supplied; must be ignored
+            Age = existing.Age,
+            Bio = existing.Bio,
+            Location = existing.Location,
+            Gender = existing.Gender,
+            ProfileImage = existing.ProfileImage,
+            Images = existing.Images != null ? new List<string>(existing.Images) : new List<string>(),
+            LastSeen = existing.LastSeen,
+            IsOnline = existing.IsOnline,
+            FavoriteSong = existing.FavoriteSong,
+            Preferences = existing.Preferences,
+            Settings = existing.Settings,
+            Rank = UserRank.AloeCrew, // attacker-supplied; must be ignored for stored rank computation
         };
 
         var result = await svc.UpdateUserAsync(userId, payload);
