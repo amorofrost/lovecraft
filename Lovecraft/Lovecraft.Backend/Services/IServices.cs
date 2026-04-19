@@ -42,6 +42,13 @@ public interface IEventService
     Task<bool> RemoveEventAttendeeAsync(string eventId, string userId);
     Task<bool> RegisterForEventAsync(string userId, string eventId);
     Task<bool> UnregisterFromEventAsync(string userId, string eventId);
+
+    /// <summary>Adds the user to the event&apos;s &quot;interested&quot; list (idempotent).</summary>
+    Task<bool> AddEventInterestAsync(string userId, string eventId);
+
+    /// <summary>Removes the user from the event&apos;s &quot;interested&quot; list.</summary>
+    Task<bool> RemoveEventInterestAsync(string userId, string eventId);
+
     Task SetForumTopicIdAsync(string eventId, string forumTopicId);
 
     /// <summary>Events the user has registered for (newest first). Includes archived events.</summary>

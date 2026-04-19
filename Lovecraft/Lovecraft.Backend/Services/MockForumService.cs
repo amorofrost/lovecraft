@@ -2,6 +2,7 @@ using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Backend.Helpers;
 
 namespace Lovecraft.Backend.Services;
 
@@ -31,7 +32,7 @@ public class MockForumService : IForumService
         var list = new List<EventDiscussionSectionDto>();
         foreach (var e in events)
         {
-            if (e.Visibility == EventVisibility.SecretHidden && !isElevated && !e.Attendees.Contains(userId))
+            if (!EventForumAccess.CanViewEventDiscussionSummary(e, userId, isElevated))
                 continue;
 
             var n = MockDataStore.ForumTopics.Count(t =>
@@ -59,8 +60,10 @@ public class MockForumService : IForumService
             : await _eventService.GetEventByIdAsync(eventId);
         if (ev == null)
             return null;
-        if (ev.Visibility == EventVisibility.SecretHidden && !isElevated && !ev.Attendees.Contains(userId))
+        if (!EventForumAccess.CanViewEventDiscussionSummary(ev, userId, isElevated))
             return null;
+        if (!EventForumAccess.CanViewTopicsAndReplies(ev, userId, isElevated))
+            return new List<ForumTopicDto>();
 
         var topics = MockDataStore.ForumTopics
             .Where(t => t.SectionId == EventSectionId && string.Equals(ResolveEventId(t), eventId, StringComparison.Ordinal))

@@ -12,6 +12,7 @@ public class AzureEventService : IEventService
 {
     private readonly TableClient _eventsTable;
     private readonly TableClient _attendeesTable;
+    private readonly TableClient _interestedTable;
     private readonly IUserService _userService;
     private readonly ILogger<AzureEventService> _logger;
 
@@ -24,10 +25,12 @@ public class AzureEventService : IEventService
         _logger = logger;
         _eventsTable = tableServiceClient.GetTableClient(TableNames.Events);
         _attendeesTable = tableServiceClient.GetTableClient(TableNames.EventAttendees);
+        _interestedTable = tableServiceClient.GetTableClient(TableNames.EventInterested);
 
         Task.WhenAll(
             _eventsTable.CreateIfNotExistsAsync(),
-            _attendeesTable.CreateIfNotExistsAsync()
+            _attendeesTable.CreateIfNotExistsAsync(),
+            _interestedTable.CreateIfNotExistsAsync()
         ).GetAwaiter().GetResult();
     }
 
@@ -39,7 +42,8 @@ public class AzureEventService : IEventService
             if (entity.Archived)
                 continue;
             var attendees = await GetAttendeeIdsAsync(entity.RowKey);
-            events.Add(ToDto(entity, attendees));
+            var interested = await GetInterestedIdsAsync(entity.RowKey);
+            events.Add(ToDto(entity, attendees, interested));
         }
         return events;
     }
@@ -52,7 +56,8 @@ public class AzureEventService : IEventService
             if (response.Value.Archived)
                 return null;
             var attendees = await GetAttendeeIdsAsync(eventId);
-            return ToDto(response.Value, attendees);
+            var interested = await GetInterestedIdsAsync(eventId);
+            return ToDto(response.Value, attendees, interested);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -66,7 +71,8 @@ public class AzureEventService : IEventService
         await foreach (var entity in _eventsTable.QueryAsync<EventEntity>(filter: $"PartitionKey eq 'EVENTS'"))
         {
             var attendees = await GetAttendeeIdsAsync(entity.RowKey);
-            events.Add(ToDto(entity, attendees));
+            var interested = await GetInterestedIdsAsync(entity.RowKey);
+            events.Add(ToDto(entity, attendees, interested));
         }
         return events;
     }
@@ -77,7 +83,8 @@ public class AzureEventService : IEventService
         {
             var response = await _eventsTable.GetEntityAsync<EventEntity>("EVENTS", eventId);
             var attendees = await GetAttendeeIdsAsync(eventId);
-            return ToDto(response.Value, attendees);
+            var interested = await GetInterestedIdsAsync(eventId);
+            return ToDto(response.Value, attendees, interested);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -95,7 +102,7 @@ public class AzureEventService : IEventService
         };
         ApplyAdminWrite(entity, dto);
         await _eventsTable.AddEntityAsync(entity);
-        return ToDto(entity, new List<string>());
+        return ToDto(entity, new List<string>(), new List<string>());
     }
 
     public async Task<EventDto?> UpdateEventAsync(string eventId, AdminEventWriteDto dto)
@@ -107,7 +114,8 @@ public class AzureEventService : IEventService
             ApplyAdminWrite(entity, dto);
             await _eventsTable.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
             var attendees = await GetAttendeeIdsAsync(eventId);
-            return ToDto(entity, attendees);
+            var interested = await GetInterestedIdsAsync(eventId);
+            return ToDto(entity, attendees, interested);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -126,12 +134,26 @@ public class AzureEventService : IEventService
             return false;
         }
 
+        var escaped = eventId.Replace("'", "''");
         await foreach (var row in _attendeesTable.QueryAsync<EventAttendeeEntity>(
-                     filter: $"PartitionKey eq '{eventId.Replace("'", "''")}'"))
+                     filter: $"PartitionKey eq '{escaped}'"))
         {
             try
             {
                 await _attendeesTable.DeleteEntityAsync(row.PartitionKey, row.RowKey);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // ignore
+            }
+        }
+
+        await foreach (var row in _interestedTable.QueryAsync<EventInterestedEntity>(
+                     filter: $"PartitionKey eq '{escaped}'"))
+        {
+            try
+            {
+                await _interestedTable.DeleteEntityAsync(row.PartitionKey, row.RowKey);
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
             {
@@ -234,6 +256,15 @@ public class AzureEventService : IEventService
 
         try
         {
+            await _interestedTable.DeleteEntityAsync(eventId, userId);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // not interested
+        }
+
+        try
+        {
             await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended);
         }
         catch (Exception ex)
@@ -242,6 +273,54 @@ public class AzureEventService : IEventService
                 UserCounter.EventsAttended, userId);
         }
         return true;
+    }
+
+    public async Task<bool> AddEventInterestAsync(string userId, string eventId)
+    {
+        try
+        {
+            var row = await _eventsTable.GetEntityAsync<EventEntity>("EVENTS", eventId);
+            if (row.Value.Archived)
+                return false;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
+
+        if ((await GetAttendeeIdsAsync(eventId)).Contains(userId))
+            return false;
+
+        var entity = new EventInterestedEntity
+        {
+            PartitionKey = eventId,
+            RowKey = userId,
+            InterestedAt = DateTime.UtcNow
+        };
+
+        try
+        {
+            await _interestedTable.AddEntityAsync(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public async Task<bool> RemoveEventInterestAsync(string userId, string eventId)
+    {
+        try
+        {
+            await _interestedTable.DeleteEntityAsync(eventId, userId);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
     }
 
     public async Task<bool> UnregisterFromEventAsync(string userId, string eventId)
@@ -274,13 +353,26 @@ public class AzureEventService : IEventService
 
     private async Task<List<string>> GetAttendeeIdsAsync(string eventId)
     {
+        var escaped = eventId.Replace("'", "''");
         var attendees = new List<string>();
         await foreach (var entity in _attendeesTable.QueryAsync<EventAttendeeEntity>(
-            filter: $"PartitionKey eq '{eventId}'"))
+            filter: $"PartitionKey eq '{escaped}'"))
         {
             attendees.Add(entity.RowKey);
         }
         return attendees;
+    }
+
+    private async Task<List<string>> GetInterestedIdsAsync(string eventId)
+    {
+        var escaped = eventId.Replace("'", "''");
+        var list = new List<string>();
+        await foreach (var entity in _interestedTable.QueryAsync<EventInterestedEntity>(
+            filter: $"PartitionKey eq '{escaped}'"))
+        {
+            list.Add(entity.RowKey);
+        }
+        return list;
     }
 
     public async Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId)
@@ -314,7 +406,7 @@ public class AzureEventService : IEventService
         return (preview, total);
     }
 
-    private static EventDto ToDto(EventEntity entity, List<string> attendees)
+    private static EventDto ToDto(EventEntity entity, List<string> attendees, List<string> interestedUserIds)
     {
         var visibility = ResolveVisibility(entity);
         return new EventDto
@@ -329,6 +421,7 @@ public class AzureEventService : IEventService
             Location = entity.Location,
             Capacity = entity.Capacity,
             Attendees = attendees,
+            InterestedUserIds = interestedUserIds,
             Category = Enum.TryParse<EventCategory>(entity.Category, true, out var cat) ? cat : EventCategory.Other,
             Price = entity.Price.HasValue ? (decimal?)Convert.ToDecimal(entity.Price.Value) : null,
             Organizer = entity.Organizer,

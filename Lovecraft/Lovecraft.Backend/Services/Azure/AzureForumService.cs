@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Forum;
@@ -80,7 +81,7 @@ public class AzureForumService : IForumService
         var list = new List<EventDiscussionSectionDto>();
         foreach (var e in events)
         {
-            if (e.Visibility == EventVisibility.SecretHidden && !isElevated && !e.Attendees.Contains(userId))
+            if (!EventForumAccess.CanViewEventDiscussionSummary(e, userId, isElevated))
                 continue;
 
             var n = await CountTopicsForEventAsync(e.Id);
@@ -105,8 +106,10 @@ public class AzureForumService : IForumService
             : await _eventService.GetEventByIdAsync(eventId);
         if (ev == null)
             return null;
-        if (ev.Visibility == EventVisibility.SecretHidden && !isElevated && !ev.Attendees.Contains(userId))
+        if (!EventForumAccess.CanViewEventDiscussionSummary(ev, userId, isElevated))
             return null;
+        if (!EventForumAccess.CanViewTopicsAndReplies(ev, userId, isElevated))
+            return new List<ForumTopicDto>();
 
         var pk = ForumTopicEntity.GetPartitionKey(EventSectionId);
         var escapedPk = pk.Replace("'", "''");

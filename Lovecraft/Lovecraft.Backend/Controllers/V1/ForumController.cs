@@ -22,19 +22,22 @@ public class ForumController : ControllerBase
     private readonly ILogger<ForumController> _logger;
     private readonly IAppConfigService _appConfig;
     private readonly IUserService _userService;
+    private readonly IEventService _eventService;
 
     public ForumController(
         IForumService forumService,
         IHubContext<ChatHub> hubContext,
         ILogger<ForumController> logger,
         IAppConfigService appConfig,
-        IUserService userService)
+        IUserService userService,
+        IEventService eventService)
     {
         _forumService = forumService;
         _hubContext = hubContext;
         _logger = logger;
         _appConfig = appConfig;
         _userService = userService;
+        _eventService = eventService;
     }
 
     /// <summary>
@@ -157,6 +160,9 @@ public class ForumController : ControllerBase
             if (topic == null)
                 return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
 
+            if (!await CallerMayAccessEventTopicContentAsync(topic))
+                return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
             var allowed = await PermissionGuard.MeetsAsync(User, _userService, topic.MinRank);
             if (!allowed)
                 return StatusCode(StatusCodes.Status403Forbidden,
@@ -185,6 +191,12 @@ public class ForumController : ControllerBase
     {
         try
         {
+            var topic = await _forumService.GetTopicByIdAsync(topicId);
+            if (topic == null)
+                return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
+            if (!await CallerMayAccessEventTopicContentAsync(topic))
+                return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
             var replies = await _forumService.GetRepliesAsync(topicId);
             return Ok(ApiResponse<List<ForumReplyDto>>.SuccessResponse(replies));
         }
@@ -262,6 +274,9 @@ public class ForumController : ControllerBase
         if (topic is null)
             return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
 
+        if (!await CallerMayAccessEventTopicContentAsync(topic))
+            return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
         var section = (await _forumService.GetSectionsAsync()).FirstOrDefault(s => s.Id == topic.SectionId);
         var sectionAllowed = section is null ||
             await PermissionGuard.MeetsAsync(User, _userService, section.MinRank);
@@ -296,6 +311,9 @@ public class ForumController : ControllerBase
         if (topic is null)
             return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
 
+        if (!await CallerMayAccessEventTopicContentAsync(topic))
+            return NotFound(ApiResponse<ForumTopicDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
         var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var staffRole = User.FindFirst("staffRole")?.Value ?? "none";
         var isAuthor = callerId == topic.AuthorId;
@@ -321,5 +339,38 @@ public class ForumController : ControllerBase
         if (string.IsNullOrEmpty(id)) return UserRank.Novice;
         var user = await _userService.GetUserByIdAsync(id);
         return user?.Rank ?? UserRank.Novice;
+    }
+
+    private async Task<bool> CallerMayAccessEventTopicContentAsync(ForumTopicDto topic)
+    {
+        if (!topic.SectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var eventId = ResolveEventIdFromTopic(topic);
+        if (string.IsNullOrEmpty(eventId))
+            return false;
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return false;
+
+        var staff = User.FindFirst("staffRole")?.Value ?? "none";
+        var isElevated = staff is "moderator" or "admin";
+        var ev = await _eventService.GetEventByIdAdminAsync(eventId);
+        if (ev is null)
+            return false;
+
+        return EventForumAccess.CanViewTopicsAndReplies(ev, userId, isElevated);
+    }
+
+    private static string? ResolveEventIdFromTopic(ForumTopicDto t)
+    {
+        if (!string.IsNullOrEmpty(t.EventId))
+            return t.EventId;
+        if (t.Id.StartsWith("evt-", StringComparison.Ordinal) && t.Id.Length > 4)
+            return t.Id.Substring(4);
+        if (t.Id.StartsWith("event-topic-", StringComparison.Ordinal) && t.Id.Length > "event-topic-".Length)
+            return t.Id["event-topic-".Length..];
+        return null;
     }
 }

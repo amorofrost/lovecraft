@@ -16,6 +16,10 @@ public class EventDto
     public string Location { get; set; } = string.Empty;
     public int? Capacity { get; set; }
     public List<string> Attendees { get; set; } = new();
+
+    /// <summary>Users who clicked &quot;interested&quot; (not yet attendees).</summary>
+    public List<string> InterestedUserIds { get; set; } = new();
+
     public EventCategory Category { get; set; }
     public decimal? Price { get; set; }
     public string Organizer { get; set; } = string.Empty;

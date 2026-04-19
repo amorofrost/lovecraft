@@ -69,6 +69,28 @@ public class CachingEventService : IEventService
         return result;
     }
 
+    public async Task<bool> AddEventInterestAsync(string userId, string eventId)
+    {
+        var result = await _inner.AddEventInterestAsync(userId, eventId);
+        if (result)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(EventKey(eventId));
+        }
+        return result;
+    }
+
+    public async Task<bool> RemoveEventInterestAsync(string userId, string eventId)
+    {
+        var result = await _inner.RemoveEventInterestAsync(userId, eventId);
+        if (result)
+        {
+            _cache.Remove(AllKey);
+            _cache.Remove(EventKey(eventId));
+        }
+        return result;
+    }
+
     public Task SetForumTopicIdAsync(string eventId, string forumTopicId)
         => _inner.SetForumTopicIdAsync(eventId, forumTopicId);
 

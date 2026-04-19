@@ -15,6 +15,7 @@ public static class TableNames
     public static string AuthTokens      => Prefix + "authtokens";
     public static string Events          => Prefix + "events";
     public static string EventAttendees  => Prefix + "eventattendees";
+    public static string EventInterested  => Prefix + "eventinterested";
     public static string Likes           => Prefix + "likes";
     public static string LikesReceived   => Prefix + "likesreceived";
     public static string Matches         => Prefix + "matches";

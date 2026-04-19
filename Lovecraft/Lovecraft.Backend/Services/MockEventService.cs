@@ -141,10 +141,32 @@ public class MockEventService : IEventService
         if (eventDto != null && !eventDto.Archived && !eventDto.Attendees.Contains(userId))
         {
             eventDto.Attendees.Add(userId);
+            eventDto.InterestedUserIds.Remove(userId);
             _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended).GetAwaiter().GetResult();
             return Task.FromResult(true);
         }
         return Task.FromResult(false);
+    }
+
+    public Task<bool> AddEventInterestAsync(string userId, string eventId)
+    {
+        var eventDto = MockDataStore.Events.FirstOrDefault(e => e.Id == eventId);
+        if (eventDto is null || eventDto.Archived)
+            return Task.FromResult(false);
+        if (eventDto.Attendees.Contains(userId))
+            return Task.FromResult(false);
+        if (eventDto.InterestedUserIds.Contains(userId))
+            return Task.FromResult(false);
+        eventDto.InterestedUserIds.Add(userId);
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> RemoveEventInterestAsync(string userId, string eventId)
+    {
+        var eventDto = MockDataStore.Events.FirstOrDefault(e => e.Id == eventId);
+        if (eventDto is null || !eventDto.InterestedUserIds.Remove(userId))
+            return Task.FromResult(false);
+        return Task.FromResult(true);
     }
 
     public Task<bool> UnregisterFromEventAsync(string userId, string eventId)

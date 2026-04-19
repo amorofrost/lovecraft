@@ -229,6 +229,25 @@ else
 
 var app = builder.Build();
 
+// Mock storage: seed predictable attendance invite codes per event (dev / automated tests)
+if (!useAzure)
+{
+    using var scope = app.Services.CreateScope();
+    var inviteSvc = scope.ServiceProvider.GetRequiredService<IEventInviteService>();
+    foreach (var ev in Lovecraft.Backend.MockData.MockDataStore.Events)
+    {
+        try
+        {
+            inviteSvc.CreateOrRotateInviteAsync(ev.Id, DateTime.UtcNow.AddYears(5), plainCodeOverride: $"MOCK-ATTEND-{ev.Id}")
+                .GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // ignore duplicate seed attempts
+        }
+    }
+}
+
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {

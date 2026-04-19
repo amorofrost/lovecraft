@@ -144,6 +144,7 @@ public class EventsController : ControllerBase
         Location = string.Empty,
         Capacity = full.Capacity,
         Attendees = new List<string>(),
+        InterestedUserIds = new List<string>(),
         Category = full.Category,
         Price = null,
         Organizer = full.Organizer,
@@ -153,7 +154,7 @@ public class EventsController : ControllerBase
     };
 
     /// <summary>
-    /// Register for an event
+    /// Register as an attendee — requires a valid per-event invite code (moderators/admins may omit).
     /// </summary>
     [HttpPost("{id}/register")]
     public async Task<ActionResult<ApiResponse<bool>>> RegisterForEvent(string id, [FromBody] RegisterForEventRequestDto? body)
@@ -163,6 +164,18 @@ public class EventsController : ControllerBase
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(ApiResponse<bool>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+            var staff = User.FindFirst("staffRole")?.Value ?? "none";
+            var isElevated = staff is "moderator" or "admin";
+
+            if (!isElevated)
+            {
+                if (string.IsNullOrWhiteSpace(body?.InviteCode))
+                    return BadRequest(ApiResponse<bool>.ErrorResponse("INVITE_REQUIRED", "An event invite code is required to attend"));
+                var v = await _eventInvites.ValidatePlainCodeAsync(body!.InviteCode!);
+                if (v is null || v.EventId != id)
+                    return BadRequest(ApiResponse<bool>.ErrorResponse("INVALID_INVITE_CODE", "Invalid or expired invite code for this event"));
+            }
 
             var result = await _eventService.RegisterForEventAsync(userId, id);
 
@@ -185,6 +198,52 @@ public class EventsController : ControllerBase
             _logger.LogError(ex, "Error registering for event {EventId}", id);
             return StatusCode(500, ApiResponse<bool>.ErrorResponse("INTERNAL_ERROR", "Failed to register for event"));
         }
+    }
+
+    /// <summary>Mark the current user as interested (does not add to attendees).</summary>
+    [HttpPost("{id}/interest")]
+    public async Task<ActionResult<ApiResponse<bool>>> AddInterest(string id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<bool>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        var ev = await _eventService.GetEventByIdAsync(id);
+        if (ev is null)
+            return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Event not found"));
+
+        var staff = User.FindFirst("staffRole")?.Value ?? "none";
+        var isElevated = staff is "moderator" or "admin";
+        if (!IsEventListedForUser(ev, userId, isElevated))
+            return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Event not found"));
+
+        var ok = await _eventService.AddEventInterestAsync(userId, id);
+        if (!ok)
+            return BadRequest(ApiResponse<bool>.ErrorResponse("INTEREST_FAILED", "Could not save interest"));
+        return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    /// <summary>Remove the current user from the interested list.</summary>
+    [HttpDelete("{id}/interest")]
+    public async Task<ActionResult<ApiResponse<bool>>> RemoveInterest(string id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<bool>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        var ok = await _eventService.RemoveEventInterestAsync(userId, id);
+        if (!ok)
+            return BadRequest(ApiResponse<bool>.ErrorResponse("INTEREST_REMOVE_FAILED", "Not marked as interested"));
+        return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    /// <summary>Same visibility as GET /events list (public, teaser, attended secret, or staff).</summary>
+    private static bool IsEventListedForUser(EventDto e, string userId, bool isElevated)
+    {
+        if (isElevated) return true;
+        if (e.Visibility == EventVisibility.SecretHidden)
+            return e.Attendees.Contains(userId);
+        return true;
     }
 
     /// <summary>
