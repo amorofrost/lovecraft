@@ -41,6 +41,9 @@ public class UserEntity : ITableEntity
 
     public DateTime? RegistrationSourceRedeemedAtUtc { get; set; }
 
+    /// <summary>Telegram user id (string) when linked via Login Widget / Mini App; empty otherwise.</summary>
+    public string TelegramUserId { get; set; } = string.Empty;
+
     public static string GetPartitionKey(string userId) =>
         $"user-{userId[0].ToString().ToLower()}";
 }

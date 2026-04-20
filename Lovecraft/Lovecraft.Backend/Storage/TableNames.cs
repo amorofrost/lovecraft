@@ -30,4 +30,5 @@ public static class TableNames
     public static string Messages        => Prefix + "messages";
     public static string AppConfig       => Prefix + "appconfig";
     public static string EventInvites    => Prefix + "eventinvites";
+    public static string UserTelegramIndex => Prefix + "usertelegramindex";
 }

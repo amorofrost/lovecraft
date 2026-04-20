@@ -1,3 +1,4 @@
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Services.Caching;
@@ -154,6 +155,8 @@ builder.Services.AddCors(options =>
 
 // Register services
 builder.Services.AddMemoryCache();
+builder.Services.Configure<TelegramAuthOptions>(
+    builder.Configuration.GetSection(TelegramAuthOptions.SectionName));
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();

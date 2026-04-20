@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Lovecraft.Common.DTOs.Auth;
 
 public class LoginRequestDto
@@ -64,6 +66,39 @@ public class ChangePasswordRequestDto
     public string NewPassword { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Payload from the Telegram Login Widget (callback or redirect). Hash is verified server-side with the bot token.
+/// </summary>
+public class TelegramLoginRequestDto
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("first_name")]
+    public string FirstName { get; set; } = string.Empty;
+
+    [JsonPropertyName("last_name")]
+    public string? LastName { get; set; }
+
+    [JsonPropertyName("username")]
+    public string? Username { get; set; }
+
+    [JsonPropertyName("photo_url")]
+    public string? PhotoUrl { get; set; }
+
+    [JsonPropertyName("auth_date")]
+    public long AuthDate { get; set; }
+
+    [JsonPropertyName("hash")]
+    public string Hash { get; set; } = string.Empty;
+}
+
+public class TelegramLoginConfigDto
+{
+    /// <summary>Bot username without @, for the widget data-telegram-login attribute.</summary>
+    public string BotUsername { get; set; } = string.Empty;
+}
+
 public class OAuthCallbackDto
 {
     public string Code { get; set; } = string.Empty;
@@ -71,7 +106,8 @@ public class OAuthCallbackDto
     public string? Error { get; set; }
 }
 
-public class TelegramLoginRequestDto
+/// <summary>Future: Telegram Mini App <c>initData</c> string for Web App validation (not the Login Widget).</summary>
+public class TelegramWebAppInitDataDto
 {
     public string InitData { get; set; } = string.Empty;
 }

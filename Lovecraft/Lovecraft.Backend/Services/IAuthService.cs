@@ -6,6 +6,8 @@ public interface IAuthService
 {
     Task<AuthResponseDto?> RegisterAsync(RegisterRequestDto request);
     Task<AuthResponseDto?> LoginAsync(LoginRequestDto request);
+    /// <summary>Telegram Login Widget: verify signature, create or load user, return JWT pair.</summary>
+    Task<AuthResponseDto?> TelegramLoginAsync(TelegramLoginRequestDto request);
     Task<AuthResponseDto?> RefreshTokenAsync(string refreshToken);
     Task<bool> VerifyEmailAsync(string token);
     Task<bool> ForgotPasswordAsync(string email);

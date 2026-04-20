@@ -1,9 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
 using Xunit;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Auth;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Lovecraft.UnitTests;
 
@@ -35,7 +37,8 @@ public class RefreshTokenTests
         _authService = new MockAuthService(_jwtService, new PasswordHasher(),
                                            NullLogger<MockAuthService>.Instance,
                                            new NullEmailService(NullLogger<NullEmailService>.Instance),
-                                           app, invites, events);
+                                           app, invites, events,
+                                           Options.Create(new TelegramAuthOptions()));
     }
 
     /// <summary>

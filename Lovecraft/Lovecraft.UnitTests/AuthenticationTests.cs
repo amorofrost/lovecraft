@@ -2,9 +2,11 @@ using Xunit;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Lovecraft.UnitTests;
 
@@ -42,7 +44,8 @@ public class AuthenticationTests
             new NullEmailService(NullLogger<NullEmailService>.Instance),
             app,
             invites,
-            events);
+            events,
+            Options.Create(new TelegramAuthOptions()));
     }
 
     [Fact]

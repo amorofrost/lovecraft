@@ -1,6 +1,8 @@
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.MockData;
+using Microsoft.Extensions.Options;
 
 namespace Lovecraft.Backend.Services;
 
@@ -13,12 +15,15 @@ public class MockAuthService : IAuthService
     private readonly IAppConfigService _appConfig;
     private readonly IEventInviteService _eventInvites;
     private readonly IEventService _events;
+    private readonly TelegramAuthOptions _telegramOptions;
 
     // Mock in-memory storage
     private static readonly Dictionary<string, MockUser> _users = new();
     private static readonly Dictionary<string, string> _refreshTokens = new();
     private static readonly Dictionary<string, string> _verificationTokens = new();
     private static readonly Dictionary<string, PasswordResetToken> _resetTokens = new();
+    /// <summary>Telegram user id string → user email key in <see cref="_users"/>.</summary>
+    private static readonly Dictionary<string, string> _telegramToUserKey = new();
 
     public MockAuthService(
         IJwtService jwtService,
@@ -27,7 +32,8 @@ public class MockAuthService : IAuthService
         IEmailService emailService,
         IAppConfigService appConfig,
         IEventInviteService eventInvites,
-        IEventService events)
+        IEventService events,
+        IOptions<TelegramAuthOptions> telegramOptions)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
@@ -36,6 +42,7 @@ public class MockAuthService : IAuthService
         _appConfig = appConfig;
         _eventInvites = eventInvites;
         _events = events;
+        _telegramOptions = telegramOptions.Value;
 
         // Seed with test user
         SeedTestUsers();
@@ -139,6 +146,90 @@ public class MockAuthService : IAuthService
                 Email = user.Email,
                 Name = user.Name,
                 EmailVerified = false,
+                AuthMethods = user.AuthMethods
+            },
+            ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+        };
+    }
+
+    public async Task<AuthResponseDto?> TelegramLoginAsync(TelegramLoginRequestDto request)
+    {
+        await Task.Delay(50);
+
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken))
+        {
+            _logger.LogWarning("Telegram login: BotToken not configured");
+            return null;
+        }
+
+        if (!TelegramLoginVerifier.Verify(_telegramOptions.BotToken, request))
+        {
+            _logger.LogWarning("Telegram login: invalid signature for id {Id}", request.Id);
+            return null;
+        }
+
+        var tgKey = request.Id.ToString();
+        MockUser user;
+
+        if (_telegramToUserKey.TryGetValue(tgKey, out var emailKey) &&
+            _users.TryGetValue(emailKey, out var existing))
+        {
+            user = existing;
+        }
+        else
+        {
+            var syntheticEmail = $"telegram_{request.Id}@telegram.local";
+            var key = syntheticEmail.ToLowerInvariant();
+            if (_users.ContainsKey(key))
+            {
+                _logger.LogError("Telegram signup: duplicate synthetic email {Email}", syntheticEmail);
+                return null;
+            }
+
+            var userId = Guid.NewGuid().ToString();
+            var displayName = string.IsNullOrWhiteSpace(request.LastName)
+                ? request.FirstName.Trim()
+                : $"{request.FirstName.Trim()} {request.LastName.Trim()}";
+
+            user = new MockUser
+            {
+                Id = userId,
+                Email = syntheticEmail,
+                Name = displayName,
+                PasswordHash = _passwordHasher.HashPassword(Guid.NewGuid().ToString("N")),
+                EmailVerified = true,
+                AuthMethods = new List<string> { "telegram" },
+                CreatedAt = DateTime.UtcNow,
+                Age = 18,
+                Location = "Telegram",
+                Gender = "PreferNotToSay",
+                Bio = string.Empty,
+                TelegramUserId = tgKey,
+            };
+
+            _users[key] = user;
+            _telegramToUserKey[tgKey] = key;
+            _logger.LogInformation("Mock Telegram user registered: {UserId}, tg {TgId}", userId, tgKey);
+        }
+
+        var staffRole = MockDataStore.UserStaffRoles.TryGetValue(user.Id, out var role)
+            ? role.ToString().ToLowerInvariant()
+            : "none";
+        var accessToken = _jwtService.GenerateAccessToken(user.Id, user.Email, user.Name, staffRole);
+        var refreshToken = _jwtService.GenerateRefreshToken();
+        _refreshTokens[refreshToken] = user.Id;
+        user.LastLoginAt = DateTime.UtcNow;
+
+        return new AuthResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            User = new UserInfo
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = user.Name,
+                EmailVerified = user.EmailVerified,
                 AuthMethods = user.AuthMethods
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15)
@@ -426,6 +517,7 @@ public class MockAuthService : IAuthService
         public string Location { get; set; } = string.Empty;
         public string Gender { get; set; } = string.Empty;
         public string Bio { get; set; } = string.Empty;
+        public string? TelegramUserId { get; set; }
     }
 
     private class PasswordResetToken

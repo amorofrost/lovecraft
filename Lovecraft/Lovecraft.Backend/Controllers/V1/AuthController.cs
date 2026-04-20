@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Models;
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -15,15 +17,55 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly ILogger<AuthController> _logger;
     private readonly IAppConfigService _appConfig;
+    private readonly TelegramAuthOptions _telegramAuth;
 
     public AuthController(
         IAuthService authService,
         ILogger<AuthController> logger,
-        IAppConfigService appConfig)
+        IAppConfigService appConfig,
+        IOptions<TelegramAuthOptions> telegramAuth)
     {
         _authService = authService;
         _logger = logger;
         _appConfig = appConfig;
+        _telegramAuth = telegramAuth.Value;
+    }
+
+    /// <summary>Public config for the Telegram Login Widget (bot username). No secrets.</summary>
+    [HttpGet("telegram-login-config")]
+    [AllowAnonymous]
+    public ActionResult<ApiResponse<TelegramLoginConfigDto>> GetTelegramLoginConfig()
+    {
+        var username = _telegramAuth.BotUsername?.Trim() ?? "";
+        return Ok(ApiResponse<TelegramLoginConfigDto>.SuccessResponse(
+            new TelegramLoginConfigDto { BotUsername = username }));
+    }
+
+    /// <summary>Verify Telegram Login Widget payload and return JWT (same shape as email login).</summary>
+    [HttpPost("telegram-login")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramLogin([FromBody] TelegramLoginRequestDto request)
+    {
+        try
+        {
+            var result = await _authService.TelegramLoginAsync(request);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "TELEGRAM_AUTH_FAILED",
+                    "Telegram login failed. Ensure the bot token matches BotFather and the widget data is fresh."));
+            }
+
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Telegram login error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INTERNAL_ERROR",
+                "Telegram login failed"));
+        }
     }
 
     /// <summary>

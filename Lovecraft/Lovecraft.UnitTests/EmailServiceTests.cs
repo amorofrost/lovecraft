@@ -1,7 +1,9 @@
 using Xunit;
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Auth;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Lovecraft.UnitTests;
 
@@ -67,7 +69,8 @@ public class MockAuthServiceEmailTests
             emailSvc,
             app,
             invites,
-            events);
+            events,
+            Options.Create(new TelegramAuthOptions()));
     }
 
     [Fact]

@@ -4,10 +4,12 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Auth;
+using Microsoft.Extensions.Options;
 
 namespace Lovecraft.Backend.Services.Azure;
 
@@ -15,6 +17,7 @@ public class AzureAuthService : IAuthService
 {
     private readonly TableClient _usersTable;
     private readonly TableClient _emailIndexTable;
+    private readonly TableClient _telegramIndexTable;
     private readonly TableClient _refreshTokensTable;
     private readonly TableClient _authTokensTable;
     private readonly IJwtService _jwtService;
@@ -25,6 +28,7 @@ public class AzureAuthService : IAuthService
     private readonly IAppConfigService _appConfig;
     private readonly IEventInviteService _eventInvites;
     private readonly IEventService _events;
+    private readonly TelegramAuthOptions _telegramOptions;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
@@ -35,7 +39,8 @@ public class AzureAuthService : IAuthService
         IEmailService emailService,
         IAppConfigService appConfig,
         IEventInviteService eventInvites,
-        IEventService events)
+        IEventService events,
+        IOptions<TelegramAuthOptions> telegramOptions)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
@@ -45,9 +50,11 @@ public class AzureAuthService : IAuthService
         _appConfig = appConfig;
         _eventInvites = eventInvites;
         _events = events;
+        _telegramOptions = telegramOptions.Value;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
+        _telegramIndexTable = tableServiceClient.GetTableClient(TableNames.UserTelegramIndex);
         _refreshTokensTable = tableServiceClient.GetTableClient(TableNames.RefreshTokens);
         _authTokensTable = tableServiceClient.GetTableClient(TableNames.AuthTokens);
 
@@ -59,6 +66,7 @@ public class AzureAuthService : IAuthService
         await Task.WhenAll(
             _usersTable.CreateIfNotExistsAsync(),
             _emailIndexTable.CreateIfNotExistsAsync(),
+            _telegramIndexTable.CreateIfNotExistsAsync(),
             _refreshTokensTable.CreateIfNotExistsAsync(),
             _authTokensTable.CreateIfNotExistsAsync()
         );
@@ -198,6 +206,133 @@ public class AzureAuthService : IAuthService
                 AuthMethods = new List<string> { "local" }
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
+        };
+    }
+
+    public async Task<AuthResponseDto?> TelegramLoginAsync(TelegramLoginRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken))
+        {
+            _logger.LogWarning("Telegram login: BotToken not configured");
+            return null;
+        }
+
+        if (!TelegramLoginVerifier.Verify(_telegramOptions.BotToken, request))
+        {
+            _logger.LogWarning("Telegram login: invalid signature for id {Id}", request.Id);
+            return null;
+        }
+
+        var tgKey = request.Id.ToString();
+        UserEntity userEntity;
+
+        try
+        {
+            var tgIdx = await _telegramIndexTable.GetEntityAsync<UserTelegramIndexEntity>(tgKey, "INDEX");
+            var userResponse = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(tgIdx.Value.UserId), tgIdx.Value.UserId);
+            userEntity = userResponse.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            var syntheticEmail = $"telegram_{request.Id}@telegram.local";
+            var emailLower = syntheticEmail.ToLowerInvariant();
+
+            try
+            {
+                await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
+                _logger.LogError("Telegram signup: synthetic email already exists for {Email}", syntheticEmail);
+                return null;
+            }
+            catch (RequestFailedException ex2) when (ex2.Status == 404)
+            {
+                // proceed
+            }
+
+            var userId = Guid.NewGuid().ToString();
+            var now = DateTime.UtcNow;
+            var displayName = string.IsNullOrWhiteSpace(request.LastName)
+                ? request.FirstName.Trim()
+                : $"{request.FirstName.Trim()} {request.LastName.Trim()}";
+
+            userEntity = new UserEntity
+            {
+                PartitionKey = UserEntity.GetPartitionKey(userId),
+                RowKey = userId,
+                Email = syntheticEmail,
+                PasswordHash = _passwordHasher.HashPassword(
+                    Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
+                Name = displayName,
+                Age = 18,
+                Location = "Telegram",
+                Gender = "PreferNotToSay",
+                Bio = string.Empty,
+                ProfileImage = request.PhotoUrl ?? string.Empty,
+                EmailVerified = true,
+                AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "telegram" }),
+                TelegramUserId = tgKey,
+                PreferencesJson = JsonSerializer.Serialize(new { AgeRangeMin = 18, AgeRangeMax = 65, MaxDistance = 50, ShowMe = "everyone" }),
+                SettingsJson = JsonSerializer.Serialize(new { ProfileVisibility = "public", AnonymousLikes = false, Language = "ru", Notifications = true }),
+                CreatedAt = now,
+                UpdatedAt = now,
+                IsOnline = false,
+                LastSeen = now,
+            };
+
+            var emailIndexEntity = new UserEmailIndexEntity
+            {
+                PartitionKey = emailLower,
+                RowKey = "INDEX",
+                UserId = userId
+            };
+            var telegramIndexEntity = new UserTelegramIndexEntity
+            {
+                PartitionKey = tgKey,
+                RowKey = "INDEX",
+                UserId = userId
+            };
+
+            try
+            {
+                await Task.WhenAll(
+                    _usersTable.UpsertEntityAsync(userEntity),
+                    _emailIndexTable.UpsertEntityAsync(emailIndexEntity),
+                    _telegramIndexTable.UpsertEntityAsync(telegramIndexEntity));
+            }
+            catch (Exception signupEx)
+            {
+                _logger.LogError(signupEx, "Telegram signup failed for id {Id}", request.Id);
+                try { await _telegramIndexTable.DeleteEntityAsync(tgKey, "INDEX"); } catch { /* ignore */ }
+                try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* ignore */ }
+                try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* ignore */ }
+                throw;
+            }
+
+            _logger.LogInformation("Telegram user registered: {UserId}, tg {TgId}", userId, tgKey);
+        }
+
+        var issueTime = DateTime.UtcNow;
+        var accessToken = _jwtService.GenerateAccessToken(
+            userEntity.RowKey, userEntity.Email, userEntity.Name, userEntity.StaffRole ?? "none");
+        var refreshToken = _jwtService.GenerateRefreshToken();
+        await WriteRefreshTokenAsync(refreshToken, userEntity.RowKey, issueTime);
+
+        var authMethods = JsonSerializer.Deserialize<List<string>>(userEntity.AuthMethodsJson)
+            ?? new List<string> { "telegram" };
+
+        return new AuthResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken,
+            User = new UserInfo
+            {
+                Id = userEntity.RowKey,
+                Email = userEntity.Email,
+                Name = userEntity.Name,
+                EmailVerified = userEntity.EmailVerified,
+                AuthMethods = authMethods
+            },
+            ExpiresAt = issueTime.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
     }
 
