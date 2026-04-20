@@ -157,6 +157,15 @@ builder.Services.AddCors(options =>
 builder.Services.AddMemoryCache();
 builder.Services.Configure<TelegramAuthOptions>(
     builder.Configuration.GetSection(TelegramAuthOptions.SectionName));
+// Back-compat: allow TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME env vars (as set in Lovecraft/.env)
+// in addition to the standard Telegram__BotToken / Telegram__BotUsername binding.
+builder.Services.PostConfigure<TelegramAuthOptions>(opt =>
+{
+    if (string.IsNullOrWhiteSpace(opt.BotToken))
+        opt.BotToken = builder.Configuration["TELEGRAM_BOT_TOKEN"] ?? string.Empty;
+    if (string.IsNullOrWhiteSpace(opt.BotUsername))
+        opt.BotUsername = builder.Configuration["TELEGRAM_BOT_USERNAME"] ?? string.Empty;
+});
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
