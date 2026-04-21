@@ -9,8 +9,12 @@ namespace Lovecraft.Backend.Auth;
 /// </summary>
 public static class TelegramLoginVerifier
 {
-    /// <summary>Reject auth payloads older than this (Telegram recommends checking auth_date).</summary>
-    public static TimeSpan MaxAuthAge { get; } = TimeSpan.FromHours(24);
+    /// <summary>
+    /// Reject auth payloads older than this. The widget issues a signature immediately before the
+    /// redirect/callback, so a legitimate client consumes it within seconds. A short window narrows
+    /// the replay horizon for payloads leaked via phishing, browser history sync, or stolen logs.
+    /// </summary>
+    public static TimeSpan MaxAuthAge { get; } = TimeSpan.FromMinutes(5);
 
     public static bool Verify(string botToken, TelegramLoginRequestDto dto)
     {
@@ -60,7 +64,23 @@ public static class TelegramLoginVerifier
         var secretKey = SHA256.HashData(Encoding.UTF8.GetBytes(botToken));
         using var hmac = new HMACSHA256(secretKey);
         var computed = hmac.ComputeHash(Encoding.UTF8.GetBytes(dataCheckString));
-        var hex = Convert.ToHexString(computed).ToLowerInvariant();
-        return hex.Equals(receivedHashHex.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        // HMAC-SHA256 produces 32 bytes → 64 hex chars. Anything else is garbage input, so
+        // skip the decode and return false — FixedTimeEquals itself requires equal lengths.
+        var trimmed = receivedHashHex.Trim();
+        if (trimmed.Length != computed.Length * 2)
+            return false;
+
+        byte[] received;
+        try
+        {
+            received = Convert.FromHexString(trimmed);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        return CryptographicOperations.FixedTimeEquals(computed, received);
     }
 }

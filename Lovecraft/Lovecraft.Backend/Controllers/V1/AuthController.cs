@@ -34,6 +34,7 @@ public class AuthController : ControllerBase
     /// <summary>Public config for the Telegram Login Widget (bot username). No secrets.</summary>
     [HttpGet("telegram-login-config")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
     public ActionResult<ApiResponse<TelegramLoginConfigDto>> GetTelegramLoginConfig()
     {
         var username = _telegramAuth.BotUsername?.Trim() ?? "";
@@ -44,6 +45,7 @@ public class AuthController : ControllerBase
     /// <summary>Verify Telegram Login Widget payload and return JWT (same shape as email login).</summary>
     [HttpPost("telegram-login")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
     public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramLogin([FromBody] TelegramLoginRequestDto request)
     {
         try

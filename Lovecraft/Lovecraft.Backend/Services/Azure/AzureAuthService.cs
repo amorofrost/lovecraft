@@ -15,6 +15,14 @@ namespace Lovecraft.Backend.Services.Azure;
 
 public class AzureAuthService : IAuthService
 {
+    /// <summary>
+    /// Sentinel domain reserved for Telegram-provisioned synthetic emails. Email/password
+    /// registration with this domain is blocked so a malicious actor cannot pre-claim a
+    /// Telegram user's synthetic address (which would permanently lock them out of Telegram
+    /// sign-in).
+    /// </summary>
+    private const string TelegramSyntheticEmailDomain = "@telegram.local";
+
     private readonly TableClient _usersTable;
     private readonly TableClient _emailIndexTable;
     private readonly TableClient _telegramIndexTable;
@@ -74,6 +82,12 @@ public class AzureAuthService : IAuthService
 
     public async Task<AuthResponseDto?> RegisterAsync(RegisterRequestDto request)
     {
+        if (request.Email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Registration blocked: reserved Telegram synthetic domain {Email}", request.Email);
+            return null;
+        }
+
         var cfg = await _appConfig.GetConfigAsync();
         string? sourceEventId = null;
         if (!string.IsNullOrWhiteSpace(request.InviteCode))
@@ -235,18 +249,23 @@ public class AzureAuthService : IAuthService
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            var syntheticEmail = $"telegram_{request.Id}@telegram.local";
+            // Canonical form is telegram_{id}@telegram.local; if somehow already taken
+            // (legacy data, race), fall back to a GUID-suffixed variant so a pre-claimed
+            // synthetic address cannot DoS Telegram signups.
+            var syntheticEmail = $"telegram_{request.Id}{TelegramSyntheticEmailDomain}";
             var emailLower = syntheticEmail.ToLowerInvariant();
 
             try
             {
                 await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
-                _logger.LogError("Telegram signup: synthetic email already exists for {Email}", syntheticEmail);
-                return null;
+                syntheticEmail = $"telegram_{request.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
+                emailLower = syntheticEmail.ToLowerInvariant();
+                _logger.LogWarning("Telegram signup: canonical synthetic email collided for tg {TgId}; using fallback {Email}",
+                    request.Id, syntheticEmail);
             }
             catch (RequestFailedException ex2) when (ex2.Status == 404)
             {
-                // proceed
+                // canonical address is free — keep it
             }
 
             var userId = Guid.NewGuid().ToString();

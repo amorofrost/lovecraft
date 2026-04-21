@@ -8,6 +8,8 @@ namespace Lovecraft.Backend.Services;
 
 public class MockAuthService : IAuthService
 {
+    private const string TelegramSyntheticEmailDomain = "@telegram.local";
+
     private readonly IJwtService _jwtService;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<MockAuthService> _logger;
@@ -69,6 +71,12 @@ public class MockAuthService : IAuthService
     public async Task<AuthResponseDto?> RegisterAsync(RegisterRequestDto request)
     {
         await Task.Delay(100); // Simulate async operation
+
+        if (request.Email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Registration blocked: reserved Telegram synthetic domain {Email}", request.Email);
+            return null;
+        }
 
         var cfg = await _appConfig.GetConfigAsync();
         string? sourceEventId = null;
@@ -178,12 +186,14 @@ public class MockAuthService : IAuthService
         }
         else
         {
-            var syntheticEmail = $"telegram_{request.Id}@telegram.local";
+            var syntheticEmail = $"telegram_{request.Id}{TelegramSyntheticEmailDomain}";
             var key = syntheticEmail.ToLowerInvariant();
             if (_users.ContainsKey(key))
             {
-                _logger.LogError("Telegram signup: duplicate synthetic email {Email}", syntheticEmail);
-                return null;
+                syntheticEmail = $"telegram_{request.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
+                key = syntheticEmail.ToLowerInvariant();
+                _logger.LogWarning("Telegram signup: canonical synthetic email collided for tg {TgId}; using fallback {Email}",
+                    request.Id, syntheticEmail);
             }
 
             var userId = Guid.NewGuid().ToString();
