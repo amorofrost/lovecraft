@@ -99,6 +99,61 @@ public class TelegramLoginConfigDto
     public string BotUsername { get; set; } = string.Empty;
 }
 
+/// <summary>Verified Telegram user identity carried across the pending-ticket flow.</summary>
+public class TelegramUserInfoDto
+{
+    public long Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string? LastName { get; set; }
+    public string? Username { get; set; }
+    public string? PhotoUrl { get; set; }
+}
+
+/// <summary>Response from <c>/telegram-login</c>: either a full JWT pair, or a pending ticket for
+/// a new Telegram identity that the user must attach to an account.</summary>
+public class TelegramLoginResultDto
+{
+    /// <summary>"signedIn" | "pending"</summary>
+    public string Status { get; set; } = string.Empty;
+    public AuthResponseDto? Auth { get; set; }
+    public string? Ticket { get; set; }
+    public TelegramUserInfoDto? Telegram { get; set; }
+}
+
+/// <summary>Create a brand-new account from a verified Telegram identity (pending ticket).</summary>
+public class TelegramRegisterRequestDto
+{
+    public string Ticket { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public string Location { get; set; } = string.Empty;
+    public string Gender { get; set; } = string.Empty;
+    public string Bio { get; set; } = string.Empty;
+    public string? InviteCode { get; set; }
+}
+
+/// <summary>Link a verified Telegram identity to an existing email/password account in one shot.</summary>
+public class TelegramLinkLoginRequestDto
+{
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string Ticket { get; set; } = string.Empty;
+}
+
+/// <summary>Link a verified Telegram identity to the currently authenticated account.</summary>
+public class TelegramLinkRequestDto
+{
+    public string Ticket { get; set; } = string.Empty;
+}
+
+/// <summary>Attach an email + password to a Telegram-only account. Finalized only after the user
+/// clicks the verification link, at which point <c>local</c> is appended to AuthMethods.</summary>
+public class AttachEmailRequestDto
+{
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+}
+
 public class OAuthCallbackDto
 {
     public string Code { get; set; } = string.Empty;

@@ -88,19 +88,7 @@ public class AzureAuthService : IAuthService
             return null;
         }
 
-        var cfg = await _appConfig.GetConfigAsync();
-        string? sourceEventId = null;
-        if (!string.IsNullOrWhiteSpace(request.InviteCode))
-        {
-            var val = await _eventInvites.ValidatePlainCodeAsync(request.InviteCode);
-            if (val is null)
-                throw new InvalidInviteCodeException();
-            sourceEventId = val.EventId;
-        }
-        else if (cfg.Registration.RequireEventInvite)
-        {
-            throw new InviteRequiredException();
-        }
+        var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
         var emailLower = request.Email.ToLower();
 
@@ -223,7 +211,7 @@ public class AzureAuthService : IAuthService
         };
     }
 
-    public async Task<AuthResponseDto?> TelegramLoginAsync(TelegramLoginRequestDto request)
+    public async Task<TelegramLoginResultDto?> TelegramLoginAsync(TelegramLoginRequestDto request)
     {
         if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken))
         {
@@ -238,7 +226,7 @@ public class AzureAuthService : IAuthService
         }
 
         var tgKey = request.Id.ToString();
-        UserEntity userEntity;
+        UserEntity? userEntity = null;
 
         try
         {
@@ -249,95 +237,358 @@ public class AzureAuthService : IAuthService
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            // Canonical form is telegram_{id}@telegram.local; if somehow already taken
-            // (legacy data, race), fall back to a GUID-suffixed variant so a pre-claimed
-            // synthetic address cannot DoS Telegram signups.
-            var syntheticEmail = $"telegram_{request.Id}{TelegramSyntheticEmailDomain}";
-            var emailLower = syntheticEmail.ToLowerInvariant();
-
-            try
-            {
-                await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
-                syntheticEmail = $"telegram_{request.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
-                emailLower = syntheticEmail.ToLowerInvariant();
-                _logger.LogWarning("Telegram signup: canonical synthetic email collided for tg {TgId}; using fallback {Email}",
-                    request.Id, syntheticEmail);
-            }
-            catch (RequestFailedException ex2) when (ex2.Status == 404)
-            {
-                // canonical address is free — keep it
-            }
-
-            var userId = Guid.NewGuid().ToString();
-            var now = DateTime.UtcNow;
-            var displayName = string.IsNullOrWhiteSpace(request.LastName)
-                ? request.FirstName.Trim()
-                : $"{request.FirstName.Trim()} {request.LastName.Trim()}";
-
-            userEntity = new UserEntity
-            {
-                PartitionKey = UserEntity.GetPartitionKey(userId),
-                RowKey = userId,
-                Email = syntheticEmail,
-                PasswordHash = _passwordHasher.HashPassword(
-                    Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
-                Name = displayName,
-                Age = 18,
-                Location = "Telegram",
-                Gender = "PreferNotToSay",
-                Bio = string.Empty,
-                ProfileImage = request.PhotoUrl ?? string.Empty,
-                EmailVerified = true,
-                AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "telegram" }),
-                TelegramUserId = tgKey,
-                PreferencesJson = JsonSerializer.Serialize(new { AgeRangeMin = 18, AgeRangeMax = 65, MaxDistance = 50, ShowMe = "everyone" }),
-                SettingsJson = JsonSerializer.Serialize(new { ProfileVisibility = "public", AnonymousLikes = false, Language = "ru", Notifications = true }),
-                CreatedAt = now,
-                UpdatedAt = now,
-                IsOnline = false,
-                LastSeen = now,
-            };
-
-            var emailIndexEntity = new UserEmailIndexEntity
-            {
-                PartitionKey = emailLower,
-                RowKey = "INDEX",
-                UserId = userId
-            };
-            var telegramIndexEntity = new UserTelegramIndexEntity
-            {
-                PartitionKey = tgKey,
-                RowKey = "INDEX",
-                UserId = userId
-            };
-
-            try
-            {
-                await Task.WhenAll(
-                    _usersTable.UpsertEntityAsync(userEntity),
-                    _emailIndexTable.UpsertEntityAsync(emailIndexEntity),
-                    _telegramIndexTable.UpsertEntityAsync(telegramIndexEntity));
-            }
-            catch (Exception signupEx)
-            {
-                _logger.LogError(signupEx, "Telegram signup failed for id {Id}", request.Id);
-                try { await _telegramIndexTable.DeleteEntityAsync(tgKey, "INDEX"); } catch { /* ignore */ }
-                try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* ignore */ }
-                try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* ignore */ }
-                throw;
-            }
-
-            _logger.LogInformation("Telegram user registered: {UserId}, tg {TgId}", userId, tgKey);
+            // Unknown Telegram id: no user row is created here. The caller must complete a
+            // redemption flow (/telegram-register or /telegram-link-login) with the pending ticket.
         }
 
-        var issueTime = DateTime.UtcNow;
+        if (userEntity is null)
+        {
+            var tgInfo = new TelegramUserInfoDto
+            {
+                Id = request.Id,
+                FirstName = request.FirstName ?? string.Empty,
+                LastName = request.LastName,
+                Username = request.Username,
+                PhotoUrl = request.PhotoUrl,
+            };
+            var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
+            _logger.LogInformation("Telegram login: pending ticket issued for tg {TgId}", tgKey);
+            return new TelegramLoginResultDto
+            {
+                Status = "pending",
+                Ticket = ticket,
+                Telegram = tgInfo,
+            };
+        }
+
+        var auth = await IssueJwtPairAsync(userEntity);
+        return new TelegramLoginResultDto { Status = "signedIn", Auth = auth };
+    }
+
+    public async Task<AuthResponseDto?> TelegramRegisterAsync(TelegramRegisterRequestDto request)
+    {
+        var tgInfo = _jwtService.ValidateTelegramPendingTicket(request.Ticket);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Telegram register: invalid or expired ticket");
+            return null;
+        }
+
+        var tgKey = tgInfo.Id.ToString();
+
+        // Prevent double-registration if the id got linked between ticket issuance and redemption.
+        try
+        {
+            await _telegramIndexTable.GetEntityAsync<UserTelegramIndexEntity>(tgKey, "INDEX");
+            _logger.LogWarning("Telegram register: tg {TgId} already linked to a user", tgKey);
+            return null;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // good, not linked — continue
+        }
+
+        var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
+
+        var syntheticEmail = $"telegram_{tgInfo.Id}{TelegramSyntheticEmailDomain}";
+        var emailLower = syntheticEmail.ToLowerInvariant();
+        try
+        {
+            await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
+            syntheticEmail = $"telegram_{tgInfo.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
+            emailLower = syntheticEmail.ToLowerInvariant();
+            _logger.LogWarning("Telegram register: canonical synthetic email collided for tg {TgId}; using fallback", tgKey);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // canonical free
+        }
+
+        var userId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow;
+        var displayName = string.IsNullOrWhiteSpace(request.Name)
+            ? (string.IsNullOrWhiteSpace(tgInfo.LastName)
+                ? tgInfo.FirstName.Trim()
+                : $"{tgInfo.FirstName.Trim()} {tgInfo.LastName!.Trim()}")
+            : request.Name.Trim();
+
+        var userEntity = new UserEntity
+        {
+            PartitionKey = UserEntity.GetPartitionKey(userId),
+            RowKey = userId,
+            Email = syntheticEmail,
+            PasswordHash = _passwordHasher.HashPassword(
+                Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
+            Name = displayName,
+            Age = request.Age > 0 ? request.Age : 18,
+            Location = string.IsNullOrWhiteSpace(request.Location) ? "Telegram" : request.Location,
+            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Bio = request.Bio ?? string.Empty,
+            ProfileImage = tgInfo.PhotoUrl ?? string.Empty,
+            EmailVerified = true,
+            AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "telegram" }),
+            TelegramUserId = tgKey,
+            PreferencesJson = JsonSerializer.Serialize(new { AgeRangeMin = 18, AgeRangeMax = 65, MaxDistance = 50, ShowMe = "everyone" }),
+            SettingsJson = JsonSerializer.Serialize(new { ProfileVisibility = "public", AnonymousLikes = false, Language = "ru", Notifications = true }),
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsOnline = false,
+            LastSeen = now,
+            RegistrationSourceEventId = sourceEventId,
+            RegistrationSourceRedeemedAtUtc = sourceEventId is not null ? now : null,
+        };
+
+        var emailIndexEntity = new UserEmailIndexEntity
+        {
+            PartitionKey = emailLower,
+            RowKey = "INDEX",
+            UserId = userId
+        };
+        var telegramIndexEntity = new UserTelegramIndexEntity
+        {
+            PartitionKey = tgKey,
+            RowKey = "INDEX",
+            UserId = userId
+        };
+
+        try
+        {
+            // AddEntityAsync on the telegram index gives us atomic "insert if absent"; races
+            // between concurrent pending tickets lose here instead of silently creating dupes.
+            await _telegramIndexTable.AddEntityAsync(telegramIndexEntity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            _logger.LogWarning("Telegram register: race detected, tg {TgId} already linked", tgKey);
+            return null;
+        }
+
+        try
+        {
+            await Task.WhenAll(
+                _usersTable.UpsertEntityAsync(userEntity),
+                _emailIndexTable.UpsertEntityAsync(emailIndexEntity));
+
+            if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
+                await _events.RegisterForEventAsync(userId, sourceEventId);
+
+            if (!string.IsNullOrWhiteSpace(request.InviteCode))
+                await _eventInvites.IncrementRegistrationCountAsync(request.InviteCode);
+        }
+        catch (Exception signupEx)
+        {
+            _logger.LogError(signupEx, "Telegram register failed after tg index write for tg {TgId}", tgKey);
+            try { await _telegramIndexTable.DeleteEntityAsync(tgKey, "INDEX"); } catch { /* ignore */ }
+            try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* ignore */ }
+            try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* ignore */ }
+            throw;
+        }
+
+        _logger.LogInformation("Telegram user registered: {UserId}, tg {TgId}", userId, tgKey);
+        return await IssueJwtPairAsync(userEntity);
+    }
+
+    public async Task<AuthResponseDto?> TelegramLinkLoginAsync(TelegramLinkLoginRequestDto request)
+    {
+        var tgInfo = _jwtService.ValidateTelegramPendingTicket(request.Ticket);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Telegram link-login: invalid or expired ticket");
+            return null;
+        }
+
+        var emailLower = request.Email.ToLower();
+        UserEmailIndexEntity indexEntity;
+        try
+        {
+            var idxResp = await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
+            indexEntity = idxResp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            _logger.LogWarning("Telegram link-login: user not found for {Email}", request.Email);
+            return null;
+        }
+
+        UserEntity userEntity;
+        try
+        {
+            var resp = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(indexEntity.UserId), indexEntity.UserId);
+            userEntity = resp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        if (!_passwordHasher.VerifyPassword(request.Password, userEntity.PasswordHash))
+        {
+            _logger.LogWarning("Telegram link-login: invalid password for {Email}", request.Email);
+            return null;
+        }
+
+        if (!userEntity.EmailVerified)
+        {
+            _logger.LogWarning("Telegram link-login: email not verified for {Email}", request.Email);
+            return null;
+        }
+
+        if (!await AttachTelegramToUserAsync(userEntity, tgInfo))
+            return null;
+
+        _logger.LogInformation("Telegram linked to existing user {UserId} via link-login", userEntity.RowKey);
+        return await IssueJwtPairAsync(userEntity);
+    }
+
+    public async Task<AuthResponseDto?> TelegramLinkAsync(string userId, string ticket)
+    {
+        var tgInfo = _jwtService.ValidateTelegramPendingTicket(ticket);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Telegram link: invalid or expired ticket for user {UserId}", userId);
+            return null;
+        }
+
+        UserEntity userEntity;
+        try
+        {
+            var resp = await _usersTable.GetEntityAsync<UserEntity>(UserEntity.GetPartitionKey(userId), userId);
+            userEntity = resp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        if (!await AttachTelegramToUserAsync(userEntity, tgInfo))
+            return null;
+
+        _logger.LogInformation("Telegram linked to existing user {UserId} (authenticated)", userId);
+        return await IssueJwtPairAsync(userEntity);
+    }
+
+    public async Task<AttachEmailResult> RequestEmailAttachAsync(string userId, string email, string password)
+    {
+        if (email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))
+            return AttachEmailResult.ReservedDomain;
+
+        UserEntity userEntity;
+        try
+        {
+            var resp = await _usersTable.GetEntityAsync<UserEntity>(UserEntity.GetPartitionKey(userId), userId);
+            userEntity = resp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return AttachEmailResult.UserNotFound;
+        }
+
+        var methods = JsonSerializer.Deserialize<List<string>>(userEntity.AuthMethodsJson) ?? new List<string>();
+        if (methods.Contains("local", StringComparer.OrdinalIgnoreCase))
+            return AttachEmailResult.AlreadyHasLocal;
+
+        var emailLower = email.ToLower();
+        try
+        {
+            await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
+            return AttachEmailResult.EmailAlreadyTaken;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // free — continue
+        }
+
+        // Clean up any earlier ATTACH tokens for this user (one pending attach at a time).
+        var existingAttaches = _authTokensTable.QueryAsync<AuthTokenEntity>(filter: $"RowKey eq 'ATTACH' and UserId eq '{userId}'");
+        await foreach (var t in existingAttaches)
+        {
+            try { await _authTokensTable.DeleteEntityAsync(t.PartitionKey, t.RowKey); } catch { /* ignore */ }
+        }
+
+        var token = Guid.NewGuid().ToString();
+        var attach = new AuthTokenEntity
+        {
+            PartitionKey = token,
+            RowKey = "ATTACH",
+            UserId = userId,
+            Email = email,
+            PendingPasswordHash = _passwordHasher.HashPassword(password),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            Used = false,
+        };
+        await _authTokensTable.UpsertEntityAsync(attach);
+
+        try
+        {
+            await _emailService.SendVerificationEmailAsync(email, userEntity.Name, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send attach-email verification to {Email}; token remains valid", email);
+        }
+
+        _logger.LogInformation("Attach-email requested for user {UserId} → {Email}", userId, email);
+        return AttachEmailResult.Ok;
+    }
+
+    /// <summary>Set TelegramUserId + append "telegram" to AuthMethods + write tg index (atomic insert).</summary>
+    private async Task<bool> AttachTelegramToUserAsync(UserEntity userEntity, TelegramUserInfoDto tgInfo)
+    {
+        var tgKey = tgInfo.Id.ToString();
+
+        // Refuse if a different user already owns this tg id.
+        try
+        {
+            var existing = await _telegramIndexTable.GetEntityAsync<UserTelegramIndexEntity>(tgKey, "INDEX");
+            if (existing.Value.UserId != userEntity.RowKey)
+            {
+                _logger.LogWarning("Telegram link: tg {TgId} already linked to a different user", tgKey);
+                return false;
+            }
+            // Already linked to this same user — nothing to write.
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // good, free to claim
+        }
+
+        var tgIdxEntity = new UserTelegramIndexEntity
+        {
+            PartitionKey = tgKey,
+            RowKey = "INDEX",
+            UserId = userEntity.RowKey,
+        };
+        try
+        {
+            await _telegramIndexTable.AddEntityAsync(tgIdxEntity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            _logger.LogWarning("Telegram link: race on tg {TgId}", tgKey);
+            return false;
+        }
+
+        var methods = JsonSerializer.Deserialize<List<string>>(userEntity.AuthMethodsJson) ?? new List<string>();
+        if (!methods.Contains("telegram", StringComparer.OrdinalIgnoreCase))
+            methods.Add("telegram");
+        userEntity.AuthMethodsJson = JsonSerializer.Serialize(methods);
+        userEntity.TelegramUserId = tgKey;
+        userEntity.UpdatedAt = DateTime.UtcNow;
+        await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag);
+        return true;
+    }
+
+    private async Task<AuthResponseDto> IssueJwtPairAsync(UserEntity userEntity)
+    {
+        var now = DateTime.UtcNow;
         var accessToken = _jwtService.GenerateAccessToken(
             userEntity.RowKey, userEntity.Email, userEntity.Name, userEntity.StaffRole ?? "none");
         var refreshToken = _jwtService.GenerateRefreshToken();
-        await WriteRefreshTokenAsync(refreshToken, userEntity.RowKey, issueTime);
+        await WriteRefreshTokenAsync(refreshToken, userEntity.RowKey, now);
 
-        var authMethods = JsonSerializer.Deserialize<List<string>>(userEntity.AuthMethodsJson)
-            ?? new List<string> { "telegram" };
+        var authMethods = JsonSerializer.Deserialize<List<string>>(userEntity.AuthMethodsJson) ?? new List<string>();
 
         return new AuthResponseDto
         {
@@ -349,9 +600,9 @@ public class AzureAuthService : IAuthService
                 Email = userEntity.Email,
                 Name = userEntity.Name,
                 EmailVerified = userEntity.EmailVerified,
-                AuthMethods = authMethods
+                AuthMethods = authMethods,
             },
-            ExpiresAt = issueTime.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
+            ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
     }
 
@@ -487,15 +738,29 @@ public class AzureAuthService : IAuthService
     public async Task<bool> VerifyEmailAsync(string token)
     {
         AuthTokenEntity authToken;
+        string rowKey;
+
+        // Accept both a fresh-signup VERIFY row and a Telegram-only ATTACH row. ATTACH carries a
+        // pending email+password swap that we only apply once the verification link is clicked.
         try
         {
             var response = await _authTokensTable.GetEntityAsync<AuthTokenEntity>(token, "VERIFY");
             authToken = response.Value;
+            rowKey = "VERIFY";
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            _logger.LogWarning("Invalid verification token");
-            return false;
+            try
+            {
+                var response = await _authTokensTable.GetEntityAsync<AuthTokenEntity>(token, "ATTACH");
+                authToken = response.Value;
+                rowKey = "ATTACH";
+            }
+            catch (RequestFailedException ex2) when (ex2.Status == 404)
+            {
+                _logger.LogWarning("Invalid verification token");
+                return false;
+            }
         }
 
         if (authToken.Used || authToken.ExpiresAt < DateTime.UtcNow)
@@ -504,24 +769,107 @@ public class AzureAuthService : IAuthService
             return false;
         }
 
-        // Mark email as verified on the user
+        if (rowKey == "VERIFY")
+        {
+            try
+            {
+                var userResponse = await _usersTable.GetEntityAsync<UserEntity>(
+                    UserEntity.GetPartitionKey(authToken.UserId), authToken.UserId);
+                var userEntity = userResponse.Value;
+                userEntity.EmailVerified = true;
+                userEntity.UpdatedAt = DateTime.UtcNow;
+                await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return false;
+            }
+
+            await _authTokensTable.DeleteEntityAsync(token, "VERIFY");
+            _logger.LogInformation("Email verified for user {UserId}", authToken.UserId);
+            return true;
+        }
+
+        // ATTACH: swap the synthetic @telegram.local email for the verified real email and
+        // append "local" to AuthMethods. Password becomes the PendingPasswordHash captured at
+        // attach-request time.
+        UserEntity user;
         try
         {
             var userResponse = await _usersTable.GetEntityAsync<UserEntity>(
                 UserEntity.GetPartitionKey(authToken.UserId), authToken.UserId);
-            var userEntity = userResponse.Value;
-            userEntity.EmailVerified = true;
-            userEntity.UpdatedAt = DateTime.UtcNow;
-            await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag);
+            user = userResponse.Value;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
             return false;
         }
 
-        await _authTokensTable.DeleteEntityAsync(token, "VERIFY");
+        var newEmailLower = authToken.Email.ToLower();
+        // Recheck uniqueness in case someone else registered the email while this token was pending.
+        try
+        {
+            var collide = await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(newEmailLower, "INDEX");
+            if (collide.Value.UserId != user.RowKey)
+            {
+                _logger.LogWarning("Attach-email: {Email} now taken by another user; aborting", authToken.Email);
+                await _authTokensTable.DeleteEntityAsync(token, "ATTACH");
+                return false;
+            }
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // free — continue
+        }
 
-        _logger.LogInformation("Email verified for user {UserId}", authToken.UserId);
+        var oldEmailLower = user.Email.ToLower();
+
+        var newIndex = new UserEmailIndexEntity
+        {
+            PartitionKey = newEmailLower,
+            RowKey = "INDEX",
+            UserId = user.RowKey,
+        };
+        try
+        {
+            await _emailIndexTable.AddEntityAsync(newIndex);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            _logger.LogWarning("Attach-email: {Email} collided on write; aborting", authToken.Email);
+            await _authTokensTable.DeleteEntityAsync(token, "ATTACH");
+            return false;
+        }
+
+        var methods = JsonSerializer.Deserialize<List<string>>(user.AuthMethodsJson) ?? new List<string>();
+        if (!methods.Contains("local", StringComparer.OrdinalIgnoreCase))
+            methods.Add("local");
+
+        user.Email = authToken.Email;
+        user.PasswordHash = authToken.PendingPasswordHash;
+        user.AuthMethodsJson = JsonSerializer.Serialize(methods);
+        user.EmailVerified = true;
+        user.UpdatedAt = DateTime.UtcNow;
+
+        try
+        {
+            await _usersTable.UpdateEntityAsync(user, user.ETag);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Attach-email: failed to update user {UserId}; rolling back index", user.RowKey);
+            try { await _emailIndexTable.DeleteEntityAsync(newEmailLower, "INDEX"); } catch { /* ignore */ }
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(oldEmailLower) && oldEmailLower != newEmailLower)
+        {
+            try { await _emailIndexTable.DeleteEntityAsync(oldEmailLower, "INDEX"); }
+            catch (RequestFailedException ex) when (ex.Status == 404) { /* already gone */ }
+        }
+
+        await _authTokensTable.DeleteEntityAsync(token, "ATTACH");
+        _logger.LogInformation("Attach-email confirmed for user {UserId} → {Email}", user.RowKey, authToken.Email);
         return true;
     }
 
@@ -749,5 +1097,24 @@ public class AzureAuthService : IAuthService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         return Convert.ToHexString(bytes).ToLower();
+    }
+
+    /// <summary>
+    /// Validates an optional invite code against the current <c>require_event_invite</c> appconfig
+    /// flag. Returns the source event id (or null when no code supplied and none required). Throws
+    /// <see cref="InvalidInviteCodeException"/> for bad codes and <see cref="InviteRequiredException"/>
+    /// when a code is required but missing.
+    /// </summary>
+    private async Task<string?> ResolveInviteSourceAsync(string? inviteCode)
+    {
+        var cfg = await _appConfig.GetConfigAsync();
+        if (!string.IsNullOrWhiteSpace(inviteCode))
+        {
+            var val = await _eventInvites.ValidatePlainCodeAsync(inviteCode);
+            if (val is null) throw new InvalidInviteCodeException();
+            return val.EventId;
+        }
+        if (cfg.Registration.RequireEventInvite) throw new InviteRequiredException();
+        return null;
     }
 }

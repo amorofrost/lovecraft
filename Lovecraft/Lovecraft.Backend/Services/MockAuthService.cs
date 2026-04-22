@@ -26,6 +26,8 @@ public class MockAuthService : IAuthService
     private static readonly Dictionary<string, PasswordResetToken> _resetTokens = new();
     /// <summary>Telegram user id string → user email key in <see cref="_users"/>.</summary>
     private static readonly Dictionary<string, string> _telegramToUserKey = new();
+    /// <summary>ATTACH tokens: pending email+password swap for Telegram-only accounts.</summary>
+    private static readonly Dictionary<string, AttachPending> _attachTokens = new();
 
     public MockAuthService(
         IJwtService jwtService,
@@ -78,19 +80,7 @@ public class MockAuthService : IAuthService
             return null;
         }
 
-        var cfg = await _appConfig.GetConfigAsync();
-        string? sourceEventId = null;
-        if (!string.IsNullOrWhiteSpace(request.InviteCode))
-        {
-            var val = await _eventInvites.ValidatePlainCodeAsync(request.InviteCode);
-            if (val is null)
-                throw new InvalidInviteCodeException();
-            sourceEventId = val.EventId;
-        }
-        else if (cfg.Registration.RequireEventInvite)
-        {
-            throw new InviteRequiredException();
-        }
+        var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
         // Validate email doesn't exist
         if (_users.ContainsKey(request.Email.ToLower()))
@@ -160,7 +150,7 @@ public class MockAuthService : IAuthService
         };
     }
 
-    public async Task<AuthResponseDto?> TelegramLoginAsync(TelegramLoginRequestDto request)
+    public async Task<TelegramLoginResultDto?> TelegramLoginAsync(TelegramLoginRequestDto request)
     {
         await Task.Delay(50);
 
@@ -177,51 +167,182 @@ public class MockAuthService : IAuthService
         }
 
         var tgKey = request.Id.ToString();
-        MockUser user;
 
         if (_telegramToUserKey.TryGetValue(tgKey, out var emailKey) &&
             _users.TryGetValue(emailKey, out var existing))
         {
-            user = existing;
+            var auth = await IssueJwtPairAsync(existing);
+            return new TelegramLoginResultDto { Status = "signedIn", Auth = auth };
         }
-        else
+
+        var tgInfo = new TelegramUserInfoDto
         {
-            var syntheticEmail = $"telegram_{request.Id}{TelegramSyntheticEmailDomain}";
-            var key = syntheticEmail.ToLowerInvariant();
-            if (_users.ContainsKey(key))
-            {
-                syntheticEmail = $"telegram_{request.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
-                key = syntheticEmail.ToLowerInvariant();
-                _logger.LogWarning("Telegram signup: canonical synthetic email collided for tg {TgId}; using fallback {Email}",
-                    request.Id, syntheticEmail);
-            }
+            Id = request.Id,
+            FirstName = request.FirstName ?? string.Empty,
+            LastName = request.LastName,
+            Username = request.Username,
+            PhotoUrl = request.PhotoUrl,
+        };
+        var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
+        _logger.LogInformation("Mock Telegram login: pending ticket for tg {TgId}", tgKey);
+        return new TelegramLoginResultDto { Status = "pending", Ticket = ticket, Telegram = tgInfo };
+    }
 
-            var userId = Guid.NewGuid().ToString();
-            var displayName = string.IsNullOrWhiteSpace(request.LastName)
-                ? request.FirstName.Trim()
-                : $"{request.FirstName.Trim()} {request.LastName.Trim()}";
+    public async Task<AuthResponseDto?> TelegramRegisterAsync(TelegramRegisterRequestDto request)
+    {
+        await Task.Delay(50);
 
-            user = new MockUser
-            {
-                Id = userId,
-                Email = syntheticEmail,
-                Name = displayName,
-                PasswordHash = _passwordHasher.HashPassword(Guid.NewGuid().ToString("N")),
-                EmailVerified = true,
-                AuthMethods = new List<string> { "telegram" },
-                CreatedAt = DateTime.UtcNow,
-                Age = 18,
-                Location = "Telegram",
-                Gender = "PreferNotToSay",
-                Bio = string.Empty,
-                TelegramUserId = tgKey,
-            };
-
-            _users[key] = user;
-            _telegramToUserKey[tgKey] = key;
-            _logger.LogInformation("Mock Telegram user registered: {UserId}, tg {TgId}", userId, tgKey);
+        var tgInfo = _jwtService.ValidateTelegramPendingTicket(request.Ticket);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Telegram register: invalid ticket");
+            return null;
         }
 
+        var tgKey = tgInfo.Id.ToString();
+        if (_telegramToUserKey.ContainsKey(tgKey))
+        {
+            _logger.LogWarning("Telegram register: tg {TgId} already linked", tgKey);
+            return null;
+        }
+
+        var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
+
+        var syntheticEmail = $"telegram_{tgInfo.Id}{TelegramSyntheticEmailDomain}";
+        var key = syntheticEmail.ToLowerInvariant();
+        if (_users.ContainsKey(key))
+        {
+            syntheticEmail = $"telegram_{tgInfo.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
+            key = syntheticEmail.ToLowerInvariant();
+        }
+
+        var userId = Guid.NewGuid().ToString();
+        var displayName = string.IsNullOrWhiteSpace(request.Name)
+            ? (string.IsNullOrWhiteSpace(tgInfo.LastName)
+                ? tgInfo.FirstName.Trim()
+                : $"{tgInfo.FirstName.Trim()} {tgInfo.LastName!.Trim()}")
+            : request.Name.Trim();
+
+        var user = new MockUser
+        {
+            Id = userId,
+            Email = syntheticEmail,
+            Name = displayName,
+            PasswordHash = _passwordHasher.HashPassword(Guid.NewGuid().ToString("N")),
+            EmailVerified = true,
+            AuthMethods = new List<string> { "telegram" },
+            CreatedAt = DateTime.UtcNow,
+            Age = request.Age > 0 ? request.Age : 18,
+            Location = string.IsNullOrWhiteSpace(request.Location) ? "Telegram" : request.Location,
+            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Bio = request.Bio ?? string.Empty,
+            TelegramUserId = tgKey,
+        };
+
+        _users[key] = user;
+        _telegramToUserKey[tgKey] = key;
+
+        if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
+            await _events.RegisterForEventAsync(userId, sourceEventId);
+        if (!string.IsNullOrWhiteSpace(request.InviteCode))
+            await _eventInvites.IncrementRegistrationCountAsync(request.InviteCode);
+
+        _logger.LogInformation("Mock Telegram user registered: {UserId}, tg {TgId}", userId, tgKey);
+        return await IssueJwtPairAsync(user);
+    }
+
+    public async Task<AuthResponseDto?> TelegramLinkLoginAsync(TelegramLinkLoginRequestDto request)
+    {
+        await Task.Delay(50);
+
+        var tgInfo = _jwtService.ValidateTelegramPendingTicket(request.Ticket);
+        if (tgInfo is null) return null;
+
+        if (!_users.TryGetValue(request.Email.ToLower(), out var user)) return null;
+        if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash)) return null;
+        if (!user.EmailVerified) return null;
+
+        if (!AttachTelegramToUser(user, tgInfo)) return null;
+
+        return await IssueJwtPairAsync(user);
+    }
+
+    public async Task<AuthResponseDto?> TelegramLinkAsync(string userId, string ticket)
+    {
+        await Task.Delay(50);
+
+        var tgInfo = _jwtService.ValidateTelegramPendingTicket(ticket);
+        if (tgInfo is null) return null;
+
+        var user = _users.Values.FirstOrDefault(u => u.Id == userId);
+        if (user == null) return null;
+
+        if (!AttachTelegramToUser(user, tgInfo)) return null;
+
+        return await IssueJwtPairAsync(user);
+    }
+
+    public async Task<AttachEmailResult> RequestEmailAttachAsync(string userId, string email, string password)
+    {
+        await Task.Delay(50);
+
+        if (email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))
+            return AttachEmailResult.ReservedDomain;
+
+        var user = _users.Values.FirstOrDefault(u => u.Id == userId);
+        if (user == null) return AttachEmailResult.UserNotFound;
+
+        if (user.AuthMethods.Contains("local", StringComparer.OrdinalIgnoreCase))
+            return AttachEmailResult.AlreadyHasLocal;
+
+        if (_users.ContainsKey(email.ToLower()))
+            return AttachEmailResult.EmailAlreadyTaken;
+
+        // Drop any earlier pending attach for this user.
+        var stale = _attachTokens.Where(kv => kv.Value.UserId == userId).Select(kv => kv.Key).ToList();
+        foreach (var k in stale) _attachTokens.Remove(k);
+
+        var token = Guid.NewGuid().ToString();
+        _attachTokens[token] = new AttachPending
+        {
+            UserId = userId,
+            Email = email,
+            PendingPasswordHash = _passwordHasher.HashPassword(password),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+        };
+
+        try
+        {
+            await _emailService.SendVerificationEmailAsync(email, user.Name, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send attach-email verification to {Email}", email);
+        }
+
+        return AttachEmailResult.Ok;
+    }
+
+    private bool AttachTelegramToUser(MockUser user, TelegramUserInfoDto tgInfo)
+    {
+        var tgKey = tgInfo.Id.ToString();
+
+        if (_telegramToUserKey.TryGetValue(tgKey, out var ownedBy))
+        {
+            if (ownedBy != user.Email.ToLower()) return false; // owned by someone else
+            return true; // already linked to this user
+        }
+
+        if (!user.AuthMethods.Contains("telegram", StringComparer.OrdinalIgnoreCase))
+            user.AuthMethods.Add("telegram");
+        user.TelegramUserId = tgKey;
+        _telegramToUserKey[tgKey] = user.Email.ToLower();
+        return true;
+    }
+
+    private async Task<AuthResponseDto> IssueJwtPairAsync(MockUser user)
+    {
+        await Task.Yield();
         var staffRole = MockDataStore.UserStaffRoles.TryGetValue(user.Id, out var role)
             ? role.ToString().ToLowerInvariant()
             : "none";
@@ -240,10 +361,23 @@ public class MockAuthService : IAuthService
                 Email = user.Email,
                 Name = user.Name,
                 EmailVerified = user.EmailVerified,
-                AuthMethods = user.AuthMethods
+                AuthMethods = user.AuthMethods,
             },
-            ExpiresAt = DateTime.UtcNow.AddMinutes(15)
+            ExpiresAt = DateTime.UtcNow.AddMinutes(15),
         };
+    }
+
+    private async Task<string?> ResolveInviteSourceAsync(string? inviteCode)
+    {
+        var cfg = await _appConfig.GetConfigAsync();
+        if (!string.IsNullOrWhiteSpace(inviteCode))
+        {
+            var val = await _eventInvites.ValidatePlainCodeAsync(inviteCode);
+            if (val is null) throw new InvalidInviteCodeException();
+            return val.EventId;
+        }
+        if (cfg.Registration.RequireEventInvite) throw new InviteRequiredException();
+        return null;
     }
 
     public async Task<AuthResponseDto?> LoginAsync(LoginRequestDto request)
@@ -345,23 +479,53 @@ public class MockAuthService : IAuthService
     {
         await Task.Delay(50);
 
-        if (!_verificationTokens.TryGetValue(token, out var userId))
+        if (_verificationTokens.TryGetValue(token, out var userId))
         {
-            _logger.LogWarning("Invalid verification token");
-            return false;
+            var user = _users.Values.FirstOrDefault(u => u.Id == userId);
+            if (user == null) return false;
+            user.EmailVerified = true;
+            _verificationTokens.Remove(token);
+            _logger.LogInformation("Email verified for user {UserId}", userId);
+            return true;
         }
 
-        var user = _users.Values.FirstOrDefault(u => u.Id == userId);
-        if (user == null)
+        if (_attachTokens.TryGetValue(token, out var attach))
         {
-            return false;
+            if (attach.ExpiresAt < DateTime.UtcNow)
+            {
+                _attachTokens.Remove(token);
+                return false;
+            }
+            var user = _users.Values.FirstOrDefault(u => u.Id == attach.UserId);
+            if (user == null) return false;
+
+            if (_users.ContainsKey(attach.Email.ToLower()) &&
+                _users[attach.Email.ToLower()].Id != user.Id)
+            {
+                _attachTokens.Remove(token);
+                return false;
+            }
+
+            var oldKey = user.Email.ToLower();
+            _users.Remove(oldKey);
+            user.Email = attach.Email;
+            user.PasswordHash = attach.PendingPasswordHash;
+            user.EmailVerified = true;
+            if (!user.AuthMethods.Contains("local", StringComparer.OrdinalIgnoreCase))
+                user.AuthMethods.Add("local");
+            _users[attach.Email.ToLower()] = user;
+
+            // Telegram link index still points at the old email key — refresh it.
+            if (!string.IsNullOrEmpty(user.TelegramUserId))
+                _telegramToUserKey[user.TelegramUserId] = user.Email.ToLower();
+
+            _attachTokens.Remove(token);
+            _logger.LogInformation("Attach-email confirmed for user {UserId} → {Email}", user.Id, user.Email);
+            return true;
         }
 
-        user.EmailVerified = true;
-        _verificationTokens.Remove(token);
-
-        _logger.LogInformation("Email verified for user {UserId}", userId);
-        return true;
+        _logger.LogWarning("Invalid verification token");
+        return false;
     }
 
     public async Task<bool> ForgotPasswordAsync(string email)
@@ -533,6 +697,14 @@ public class MockAuthService : IAuthService
     private class PasswordResetToken
     {
         public string UserId { get; set; } = string.Empty;
+        public DateTime ExpiresAt { get; set; }
+    }
+
+    private class AttachPending
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PendingPasswordHash { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
     }
 }

@@ -42,20 +42,91 @@ public class AuthController : ControllerBase
             new TelegramLoginConfigDto { BotUsername = username }));
     }
 
-    /// <summary>Verify Telegram Login Widget payload and return JWT (same shape as email login).</summary>
+    /// <summary>
+    /// Verify Telegram Login Widget payload. Returns <c>signedIn</c> with a JWT pair for a known
+    /// Telegram id, or <c>pending</c> with a short-lived ticket for a new Telegram identity —
+    /// the frontend then routes the user to <c>/welcome/telegram</c> to either link an existing
+    /// email account or create a new one. No account is written on the pending path.
+    /// </summary>
     [HttpPost("telegram-login")]
     [AllowAnonymous]
     [EnableRateLimiting("AuthRateLimit")]
-    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramLogin([FromBody] TelegramLoginRequestDto request)
+    public async Task<ActionResult<ApiResponse<TelegramLoginResultDto>>> TelegramLogin([FromBody] TelegramLoginRequestDto request)
     {
         try
         {
             var result = await _authService.TelegramLoginAsync(request);
             if (result == null)
             {
-                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                return BadRequest(ApiResponse<TelegramLoginResultDto>.ErrorResponse(
                     "TELEGRAM_AUTH_FAILED",
                     "Telegram login failed. Ensure the bot token matches BotFather and the widget data is fresh."));
+            }
+
+            if (result.Status == "signedIn" && result.Auth is not null)
+                SetRefreshTokenCookie(result.Auth.RefreshToken);
+
+            return Ok(ApiResponse<TelegramLoginResultDto>.SuccessResponse(result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Telegram login error");
+            return StatusCode(500, ApiResponse<TelegramLoginResultDto>.ErrorResponse(
+                "INTERNAL_ERROR",
+                "Telegram login failed"));
+        }
+    }
+
+    /// <summary>Create a new account from a verified Telegram pending ticket + profile fields + optional invite code.</summary>
+    [HttpPost("telegram-register")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramRegister([FromBody] TelegramRegisterRequestDto request)
+    {
+        try
+        {
+            var result = await _authService.TelegramRegisterAsync(request);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "TELEGRAM_REGISTER_FAILED",
+                    "Telegram registration failed. The pending ticket may have expired or the Telegram id is already linked."));
+            }
+
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (InvalidInviteCodeException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_INVITE_CODE", "Invalid invite code"));
+        }
+        catch (InviteRequiredException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INVITE_REQUIRED",
+                "Event invite code is required for registration"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Telegram register error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse("INTERNAL_ERROR", "Telegram registration failed"));
+        }
+    }
+
+    /// <summary>Link a verified Telegram pending ticket to an existing email+password account in one call.</summary>
+    [HttpPost("telegram-link-login")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramLinkLogin([FromBody] TelegramLinkLoginRequestDto request)
+    {
+        try
+        {
+            var result = await _authService.TelegramLinkLoginAsync(request);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "TELEGRAM_LINK_LOGIN_FAILED",
+                    "Could not link Telegram. Ticket may be expired, credentials may be wrong, or the Telegram id is already linked elsewhere."));
             }
 
             SetRefreshTokenCookie(result.RefreshToken);
@@ -63,10 +134,73 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Telegram login error");
-            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse(
-                "INTERNAL_ERROR",
-                "Telegram login failed"));
+            _logger.LogError(ex, "Telegram link-login error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse("INTERNAL_ERROR", "Telegram link failed"));
+        }
+    }
+
+    /// <summary>Link a verified Telegram pending ticket to the currently authenticated account.</summary>
+    [HttpPost("telegram-link")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramLink([FromBody] TelegramLinkRequestDto request)
+    {
+        try
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(ApiResponse<AuthResponseDto>.ErrorResponse("UNAUTHORIZED", "User not authenticated"));
+
+            var result = await _authService.TelegramLinkAsync(userId, request.Ticket);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "TELEGRAM_LINK_FAILED",
+                    "Could not link Telegram. Ticket may be expired or the Telegram id is already linked to a different account."));
+            }
+
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Telegram link error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse("INTERNAL_ERROR", "Telegram link failed"));
+        }
+    }
+
+    /// <summary>
+    /// Request an email+password attachment for a Telegram-only account. Sends a verification email;
+    /// email and password are only applied to the user (and <c>local</c> added to AuthMethods) when
+    /// the verification link is clicked.
+    /// </summary>
+    [HttpPost("attach-email")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<bool>>> AttachEmail([FromBody] AttachEmailRequestDto request)
+    {
+        try
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(ApiResponse<bool>.ErrorResponse("UNAUTHORIZED", "User not authenticated"));
+
+            if (!IsValidPassword(request.Password, out var passwordError))
+                return BadRequest(ApiResponse<bool>.ErrorResponse("WEAK_PASSWORD", passwordError));
+
+            var result = await _authService.RequestEmailAttachAsync(userId, request.Email, request.Password);
+            return result switch
+            {
+                AttachEmailResult.Ok => Ok(ApiResponse<bool>.SuccessResponse(true)),
+                AttachEmailResult.UserNotFound => NotFound(ApiResponse<bool>.ErrorResponse("USER_NOT_FOUND", "User not found")),
+                AttachEmailResult.EmailAlreadyTaken => BadRequest(ApiResponse<bool>.ErrorResponse("EMAIL_TAKEN", "Email already in use")),
+                AttachEmailResult.AlreadyHasLocal => BadRequest(ApiResponse<bool>.ErrorResponse("ALREADY_HAS_LOCAL", "Account already has an email login")),
+                AttachEmailResult.ReservedDomain => BadRequest(ApiResponse<bool>.ErrorResponse("RESERVED_DOMAIN", "That email domain is reserved")),
+                _ => StatusCode(500, ApiResponse<bool>.ErrorResponse("INTERNAL_ERROR", "Attach-email failed"))
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Attach-email error");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse("INTERNAL_ERROR", "Attach-email failed"));
         }
     }
 
