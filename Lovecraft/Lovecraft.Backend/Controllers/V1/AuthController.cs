@@ -169,6 +169,120 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Telegram Mini App: verify <c>initData</c> from <c>window.Telegram.WebApp</c>. Returns
+    /// <c>signedIn</c> with a JWT pair for a known Telegram id, or <c>needsRegistration</c> with
+    /// the verified Telegram identity so the Mini App can render an inline profile wizard /
+    /// link-account prompt. No user row is written in the needsRegistration branch.
+    /// </summary>
+    [HttpPost("telegram-miniapp-login")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<TelegramMiniAppLoginResultDto>>> TelegramMiniAppLogin([FromBody] TelegramMiniAppLoginRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramAuth.BotToken))
+        {
+            return StatusCode(503, ApiResponse<TelegramMiniAppLoginResultDto>.ErrorResponse(
+                "TELEGRAM_DISABLED", "Telegram authentication is not configured"));
+        }
+
+        try
+        {
+            var result = await _authService.MiniAppLoginAsync(request);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<TelegramMiniAppLoginResultDto>.ErrorResponse(
+                    "TELEGRAM_AUTH_FAILED",
+                    "Mini app login failed. initData may be invalid, tampered, or too old."));
+            }
+
+            if (result.Status == "signedIn" && result.Auth is not null)
+                SetRefreshTokenCookie(result.Auth.RefreshToken);
+
+            return Ok(ApiResponse<TelegramMiniAppLoginResultDto>.SuccessResponse(result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Mini app login error");
+            return StatusCode(500, ApiResponse<TelegramMiniAppLoginResultDto>.ErrorResponse(
+                "INTERNAL_ERROR", "Mini app login failed"));
+        }
+    }
+
+    /// <summary>Mini App: create a new account from verified initData + profile fields + optional invite code.</summary>
+    [HttpPost("telegram-miniapp-register")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramMiniAppRegister([FromBody] TelegramMiniAppRegisterRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramAuth.BotToken))
+        {
+            return StatusCode(503, ApiResponse<AuthResponseDto>.ErrorResponse(
+                "TELEGRAM_DISABLED", "Telegram authentication is not configured"));
+        }
+
+        try
+        {
+            var result = await _authService.MiniAppRegisterAsync(request);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "TELEGRAM_REGISTER_FAILED",
+                    "Mini app registration failed. initData may be invalid or the Telegram id is already linked."));
+            }
+
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (InvalidInviteCodeException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_INVITE_CODE", "Invalid invite code"));
+        }
+        catch (InviteRequiredException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INVITE_REQUIRED",
+                "Event invite code is required for registration"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Mini app register error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse("INTERNAL_ERROR", "Mini app registration failed"));
+        }
+    }
+
+    /// <summary>Mini App: link verified initData to an existing email+password account in one call.</summary>
+    [HttpPost("telegram-miniapp-link-login")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> TelegramMiniAppLinkLogin([FromBody] TelegramMiniAppLinkLoginRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramAuth.BotToken))
+        {
+            return StatusCode(503, ApiResponse<AuthResponseDto>.ErrorResponse(
+                "TELEGRAM_DISABLED", "Telegram authentication is not configured"));
+        }
+
+        try
+        {
+            var result = await _authService.MiniAppLinkLoginAsync(request);
+            if (result == null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "TELEGRAM_LINK_LOGIN_FAILED",
+                    "Could not link Telegram. initData may be invalid, credentials may be wrong, or the Telegram id is already linked elsewhere."));
+            }
+
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Mini app link-login error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse("INTERNAL_ERROR", "Mini app link failed"));
+        }
+    }
+
+    /// <summary>
     /// Request an email+password attachment for a Telegram-only account. Sends a verification email;
     /// email and password are only applied to the user (and <c>local</c> added to AuthMethods) when
     /// the verification link is clicked.

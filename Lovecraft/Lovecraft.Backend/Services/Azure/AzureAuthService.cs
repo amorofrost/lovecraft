@@ -468,6 +468,90 @@ public class AzureAuthService : IAuthService
         return await IssueJwtPairAsync(userEntity);
     }
 
+    public async Task<TelegramMiniAppLoginResultDto?> MiniAppLoginAsync(TelegramMiniAppLoginRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken))
+        {
+            _logger.LogWarning("Mini app login: BotToken not configured");
+            return null;
+        }
+
+        var tgInfo = TelegramInitDataValidator.Validate(_telegramOptions.BotToken, request.InitData);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Mini app login: invalid initData");
+            return null;
+        }
+
+        var tgKey = tgInfo.Id.ToString();
+        UserEntity? userEntity = null;
+        try
+        {
+            var tgIdx = await _telegramIndexTable.GetEntityAsync<UserTelegramIndexEntity>(tgKey, "INDEX");
+            var userResp = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(tgIdx.Value.UserId), tgIdx.Value.UserId);
+            userEntity = userResp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // Unknown tg id — frontend renders inline onboarding.
+        }
+
+        if (userEntity is null)
+        {
+            _logger.LogInformation("Mini app login: needsRegistration for tg {TgId}", tgKey);
+            return new TelegramMiniAppLoginResultDto { Status = "needsRegistration", Telegram = tgInfo };
+        }
+
+        var auth = await IssueJwtPairAsync(userEntity);
+        return new TelegramMiniAppLoginResultDto { Status = "signedIn", Auth = auth, Telegram = tgInfo };
+    }
+
+    public async Task<AuthResponseDto?> MiniAppRegisterAsync(TelegramMiniAppRegisterRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken)) return null;
+        var tgInfo = TelegramInitDataValidator.Validate(_telegramOptions.BotToken, request.InitData);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Mini app register: invalid initData");
+            return null;
+        }
+
+        // Bridge to the existing pending-ticket flow: mint a short-lived ticket and reuse
+        // TelegramRegisterAsync so the whole create-user pipeline (invite gate, synthetic email,
+        // atomic tg index, event registration) stays in one place.
+        var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
+        return await TelegramRegisterAsync(new TelegramRegisterRequestDto
+        {
+            Ticket = ticket,
+            Name = request.Name,
+            Age = request.Age,
+            Location = request.Location,
+            Gender = request.Gender,
+            Bio = request.Bio,
+            InviteCode = request.InviteCode,
+        });
+    }
+
+    public async Task<AuthResponseDto?> MiniAppLinkLoginAsync(TelegramMiniAppLinkLoginRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken)) return null;
+        var tgInfo = TelegramInitDataValidator.Validate(_telegramOptions.BotToken, request.InitData);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Mini app link-login: invalid initData");
+            return null;
+        }
+
+        var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
+        return await TelegramLinkLoginAsync(new TelegramLinkLoginRequestDto
+        {
+            Email = request.Email,
+            Password = request.Password,
+            Ticket = ticket,
+        });
+    }
+
     public async Task<AttachEmailResult> RequestEmailAttachAsync(string userId, string email, string password)
     {
         if (email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))

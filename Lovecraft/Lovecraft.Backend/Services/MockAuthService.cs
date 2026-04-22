@@ -282,6 +282,69 @@ public class MockAuthService : IAuthService
         return await IssueJwtPairAsync(user);
     }
 
+    public async Task<TelegramMiniAppLoginResultDto?> MiniAppLoginAsync(TelegramMiniAppLoginRequestDto request)
+    {
+        await Task.Delay(50);
+
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken))
+        {
+            _logger.LogWarning("Mini app login: BotToken not configured");
+            return null;
+        }
+
+        var tgInfo = TelegramInitDataValidator.Validate(_telegramOptions.BotToken, request.InitData);
+        if (tgInfo is null)
+        {
+            _logger.LogWarning("Mini app login: invalid initData");
+            return null;
+        }
+
+        var tgKey = tgInfo.Id.ToString();
+        if (_telegramToUserKey.TryGetValue(tgKey, out var emailKey) &&
+            _users.TryGetValue(emailKey, out var existing))
+        {
+            var auth = await IssueJwtPairAsync(existing);
+            return new TelegramMiniAppLoginResultDto { Status = "signedIn", Auth = auth, Telegram = tgInfo };
+        }
+
+        _logger.LogInformation("Mock Mini app login: needsRegistration for tg {TgId}", tgKey);
+        return new TelegramMiniAppLoginResultDto { Status = "needsRegistration", Telegram = tgInfo };
+    }
+
+    public async Task<AuthResponseDto?> MiniAppRegisterAsync(TelegramMiniAppRegisterRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken)) return null;
+        var tgInfo = TelegramInitDataValidator.Validate(_telegramOptions.BotToken, request.InitData);
+        if (tgInfo is null) return null;
+
+        var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
+        return await TelegramRegisterAsync(new TelegramRegisterRequestDto
+        {
+            Ticket = ticket,
+            Name = request.Name,
+            Age = request.Age,
+            Location = request.Location,
+            Gender = request.Gender,
+            Bio = request.Bio,
+            InviteCode = request.InviteCode,
+        });
+    }
+
+    public async Task<AuthResponseDto?> MiniAppLinkLoginAsync(TelegramMiniAppLinkLoginRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(_telegramOptions.BotToken)) return null;
+        var tgInfo = TelegramInitDataValidator.Validate(_telegramOptions.BotToken, request.InitData);
+        if (tgInfo is null) return null;
+
+        var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
+        return await TelegramLinkLoginAsync(new TelegramLinkLoginRequestDto
+        {
+            Email = request.Email,
+            Password = request.Password,
+            Ticket = ticket,
+        });
+    }
+
     public async Task<AttachEmailResult> RequestEmailAttachAsync(string userId, string email, string password)
     {
         await Task.Delay(50);

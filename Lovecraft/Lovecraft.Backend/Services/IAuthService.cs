@@ -31,6 +31,19 @@ public interface IAuthService
     /// </summary>
     Task<AttachEmailResult> RequestEmailAttachAsync(string userId, string email, string password);
 
+    /// <summary>
+    /// Telegram Mini App: validate <c>initData</c>, then either sign in (known tg id) or return
+    /// <c>needsRegistration</c> with the verified Telegram identity so the Mini App can render an
+    /// inline profile wizard / link-account prompt. No user row is written in the <c>needsRegistration</c> branch.
+    /// </summary>
+    Task<TelegramMiniAppLoginResultDto?> MiniAppLoginAsync(TelegramMiniAppLoginRequestDto request);
+
+    /// <summary>Mini App: create a new account from verified initData + profile fields + optional invite.</summary>
+    Task<AuthResponseDto?> MiniAppRegisterAsync(TelegramMiniAppRegisterRequestDto request);
+
+    /// <summary>Mini App: link verified initData to an existing email/password account in one call.</summary>
+    Task<AuthResponseDto?> MiniAppLinkLoginAsync(TelegramMiniAppLinkLoginRequestDto request);
+
     Task<AuthResponseDto?> RefreshTokenAsync(string refreshToken);
     Task<bool> VerifyEmailAsync(string token);
     Task<bool> ForgotPasswordAsync(string email);

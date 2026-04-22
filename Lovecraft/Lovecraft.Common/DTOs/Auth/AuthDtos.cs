@@ -161,10 +161,45 @@ public class OAuthCallbackDto
     public string? Error { get; set; }
 }
 
-/// <summary>Future: Telegram Mini App <c>initData</c> string for Web App validation (not the Login Widget).</summary>
+/// <summary>Telegram Mini App <c>initData</c> string for Web App validation (not the Login Widget).</summary>
 public class TelegramWebAppInitDataDto
 {
     public string InitData { get; set; } = string.Empty;
+}
+
+/// <summary>Request body for <c>/auth/telegram-miniapp-login</c>: raw initData from <c>window.Telegram.WebApp</c>.</summary>
+public class TelegramMiniAppLoginRequestDto
+{
+    public string InitData { get; set; } = string.Empty;
+}
+
+/// <summary>Response from Mini App login: <c>signedIn</c> (JWT pair) or <c>needsRegistration</c> (frontend prompts for profile/link).</summary>
+public class TelegramMiniAppLoginResultDto
+{
+    /// <summary>"signedIn" | "needsRegistration"</summary>
+    public string Status { get; set; } = string.Empty;
+    public AuthResponseDto? Auth { get; set; }
+    public TelegramUserInfoDto? Telegram { get; set; }
+}
+
+/// <summary>Create a new account from verified initData + profile fields + optional invite.</summary>
+public class TelegramMiniAppRegisterRequestDto
+{
+    public string InitData { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public string Location { get; set; } = string.Empty;
+    public string Gender { get; set; } = string.Empty;
+    public string Bio { get; set; } = string.Empty;
+    public string? InviteCode { get; set; }
+}
+
+/// <summary>Link verified initData to an existing email+password account in one call.</summary>
+public class TelegramMiniAppLinkLoginRequestDto
+{
+    public string InitData { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
 }
 
 public class LinkAuthMethodRequestDto
