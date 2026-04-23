@@ -42,6 +42,7 @@ var allTables = new[]
     TableNames.Users,
     TableNames.UserEmailIndex,
     TableNames.UserTelegramIndex,
+    TableNames.UserGoogleIndex,
     TableNames.RefreshTokens,
     TableNames.AuthTokens,
     TableNames.Events,

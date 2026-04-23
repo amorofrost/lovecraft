@@ -26,6 +26,7 @@ public class AzureAuthService : IAuthService
     private readonly TableClient _usersTable;
     private readonly TableClient _emailIndexTable;
     private readonly TableClient _telegramIndexTable;
+    private readonly TableClient _googleIndexTable;
     private readonly TableClient _refreshTokensTable;
     private readonly TableClient _authTokensTable;
     private readonly IJwtService _jwtService;
@@ -37,6 +38,7 @@ public class AzureAuthService : IAuthService
     private readonly IEventInviteService _eventInvites;
     private readonly IEventService _events;
     private readonly TelegramAuthOptions _telegramOptions;
+    private readonly GoogleAuthOptions _googleOptions;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
@@ -48,7 +50,8 @@ public class AzureAuthService : IAuthService
         IAppConfigService appConfig,
         IEventInviteService eventInvites,
         IEventService events,
-        IOptions<TelegramAuthOptions> telegramOptions)
+        IOptions<TelegramAuthOptions> telegramOptions,
+        IOptions<GoogleAuthOptions> googleOptions)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
@@ -59,10 +62,12 @@ public class AzureAuthService : IAuthService
         _eventInvites = eventInvites;
         _events = events;
         _telegramOptions = telegramOptions.Value;
+        _googleOptions = googleOptions.Value;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
         _telegramIndexTable = tableServiceClient.GetTableClient(TableNames.UserTelegramIndex);
+        _googleIndexTable = tableServiceClient.GetTableClient(TableNames.UserGoogleIndex);
         _refreshTokensTable = tableServiceClient.GetTableClient(TableNames.RefreshTokens);
         _authTokensTable = tableServiceClient.GetTableClient(TableNames.AuthTokens);
 
@@ -75,6 +80,7 @@ public class AzureAuthService : IAuthService
             _usersTable.CreateIfNotExistsAsync(),
             _emailIndexTable.CreateIfNotExistsAsync(),
             _telegramIndexTable.CreateIfNotExistsAsync(),
+            _googleIndexTable.CreateIfNotExistsAsync(),
             _refreshTokensTable.CreateIfNotExistsAsync(),
             _authTokensTable.CreateIfNotExistsAsync()
         );
@@ -614,6 +620,260 @@ public class AzureAuthService : IAuthService
 
         _logger.LogInformation("Attach-email requested for user {UserId} → {Email}", userId, email);
         return AttachEmailResult.Ok;
+    }
+
+    public async Task<GoogleLoginResultDto?> GoogleLoginAsync(string idToken)
+    {
+        if (string.IsNullOrWhiteSpace(_googleOptions.ClientId))
+        {
+            _logger.LogWarning("Google login: ClientId not configured");
+            return null;
+        }
+
+        var google = await GoogleIdTokenHelper.ValidateAndExtractAsync(
+            idToken, _googleOptions.ClientId, _logger);
+        if (google is null) return null;
+
+        var sub = google.Sub;
+        var emailLower = google.Email.Trim().ToLowerInvariant();
+
+        try
+        {
+            var gIdx = await _googleIndexTable.GetEntityAsync<UserGoogleIndexEntity>(sub, "INDEX");
+            var uResp = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(gIdx.Value.UserId), gIdx.Value.UserId);
+            return new GoogleLoginResultDto
+            {
+                Status = "signedIn",
+                Auth = await IssueJwtPairAsync(uResp.Value)
+            };
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404) { /* not in google index */ }
+
+        try
+        {
+            var emailIdx = await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
+            var uResp = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(emailIdx.Value.UserId), emailIdx.Value.UserId);
+            var u = uResp.Value;
+
+            if (string.IsNullOrEmpty(u.GoogleUserId))
+            {
+                if (!await AttachGoogleToUserAsync(u, google))
+                {
+                    return new GoogleLoginResultDto
+                    {
+                        Status = "emailConflict",
+                        Message = "Could not link Google to this account."
+                    };
+                }
+                var reloaded = await _usersTable.GetEntityAsync<UserEntity>(
+                    UserEntity.GetPartitionKey(u.RowKey), u.RowKey);
+                return new GoogleLoginResultDto
+                {
+                    Status = "signedIn",
+                    Auth = await IssueJwtPairAsync(reloaded.Value)
+                };
+            }
+
+            if (string.Equals(u.GoogleUserId, sub, StringComparison.Ordinal))
+            {
+                await EnsureGoogleIndexAsync(sub, u.RowKey);
+                var reloaded = await _usersTable.GetEntityAsync<UserEntity>(
+                    UserEntity.GetPartitionKey(u.RowKey), u.RowKey);
+                return new GoogleLoginResultDto
+                {
+                    Status = "signedIn",
+                    Auth = await IssueJwtPairAsync(reloaded.Value)
+                };
+            }
+
+            return new GoogleLoginResultDto
+            {
+                Status = "emailConflict",
+                Message = "This email is already associated with a different Google account."
+            };
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404) { /* no such email */ }
+
+        var ticket = _jwtService.GenerateGooglePendingTicket(google);
+        _logger.LogInformation("Google login: pending registration for {Email}", emailLower);
+        return new GoogleLoginResultDto
+        {
+            Status = "pending",
+            Ticket = ticket,
+            Google = google
+        };
+    }
+
+    public async Task<AuthResponseDto?> GoogleRegisterAsync(GoogleRegisterRequestDto request)
+    {
+        var gInfo = _jwtService.ValidateGooglePendingTicket(request.Ticket);
+        if (gInfo is null)
+        {
+            _logger.LogWarning("Google register: invalid or expired ticket");
+            return null;
+        }
+
+        if (gInfo.Email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Google register: reserved email domain {Email}", gInfo.Email);
+            return null;
+        }
+
+        try
+        {
+            await _googleIndexTable.GetEntityAsync<UserGoogleIndexEntity>(gInfo.Sub, "INDEX");
+            _logger.LogWarning("Google register: sub {Sub} already registered", gInfo.Sub);
+            return null;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404) { }
+
+        var emailLower = gInfo.Email.Trim().ToLowerInvariant();
+        try
+        {
+            await _emailIndexTable.GetEntityAsync<UserEmailIndexEntity>(emailLower, "INDEX");
+            _logger.LogWarning("Google register: email {Email} already taken", gInfo.Email);
+            return null;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404) { }
+
+        var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
+
+        var userId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow;
+        var displayName = string.IsNullOrWhiteSpace(request.Name) ? gInfo.Name.Trim() : request.Name.Trim();
+        if (string.IsNullOrEmpty(displayName)) displayName = gInfo.Email;
+
+        var userEntity = new UserEntity
+        {
+            PartitionKey = UserEntity.GetPartitionKey(userId),
+            RowKey = userId,
+            Email = gInfo.Email.Trim(),
+            PasswordHash = _passwordHasher.HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
+            Name = displayName,
+            Age = request.Age > 0 ? request.Age : 18,
+            Location = string.IsNullOrWhiteSpace(request.Location) ? "—" : request.Location,
+            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Bio = request.Bio ?? string.Empty,
+            ProfileImage = gInfo.PictureUrl ?? string.Empty,
+            EmailVerified = gInfo.EmailVerified,
+            GoogleUserId = gInfo.Sub,
+            AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "google" }),
+            PreferencesJson = JsonSerializer.Serialize(new { AgeRangeMin = 18, AgeRangeMax = 65, MaxDistance = 50, ShowMe = "everyone" }),
+            SettingsJson = JsonSerializer.Serialize(new { ProfileVisibility = "public", AnonymousLikes = false, Language = "ru", Notifications = true }),
+            CreatedAt = now,
+            UpdatedAt = now,
+            IsOnline = false,
+            LastSeen = now,
+            RegistrationSourceEventId = sourceEventId,
+            RegistrationSourceRedeemedAtUtc = sourceEventId is not null ? now : null,
+        };
+
+        var emailIndexEntity = new UserEmailIndexEntity
+        {
+            PartitionKey = emailLower,
+            RowKey = "INDEX",
+            UserId = userId
+        };
+        var googleIndexEntity = new UserGoogleIndexEntity
+        {
+            PartitionKey = gInfo.Sub,
+            RowKey = "INDEX",
+            UserId = userId
+        };
+
+        try
+        {
+            await _googleIndexTable.AddEntityAsync(googleIndexEntity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            _logger.LogWarning("Google register: race on google sub {Sub}", gInfo.Sub);
+            return null;
+        }
+
+        try
+        {
+            await Task.WhenAll(
+                _usersTable.UpsertEntityAsync(userEntity),
+                _emailIndexTable.UpsertEntityAsync(emailIndexEntity));
+
+            if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
+                await _events.RegisterForEventAsync(userId, sourceEventId);
+
+            if (!string.IsNullOrWhiteSpace(request.InviteCode))
+                await _eventInvites.IncrementRegistrationCountAsync(request.InviteCode);
+        }
+        catch (Exception signupEx)
+        {
+            _logger.LogError(signupEx, "Google register failed after index write for sub {Sub}", gInfo.Sub);
+            try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* */ }
+            try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* */ }
+            try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* */ }
+            throw;
+        }
+
+        _logger.LogInformation("Google user registered: {UserId}, {Email}", userId, gInfo.Email);
+        return await IssueJwtPairAsync(
+            (await _usersTable.GetEntityAsync<UserEntity>(userEntity.PartitionKey, userId)).Value);
+    }
+
+    private async Task EnsureGoogleIndexAsync(string sub, string userId)
+    {
+        var entity = new UserGoogleIndexEntity
+        {
+            PartitionKey = sub,
+            RowKey = "INDEX",
+            UserId = userId
+        };
+        try
+        {
+            await _googleIndexTable.AddEntityAsync(entity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409) { }
+    }
+
+    private async Task<bool> AttachGoogleToUserAsync(UserEntity userEntity, GoogleUserInfoDto gInfo)
+    {
+        var sub = gInfo.Sub;
+        try
+        {
+            var existing = await _googleIndexTable.GetEntityAsync<UserGoogleIndexEntity>(sub, "INDEX");
+            if (existing.Value.UserId != userEntity.RowKey)
+            {
+                _logger.LogWarning("Google link: sub {Sub} already linked to another user", sub);
+                return false;
+            }
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404) { }
+
+        var gIdx = new UserGoogleIndexEntity
+        {
+            PartitionKey = sub,
+            RowKey = "INDEX",
+            UserId = userEntity.RowKey
+        };
+        try
+        {
+            await _googleIndexTable.AddEntityAsync(gIdx);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            return false;
+        }
+
+        var methods = JsonSerializer.Deserialize<List<string>>(userEntity.AuthMethodsJson) ?? new List<string>();
+        if (!methods.Contains("google", StringComparer.OrdinalIgnoreCase))
+            methods.Add("google");
+        userEntity.AuthMethodsJson = JsonSerializer.Serialize(methods);
+        userEntity.GoogleUserId = sub;
+        if (string.IsNullOrWhiteSpace(userEntity.ProfileImage) && !string.IsNullOrEmpty(gInfo.PictureUrl))
+            userEntity.ProfileImage = gInfo.PictureUrl!;
+        userEntity.UpdatedAt = DateTime.UtcNow;
+        await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag, TableUpdateMode.Replace);
+        return true;
     }
 
     /// <summary>Set TelegramUserId + append "telegram" to AuthMethods + write tg index (atomic insert).</summary>

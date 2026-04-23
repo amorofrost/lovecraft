@@ -166,6 +166,13 @@ builder.Services.PostConfigure<TelegramAuthOptions>(opt =>
     if (string.IsNullOrWhiteSpace(opt.BotUsername))
         opt.BotUsername = builder.Configuration["TELEGRAM_BOT_USERNAME"] ?? string.Empty;
 });
+builder.Services.Configure<GoogleAuthOptions>(
+    builder.Configuration.GetSection(GoogleAuthOptions.SectionName));
+builder.Services.PostConfigure<GoogleAuthOptions>(opt =>
+{
+    if (string.IsNullOrWhiteSpace(opt.ClientId))
+        opt.ClientId = builder.Configuration["GOOGLE_OAUTH_CLIENT_ID"] ?? string.Empty;
+});
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();

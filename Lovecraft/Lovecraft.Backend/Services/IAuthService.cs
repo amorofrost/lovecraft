@@ -44,6 +44,9 @@ public interface IAuthService
     /// <summary>Mini App: link verified initData to an existing email/password account in one call.</summary>
     Task<AuthResponseDto?> MiniAppLinkLoginAsync(TelegramMiniAppLinkLoginRequestDto request);
 
+    Task<GoogleLoginResultDto?> GoogleLoginAsync(string idToken);
+    Task<AuthResponseDto?> GoogleRegisterAsync(GoogleRegisterRequestDto request);
+
     Task<AuthResponseDto?> RefreshTokenAsync(string refreshToken);
     Task<bool> VerifyEmailAsync(string token);
     Task<bool> ForgotPasswordAsync(string email);

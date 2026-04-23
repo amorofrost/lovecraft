@@ -208,6 +208,54 @@ public class LinkAuthMethodRequestDto
     public string? ExternalToken { get; set; }
 }
 
+/// <summary>Verified Google identity (OpenID <c>sub</c> + profile claims) from an ID token.</summary>
+public class GoogleUserInfoDto
+{
+    public string Sub { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public bool EmailVerified { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? PictureUrl { get; set; }
+}
+
+/// <summary>Public Web client ID for Google Identity Services (GSI) — not a secret.</summary>
+public class GoogleAuthConfigDto
+{
+    public string ClientId { get; set; } = string.Empty;
+}
+
+/// <summary>Request body: Google Sign-In <c>JWT credential</c> (ID token).</summary>
+public class GoogleLoginRequestDto
+{
+    public string IdToken { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Result of <c>/auth/google-login</c>: <c>signedIn</c>, <c>pending</c> (new Google user, complete profile
+/// at <c>/welcome/google</c>), or <c>emailConflict</c> (rare: existing account email bound to a different
+/// Google identity). Other flows auto-link same email to local or Google.
+/// </summary>
+public class GoogleLoginResultDto
+{
+    public string Status { get; set; } = string.Empty;
+    public AuthResponseDto? Auth { get; set; }
+    public string? Ticket { get; set; }
+    public GoogleUserInfoDto? Google { get; set; }
+    public string? Message { get; set; }
+}
+
+/// <summary>Create a new account from a verified Google pending ticket + profile fields + optional invite.</summary>
+public class GoogleRegisterRequestDto
+{
+    public string Ticket { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public string Location { get; set; } = string.Empty;
+    public string Gender { get; set; } = string.Empty;
+    public string Bio { get; set; } = string.Empty;
+    public string? InviteCode { get; set; }
+}
+
 public class AuthMethodDto
 {
     public string Provider { get; set; } = string.Empty;
