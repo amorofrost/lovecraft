@@ -34,7 +34,8 @@ public class TelegramPendingFlowTests
             app,
             invites,
             events,
-            Options.Create(new TelegramAuthOptions()));
+            Options.Create(new TelegramAuthOptions()),
+            Options.Create(new GoogleAuthOptions()));
     }
 
     private static TelegramUserInfoDto NewTgInfo(long id) => new()

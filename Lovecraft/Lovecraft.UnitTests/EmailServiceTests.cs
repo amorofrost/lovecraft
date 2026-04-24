@@ -70,7 +70,8 @@ public class MockAuthServiceEmailTests
             app,
             invites,
             events,
-            Options.Create(new TelegramAuthOptions()));
+            Options.Create(new TelegramAuthOptions()),
+            Options.Create(new GoogleAuthOptions()));
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
@@ -18,6 +19,7 @@ public class MockAuthService : IAuthService
     private readonly IEventInviteService _eventInvites;
     private readonly IEventService _events;
     private readonly TelegramAuthOptions _telegramOptions;
+    private readonly GoogleAuthOptions _googleOptions;
 
     // Mock in-memory storage
     private static readonly Dictionary<string, MockUser> _users = new();
@@ -26,6 +28,7 @@ public class MockAuthService : IAuthService
     private static readonly Dictionary<string, PasswordResetToken> _resetTokens = new();
     /// <summary>Telegram user id string → user email key in <see cref="_users"/>.</summary>
     private static readonly Dictionary<string, string> _telegramToUserKey = new();
+    private static readonly Dictionary<string, string> _googleSubToUserKey = new();
     /// <summary>ATTACH tokens: pending email+password swap for Telegram-only accounts.</summary>
     private static readonly Dictionary<string, AttachPending> _attachTokens = new();
 
@@ -37,7 +40,8 @@ public class MockAuthService : IAuthService
         IAppConfigService appConfig,
         IEventInviteService eventInvites,
         IEventService events,
-        IOptions<TelegramAuthOptions> telegramOptions)
+        IOptions<TelegramAuthOptions> telegramOptions,
+        IOptions<GoogleAuthOptions> googleOptions)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
@@ -47,6 +51,7 @@ public class MockAuthService : IAuthService
         _eventInvites = eventInvites;
         _events = events;
         _telegramOptions = telegramOptions.Value;
+        _googleOptions = googleOptions.Value;
 
         // Seed with test user
         SeedTestUsers();
@@ -343,6 +348,130 @@ public class MockAuthService : IAuthService
             Password = request.Password,
             Ticket = ticket,
         });
+    }
+
+    public async Task<GoogleLoginResultDto?> GoogleLoginAsync(string idToken)
+    {
+        if (string.IsNullOrWhiteSpace(_googleOptions.ClientId))
+        {
+            _logger.LogWarning("Google login: ClientId not configured");
+            return null;
+        }
+
+        var google = await GoogleIdTokenHelper.ValidateAndExtractAsync(
+            idToken, _googleOptions.ClientId, _logger);
+        if (google is null) return null;
+
+        var sub = google.Sub;
+        var emailLower = google.Email.ToLower();
+
+        if (_googleSubToUserKey.TryGetValue(sub, out var subEmailKey) &&
+            _users.TryGetValue(subEmailKey, out var byIndex))
+        {
+            return new GoogleLoginResultDto { Status = "signedIn", Auth = await IssueJwtPairAsync(byIndex) };
+        }
+
+        if (_users.TryGetValue(emailLower, out var byEmail))
+        {
+            if (string.IsNullOrEmpty(byEmail.GoogleUserId))
+            {
+                if (!await MockAttachGoogleAsync(byEmail, google))
+                {
+                    return new GoogleLoginResultDto
+                    {
+                        Status = "emailConflict",
+                        Message = "Could not link Google to this account."
+                    };
+                }
+                return new GoogleLoginResultDto
+                {
+                    Status = "signedIn",
+                    Auth = await IssueJwtPairAsync(_users[emailLower]!)
+                };
+            }
+            if (string.Equals(byEmail.GoogleUserId, sub, StringComparison.Ordinal))
+            {
+                if (!_googleSubToUserKey.ContainsKey(sub))
+                    _googleSubToUserKey[sub] = emailLower;
+                return new GoogleLoginResultDto { Status = "signedIn", Auth = await IssueJwtPairAsync(byEmail) };
+            }
+            return new GoogleLoginResultDto
+            {
+                Status = "emailConflict",
+                Message = "This email is already associated with a different Google account."
+            };
+        }
+
+        var ticket = _jwtService.GenerateGooglePendingTicket(google);
+        return new GoogleLoginResultDto
+        {
+            Status = "pending",
+            Ticket = ticket,
+            Google = google
+        };
+    }
+
+    public async Task<AuthResponseDto?> GoogleRegisterAsync(GoogleRegisterRequestDto request)
+    {
+        await Task.Delay(50);
+        var gInfo = _jwtService.ValidateGooglePendingTicket(request.Ticket);
+        if (gInfo is null) return null;
+
+        if (gInfo.Email.EndsWith(TelegramSyntheticEmailDomain, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (_googleSubToUserKey.ContainsKey(gInfo.Sub)) return null;
+
+        var emailKey = gInfo.Email.ToLower();
+        if (_users.ContainsKey(emailKey)) return null;
+
+        var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
+
+        var userId = Guid.NewGuid().ToString();
+        var now = DateTime.UtcNow;
+        var displayName = string.IsNullOrWhiteSpace(request.Name) ? gInfo.Name.Trim() : request.Name.Trim();
+        if (string.IsNullOrEmpty(displayName)) displayName = gInfo.Email;
+
+        var user = new MockUser
+        {
+            Id = userId,
+            Email = gInfo.Email,
+            Name = displayName,
+            PasswordHash = _passwordHasher.HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
+            EmailVerified = gInfo.EmailVerified,
+            AuthMethods = new List<string> { "google" },
+            CreatedAt = now,
+            Age = request.Age > 0 ? request.Age : 18,
+            Location = string.IsNullOrWhiteSpace(request.Location) ? "—" : request.Location,
+            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Bio = request.Bio ?? string.Empty,
+            GoogleUserId = gInfo.Sub,
+        };
+
+        _users[emailKey] = user;
+        _googleSubToUserKey[gInfo.Sub] = emailKey;
+
+        if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
+            await _events.RegisterForEventAsync(userId, sourceEventId);
+
+        if (!string.IsNullOrWhiteSpace(request.InviteCode))
+            await _eventInvites.IncrementRegistrationCountAsync(request.InviteCode);
+
+        return await IssueJwtPairAsync(user);
+    }
+
+    private async Task<bool> MockAttachGoogleAsync(MockUser user, GoogleUserInfoDto gInfo)
+    {
+        await Task.Yield();
+        if (_googleSubToUserKey.ContainsKey(gInfo.Sub))
+        {
+            if (_googleSubToUserKey[gInfo.Sub] != user.Email.ToLower()) return false;
+            return true;
+        }
+        _googleSubToUserKey[gInfo.Sub] = user.Email.ToLower();
+        if (!user.AuthMethods.Contains("google", StringComparer.OrdinalIgnoreCase)) user.AuthMethods.Add("google");
+        user.GoogleUserId = gInfo.Sub;
+        return true;
     }
 
     public async Task<AttachEmailResult> RequestEmailAttachAsync(string userId, string email, string password)
@@ -755,6 +884,7 @@ public class MockAuthService : IAuthService
         public string Gender { get; set; } = string.Empty;
         public string Bio { get; set; } = string.Empty;
         public string? TelegramUserId { get; set; }
+        public string? GoogleUserId { get; set; }
     }
 
     private class PasswordResetToken

@@ -44,6 +44,9 @@ public class UserEntity : ITableEntity
     /// <summary>Telegram user id (string) when linked via Login Widget / Mini App; empty otherwise.</summary>
     public string TelegramUserId { get; set; } = string.Empty;
 
+    /// <summary>Google <c>sub</c> when the account uses Google sign-in; empty otherwise.</summary>
+    public string GoogleUserId { get; set; } = string.Empty;
+
     public static string GetPartitionKey(string userId) =>
         $"user-{userId[0].ToString().ToLower()}";
 }

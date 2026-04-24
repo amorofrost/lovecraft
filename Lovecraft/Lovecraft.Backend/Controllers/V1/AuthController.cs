@@ -18,17 +18,20 @@ public class AuthController : ControllerBase
     private readonly ILogger<AuthController> _logger;
     private readonly IAppConfigService _appConfig;
     private readonly TelegramAuthOptions _telegramAuth;
+    private readonly GoogleAuthOptions _googleAuth;
 
     public AuthController(
         IAuthService authService,
         ILogger<AuthController> logger,
         IAppConfigService appConfig,
-        IOptions<TelegramAuthOptions> telegramAuth)
+        IOptions<TelegramAuthOptions> telegramAuth,
+        IOptions<GoogleAuthOptions> googleAuth)
     {
         _authService = authService;
         _logger = logger;
         _appConfig = appConfig;
         _telegramAuth = telegramAuth.Value;
+        _googleAuth = googleAuth.Value;
     }
 
     /// <summary>Public config for the Telegram Login Widget (bot username). No secrets.</summary>
@@ -40,6 +43,96 @@ public class AuthController : ControllerBase
         var username = _telegramAuth.BotUsername?.Trim() ?? "";
         return Ok(ApiResponse<TelegramLoginConfigDto>.SuccessResponse(
             new TelegramLoginConfigDto { BotUsername = username }));
+    }
+
+    /// <summary>Public OAuth 2.0 Web client id for Google Identity Services. Not a secret.</summary>
+    [HttpGet("google-config")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public ActionResult<ApiResponse<GoogleAuthConfigDto>> GetGoogleConfig()
+    {
+        var id = _googleAuth.ClientId?.Trim() ?? "";
+        return Ok(ApiResponse<GoogleAuthConfigDto>.SuccessResponse(
+            new GoogleAuthConfigDto { ClientId = id }));
+    }
+
+    /// <summary>Validate a Google ID token (JWT) from the Sign-In / One Tap / FedCM client. Returns <c>signedIn</c>, <c>pending</c> (new account — complete profile at <c>/welcome/google</c>), or <c>emailConflict</c>.</summary>
+    [HttpPost("google-login")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<GoogleLoginResultDto>>> GoogleLogin(
+        [FromBody] GoogleLoginRequestDto request)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_googleAuth.ClientId))
+            {
+                return StatusCode(503, ApiResponse<GoogleLoginResultDto>.ErrorResponse(
+                    "GOOGLE_NOT_CONFIGURED",
+                    "Google sign-in is not configured on this server."));
+            }
+
+            if (string.IsNullOrWhiteSpace(request.IdToken))
+            {
+                return BadRequest(ApiResponse<GoogleLoginResultDto>.ErrorResponse(
+                    "INVALID_REQUEST",
+                    "idToken is required"));
+            }
+
+            var result = await _authService.GoogleLoginAsync(request.IdToken);
+            if (result is null)
+            {
+                return BadRequest(ApiResponse<GoogleLoginResultDto>.ErrorResponse(
+                    "GOOGLE_TOKEN_INVALID",
+                    "Google sign-in failed. The token was invalid or expired."));
+            }
+
+            if (result.Status == "signedIn" && result.Auth is not null)
+                SetRefreshTokenCookie(result.Auth.RefreshToken);
+
+            return Ok(ApiResponse<GoogleLoginResultDto>.SuccessResponse(result));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Google login error");
+            return StatusCode(500, ApiResponse<GoogleLoginResultDto>.ErrorResponse(
+                "INTERNAL_ERROR", "Google sign-in failed"));
+        }
+    }
+
+    /// <summary>Complete sign-up for a <c>pending</c> Google user using the short-lived ticket and profile + optional invite code.</summary>
+    [HttpPost("google-register")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AuthResponseDto>>> GoogleRegister([FromBody] GoogleRegisterRequestDto request)
+    {
+        try
+        {
+            var result = await _authService.GoogleRegisterAsync(request);
+            if (result is null)
+            {
+                return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                    "GOOGLE_REGISTER_FAILED",
+                    "Google sign-up failed. The pending ticket may have expired, or the email is already in use."));
+            }
+            SetRefreshTokenCookie(result.RefreshToken);
+            return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (InvalidInviteCodeException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_INVITE_CODE", "Invalid invite code"));
+        }
+        catch (InviteRequiredException)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
+                "INVITE_REQUIRED",
+                "Event invite code is required for registration"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Google register error");
+            return StatusCode(500, ApiResponse<AuthResponseDto>.ErrorResponse("INTERNAL_ERROR", "Google sign-up failed"));
+        }
     }
 
     /// <summary>

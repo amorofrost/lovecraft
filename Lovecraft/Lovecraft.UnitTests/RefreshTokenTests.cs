@@ -38,7 +38,8 @@ public class RefreshTokenTests
                                            NullLogger<MockAuthService>.Instance,
                                            new NullEmailService(NullLogger<NullEmailService>.Instance),
                                            app, invites, events,
-                                           Options.Create(new TelegramAuthOptions()));
+                                           Options.Create(new TelegramAuthOptions()),
+                                           Options.Create(new GoogleAuthOptions()));
     }
 
     /// <summary>

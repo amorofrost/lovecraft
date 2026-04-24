@@ -36,7 +36,8 @@ public class TelegramMiniAppFlowTests
             app,
             invites,
             events,
-            Options.Create(new TelegramAuthOptions { BotToken = BotToken, BotUsername = "testbot" }));
+            Options.Create(new TelegramAuthOptions { BotToken = BotToken, BotUsername = "testbot" }),
+            Options.Create(new GoogleAuthOptions()));
     }
 
     private static TelegramUserInfoDto NewTgInfo(long id) => new()
@@ -217,7 +218,8 @@ internal static class MockAuthServiceHarness
                 app,
                 invites,
                 events,
-                Options.Create(new TelegramAuthOptions()));
+                Options.Create(new TelegramAuthOptions()),
+                Options.Create(new GoogleAuthOptions()));
         }
     }
 }

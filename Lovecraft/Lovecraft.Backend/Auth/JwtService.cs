@@ -24,6 +24,12 @@ public interface IJwtService
 
     /// <summary>Validate a pending-Telegram ticket and return the encoded Telegram identity, or null.</summary>
     TelegramUserInfoDto? ValidateTelegramPendingTicket(string ticket);
+
+    /// <summary>Short-lived ticket after Google ID token verification for a user who still needs to complete profile/invite at <c>/welcome/google</c>.</summary>
+    string GenerateGooglePendingTicket(GoogleUserInfoDto google);
+
+    /// <summary>Validate a pending-Google ticket and return the encoded Google identity, or null.</summary>
+    GoogleUserInfoDto? ValidateGooglePendingTicket(string ticket);
 }
 
 public class JwtService : IJwtService
@@ -180,6 +186,79 @@ public class JwtService : IJwtService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Telegram pending ticket validation failed");
+            return null;
+        }
+    }
+
+    private const string GooglePendingAudience = "AloeVera.GooglePending";
+
+    public string GenerateGooglePendingTicket(GoogleUserInfoDto google)
+    {
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var key = Encoding.UTF8.GetBytes(_settings.SecretKey);
+        var email = google.Email.Trim().ToLowerInvariant();
+
+        var claims = new List<Claim>
+        {
+            new Claim("g_sub", google.Sub),
+            new Claim("g_email", email),
+            new Claim("g_name", google.Name ?? string.Empty),
+            new Claim("g_email_verified", google.EmailVerified ? "true" : "false"),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
+        };
+        if (!string.IsNullOrEmpty(google.PictureUrl)) claims.Add(new Claim("g_picture", google.PictureUrl));
+
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(claims),
+            Expires = DateTime.UtcNow.Add(TelegramPendingLifetime),
+            Issuer = _settings.Issuer,
+            Audience = GooglePendingAudience,
+            SigningCredentials = new SigningCredentials(
+                new SymmetricSecurityKey(key),
+                SecurityAlgorithms.HmacSha256Signature)
+        };
+
+        return tokenHandler.WriteToken(tokenHandler.CreateToken(descriptor));
+    }
+
+    public GoogleUserInfoDto? ValidateGooglePendingTicket(string ticket)
+    {
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var key = Encoding.UTF8.GetBytes(_settings.SecretKey);
+            var parameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateIssuer = true,
+                ValidIssuer = _settings.Issuer,
+                ValidateAudience = true,
+                ValidAudience = GooglePendingAudience,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero
+            };
+            var principal = handler.ValidateToken(ticket, parameters, out _);
+            var sub = principal.FindFirst("g_sub")?.Value;
+            var email = principal.FindFirst("g_email")?.Value;
+            if (string.IsNullOrEmpty(sub) || string.IsNullOrEmpty(email))
+                return null;
+
+            return new GoogleUserInfoDto
+            {
+                Sub = sub,
+                Email = email,
+                EmailVerified = string.Equals(
+                    principal.FindFirst("g_email_verified")?.Value, "true", StringComparison.OrdinalIgnoreCase),
+                Name = principal.FindFirst("g_name")?.Value ?? string.Empty,
+                PictureUrl = principal.FindFirst("g_picture")?.Value
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Google pending ticket validation failed");
             return null;
         }
     }
