@@ -149,7 +149,8 @@ public class MockAuthService : IAuthService
                 Email = user.Email,
                 Name = user.Name,
                 EmailVerified = false,
-                AuthMethods = user.AuthMethods
+                AuthMethods = user.AuthMethods,
+                ProfileImage = user.ProfileImage,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15)
         };
@@ -554,6 +555,7 @@ public class MockAuthService : IAuthService
                 Name = user.Name,
                 EmailVerified = user.EmailVerified,
                 AuthMethods = user.AuthMethods,
+                ProfileImage = user.ProfileImage,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15),
         };
@@ -618,7 +620,8 @@ public class MockAuthService : IAuthService
                 Email = user.Email,
                 Name = user.Name,
                 EmailVerified = user.EmailVerified,
-                AuthMethods = user.AuthMethods
+                AuthMethods = user.AuthMethods,
+                ProfileImage = user.ProfileImage,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15)
         };
@@ -661,7 +664,8 @@ public class MockAuthService : IAuthService
                 Email = user.Email,
                 Name = user.Name,
                 EmailVerified = user.EmailVerified,
-                AuthMethods = user.AuthMethods
+                AuthMethods = user.AuthMethods,
+                ProfileImage = user.ProfileImage,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15)
         };
@@ -825,7 +829,8 @@ public class MockAuthService : IAuthService
             Email = user.Email,
             Name = user.Name,
             EmailVerified = user.EmailVerified,
-            AuthMethods = user.AuthMethods
+            AuthMethods = user.AuthMethods,
+            ProfileImage = user.ProfileImage,
         };
     }
 
@@ -885,6 +890,7 @@ public class MockAuthService : IAuthService
         public string Bio { get; set; } = string.Empty;
         public string? TelegramUserId { get; set; }
         public string? GoogleUserId { get; set; }
+        public string ProfileImage { get; set; } = string.Empty;
     }
 
     private class PasswordResetToken

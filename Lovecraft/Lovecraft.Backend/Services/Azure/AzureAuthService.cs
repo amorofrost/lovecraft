@@ -211,7 +211,8 @@ public class AzureAuthService : IAuthService
                 Email = request.Email,
                 Name = request.Name,
                 EmailVerified = false,
-                AuthMethods = new List<string> { "local" }
+                AuthMethods = new List<string> { "local" },
+                ProfileImage = string.Empty,
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
@@ -955,6 +956,7 @@ public class AzureAuthService : IAuthService
                 Name = userEntity.Name,
                 EmailVerified = userEntity.EmailVerified,
                 AuthMethods = authMethods,
+                ProfileImage = userEntity.ProfileImage,
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
@@ -1021,7 +1023,8 @@ public class AzureAuthService : IAuthService
                 Email = userEntity.Email,
                 Name = userEntity.Name,
                 EmailVerified = userEntity.EmailVerified,
-                AuthMethods = authMethods
+                AuthMethods = authMethods,
+                ProfileImage = userEntity.ProfileImage,
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
@@ -1083,7 +1086,8 @@ public class AzureAuthService : IAuthService
                 Email = userEntity.Email,
                 Name = userEntity.Name,
                 EmailVerified = userEntity.EmailVerified,
-                AuthMethods = authMethods
+                AuthMethods = authMethods,
+                ProfileImage = userEntity.ProfileImage,
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
@@ -1372,7 +1376,8 @@ public class AzureAuthService : IAuthService
                 Email = userEntity.Email,
                 Name = userEntity.Name,
                 EmailVerified = userEntity.EmailVerified,
-                AuthMethods = authMethods
+                AuthMethods = authMethods,
+                ProfileImage = userEntity.ProfileImage,
             };
         }
         catch (RequestFailedException ex) when (ex.Status == 404)

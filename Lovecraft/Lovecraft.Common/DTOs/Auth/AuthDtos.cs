@@ -38,6 +38,7 @@ public class UserInfo
     public string Name { get; set; } = string.Empty;
     public bool EmailVerified { get; set; }
     public List<string> AuthMethods { get; set; } = new();
+    public string ProfileImage { get; set; } = string.Empty;
 }
 
 public class RefreshTokenRequestDto
