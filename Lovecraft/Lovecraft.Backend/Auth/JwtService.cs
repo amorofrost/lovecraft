@@ -120,6 +120,9 @@ public class JwtService : IJwtService
     private const string TelegramPendingAudience = "AloeVera.TelegramPending";
     private static readonly TimeSpan TelegramPendingLifetime = TimeSpan.FromMinutes(15);
 
+    private const string GooglePendingAudience = "AloeVera.GooglePending";
+    private static readonly TimeSpan GooglePendingLifetime = TimeSpan.FromMinutes(15);
+
     public string GenerateTelegramPendingTicket(TelegramUserInfoDto telegram)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
@@ -190,8 +193,6 @@ public class JwtService : IJwtService
         }
     }
 
-    private const string GooglePendingAudience = "AloeVera.GooglePending";
-
     public string GenerateGooglePendingTicket(GoogleUserInfoDto google)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
@@ -212,7 +213,7 @@ public class JwtService : IJwtService
         var descriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.Add(TelegramPendingLifetime),
+            Expires = DateTime.UtcNow.Add(GooglePendingLifetime),
             Issuer = _settings.Issuer,
             Audience = GooglePendingAudience,
             SigningCredentials = new SigningCredentials(

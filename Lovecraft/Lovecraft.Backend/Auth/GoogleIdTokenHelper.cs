@@ -43,10 +43,13 @@ public static class GoogleIdTokenHelper
                 PictureUrl = payload.Picture
             };
         }
-        catch (Exception ex)
+        catch (InvalidJwtException ex)
         {
-            logger?.LogWarning(ex, "Google ID token validation failed");
+            // Token is structurally invalid, expired, wrong audience, or signature mismatch.
+            logger?.LogWarning(ex, "Google ID token validation failed (invalid token)");
             return null;
         }
+        // Other exceptions (HttpRequestException, TaskCanceledException, etc.) propagate so
+        // the controller can return 500/503 instead of a misleading GOOGLE_TOKEN_INVALID 400.
     }
 }

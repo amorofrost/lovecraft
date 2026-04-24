@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
 namespace Lovecraft.Common.DTOs.Auth;
@@ -247,12 +248,12 @@ public class GoogleLoginResultDto
 /// <summary>Create a new account from a verified Google pending ticket + profile fields + optional invite.</summary>
 public class GoogleRegisterRequestDto
 {
-    public string Ticket { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public int Age { get; set; }
-    public string Location { get; set; } = string.Empty;
-    public string Gender { get; set; } = string.Empty;
-    public string Bio { get; set; } = string.Empty;
+    [Required] public string Ticket { get; set; } = string.Empty;
+    [Required, MinLength(1), MaxLength(100)] public string Name { get; set; } = string.Empty;
+    [Range(18, 99)] public int Age { get; set; }
+    [Required, MinLength(1), MaxLength(200)] public string Location { get; set; } = string.Empty;
+    [Required, MinLength(1)] public string Gender { get; set; } = string.Empty;
+    [MaxLength(500)] public string Bio { get; set; } = string.Empty;
     public string? InviteCode { get; set; }
 }
 

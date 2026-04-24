@@ -795,15 +795,25 @@ public class AzureAuthService : IAuthService
 
         try
         {
+            // AddEntityAsync (not Upsert) on the email index so a concurrent registration
+            // with the same email fails with 409 rather than silently overwriting.
             await Task.WhenAll(
                 _usersTable.UpsertEntityAsync(userEntity),
-                _emailIndexTable.UpsertEntityAsync(emailIndexEntity));
+                _emailIndexTable.AddEntityAsync(emailIndexEntity));
 
             if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
                 await _events.RegisterForEventAsync(userId, sourceEventId);
 
             if (!string.IsNullOrWhiteSpace(request.InviteCode))
                 await _eventInvites.IncrementRegistrationCountAsync(request.InviteCode);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            // Another registration claimed the email between our read-check and write.
+            _logger.LogWarning("Google register: email index conflict for {Email}", emailLower);
+            try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* */ }
+            try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* */ }
+            return null;
         }
         catch (Exception signupEx)
         {
