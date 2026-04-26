@@ -102,7 +102,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-// Rate limiting — sliding window, 5 requests / 15 min per IP, applied to auth endpoints.
+// Rate limiting — sliding window, 20 requests / 1 min per IP, applied to auth endpoints.
 // One shared bucket per IP across all three rate-limited endpoints (login + register +
 // forgot-password). A client mixing requests across them exhausts the limit faster than
 // per-endpoint limits would — this is intentional (any auth probing counts against the budget).
@@ -113,8 +113,8 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new SlidingWindowRateLimiterOptions
             {
-                PermitLimit = 5,
-                Window = TimeSpan.FromMinutes(15),
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
                 SegmentsPerWindow = 3,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
@@ -126,10 +126,10 @@ builder.Services.AddRateLimiter(options =>
         ctx.HttpContext.Response.ContentType = "application/json";
 
         // SlidingWindowRateLimiter does not populate RetryAfter metadata, so fall back
-        // to the known window duration (900 s = 15 min) when metadata is absent.
+        // to the known window duration (60 s = 1 min) when metadata is absent.
         var retryAfterSeconds = ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
             ? (int)retryAfter.TotalSeconds
-            : 900;
+            : 60;
         ctx.HttpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString();
 
         await ctx.HttpContext.Response.WriteAsJsonAsync(
