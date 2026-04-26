@@ -14,4 +14,7 @@ public class MockImageService : IImageService
     {
         return Task.FromResult("https://placehold.co/600x400");
     }
+
+    public Task<string> DownloadAndUploadExternalImageAsync(string userId, string externalUrl)
+        => Task.FromResult(externalUrl);
 }

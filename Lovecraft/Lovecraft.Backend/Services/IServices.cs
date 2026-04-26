@@ -136,4 +136,7 @@ public interface IImageService
 {
     Task<string> UploadProfileImageAsync(string userId, Stream imageStream, string contentType);
     Task<string> UploadContentImageAsync(string userId, Stream imageStream, string contentType);
+    /// <summary>Downloads an external image URL, resizes it, and stores it in the profile blob container.
+    /// Returns the blob URL on success, or an empty string on failure (best-effort).</summary>
+    Task<string> DownloadAndUploadExternalImageAsync(string userId, string externalUrl);
 }

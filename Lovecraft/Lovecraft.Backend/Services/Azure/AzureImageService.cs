@@ -17,6 +17,8 @@ public class AzureImageService : IImageService
     private const int JpegQuality = 85;
     private const string ContainerName = "profile-images";
 
+    private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
+
     private readonly BlobServiceClient _blobServiceClient;
     private readonly BlobContainerClient _containerClient;
     private readonly TableClient _usersTable;
@@ -138,5 +140,43 @@ public class AzureImageService : IImageService
         await blobClient.UploadAsync(outputStream, new BlobHttpHeaders { ContentType = outputContentType });
 
         return blobClient.Uri.ToString();
+    }
+
+    public async Task<string> DownloadAndUploadExternalImageAsync(string userId, string externalUrl)
+    {
+        if (string.IsNullOrWhiteSpace(externalUrl))
+            return string.Empty;
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(externalUrl);
+            response.EnsureSuccessStatusCode();
+
+            await using var downloadStream = await response.Content.ReadAsStreamAsync();
+
+            using var image = await Image.LoadAsync(downloadStream);
+            if (image.Width > MaxDimension || image.Height > MaxDimension)
+            {
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Size = new Size(MaxDimension, MaxDimension),
+                    Mode = ResizeMode.Max
+                }));
+            }
+
+            using var outputStream = new MemoryStream();
+            await image.SaveAsync(outputStream, new JpegEncoder { Quality = JpegQuality });
+            outputStream.Position = 0;
+
+            var blobName = $"{userId}/{Guid.NewGuid()}.jpg";
+            var blobClient = _containerClient.GetBlobClient(blobName);
+            await blobClient.UploadAsync(outputStream, new BlobHttpHeaders { ContentType = "image/jpeg" });
+            return blobClient.Uri.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to download external profile image from {Url} for user {UserId}", externalUrl, userId);
+            return string.Empty;
+        }
     }
 }

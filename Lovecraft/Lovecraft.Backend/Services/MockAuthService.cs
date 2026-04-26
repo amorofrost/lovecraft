@@ -244,6 +244,7 @@ public class MockAuthService : IAuthService
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             TelegramUserId = tgKey,
+            ProfileImage = tgInfo.PhotoUrl ?? string.Empty,
         };
 
         _users[key] = user;
@@ -448,6 +449,7 @@ public class MockAuthService : IAuthService
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             GoogleUserId = gInfo.Sub,
+            ProfileImage = gInfo.PictureUrl ?? string.Empty,
         };
 
         _users[emailKey] = user;

@@ -40,6 +40,7 @@ public class AzureAuthService : IAuthService
     private readonly IEventService _events;
     private readonly TelegramAuthOptions _telegramOptions;
     private readonly GoogleAuthOptions _googleOptions;
+    private readonly IImageService _imageService;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
@@ -52,7 +53,8 @@ public class AzureAuthService : IAuthService
         IEventInviteService eventInvites,
         IEventService events,
         IOptions<TelegramAuthOptions> telegramOptions,
-        IOptions<GoogleAuthOptions> googleOptions)
+        IOptions<GoogleAuthOptions> googleOptions,
+        IImageService imageService)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
@@ -64,6 +66,7 @@ public class AzureAuthService : IAuthService
         _events = events;
         _telegramOptions = telegramOptions.Value;
         _googleOptions = googleOptions.Value;
+        _imageService = imageService;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
@@ -320,6 +323,8 @@ public class AzureAuthService : IAuthService
                 : $"{tgInfo.FirstName.Trim()} {tgInfo.LastName!.Trim()}")
             : request.Name.Trim();
 
+        var profileImage = await FetchExternalPhotoAsync(userId, tgInfo.PhotoUrl);
+
         var userEntity = new UserEntity
         {
             PartitionKey = UserEntity.GetPartitionKey(userId),
@@ -332,7 +337,7 @@ public class AzureAuthService : IAuthService
             Location = string.IsNullOrWhiteSpace(request.Location) ? "Telegram" : request.Location,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
-            ProfileImage = tgInfo.PhotoUrl ?? string.Empty,
+            ProfileImage = profileImage,
             EmailVerified = true,
             AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "telegram" }),
             TelegramUserId = tgKey,
@@ -747,6 +752,8 @@ public class AzureAuthService : IAuthService
         var displayName = string.IsNullOrWhiteSpace(request.Name) ? gInfo.Name.Trim() : request.Name.Trim();
         if (string.IsNullOrEmpty(displayName)) displayName = gInfo.Email;
 
+        var profileImage = await FetchExternalPhotoAsync(userId, gInfo.PictureUrl);
+
         var userEntity = new UserEntity
         {
             PartitionKey = UserEntity.GetPartitionKey(userId),
@@ -758,7 +765,7 @@ public class AzureAuthService : IAuthService
             Location = string.IsNullOrWhiteSpace(request.Location) ? "—" : request.Location,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
-            ProfileImage = gInfo.PictureUrl ?? string.Empty,
+            ProfileImage = profileImage,
             EmailVerified = gInfo.EmailVerified,
             GoogleUserId = gInfo.Sub,
             AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "google" }),
@@ -882,7 +889,11 @@ public class AzureAuthService : IAuthService
         userEntity.AuthMethodsJson = JsonSerializer.Serialize(methods);
         userEntity.GoogleUserId = sub;
         if (string.IsNullOrWhiteSpace(userEntity.ProfileImage) && !string.IsNullOrEmpty(gInfo.PictureUrl))
-            userEntity.ProfileImage = gInfo.PictureUrl!;
+        {
+            var photo = await FetchExternalPhotoAsync(userEntity.RowKey, gInfo.PictureUrl!);
+            if (!string.IsNullOrEmpty(photo))
+                userEntity.ProfileImage = photo;
+        }
         userEntity.UpdatedAt = DateTime.UtcNow;
         await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag, TableUpdateMode.Replace);
         return true;
@@ -931,6 +942,12 @@ public class AzureAuthService : IAuthService
             methods.Add("telegram");
         userEntity.AuthMethodsJson = JsonSerializer.Serialize(methods);
         userEntity.TelegramUserId = tgKey;
+        if (string.IsNullOrWhiteSpace(userEntity.ProfileImage) && !string.IsNullOrEmpty(tgInfo.PhotoUrl))
+        {
+            var photo = await FetchExternalPhotoAsync(userEntity.RowKey, tgInfo.PhotoUrl!);
+            if (!string.IsNullOrEmpty(photo))
+                userEntity.ProfileImage = photo;
+        }
         userEntity.UpdatedAt = DateTime.UtcNow;
         await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag);
         return true;
@@ -1451,6 +1468,12 @@ public class AzureAuthService : IAuthService
             IsRevoked = false
         };
         await _refreshTokensTable.UpsertEntityAsync(entity);
+    }
+
+    private async Task<string> FetchExternalPhotoAsync(string userId, string? photoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(photoUrl)) return string.Empty;
+        return await _imageService.DownloadAndUploadExternalImageAsync(userId, photoUrl);
     }
 
     private static string NormalizeGender(string? gender)
