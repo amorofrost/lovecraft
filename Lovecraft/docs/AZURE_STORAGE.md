@@ -48,7 +48,8 @@ public class UserEntity : ITableEntity
     public string Bio { get; set; }
     public string Location { get; set; }
     public string Gender { get; set; }  // male, female, non-binary, prefer-not-to-say
-    public string ProfileImageUrl { get; set; }
+    public string ProfileImage { get; set; }   // Azure Blob URL (profile-images container)
+    public string InstagramHandle { get; set; } // Instagram username without @, optional
     public bool IsOnline { get; set; }
     public DateTime LastSeen { get; set; }
     public DateTime CreatedAt { get; set; }
