@@ -15,7 +15,7 @@ public class RateLimitingTests
         var client = factory.CreateClient();
 
         HttpResponseMessage? last = null;
-        for (int i = 0; i <= 5; i++) // 6 requests — one over the 5-per-15-min limit
+        for (int i = 0; i <= 20; i++) // 21 requests — one over the 20-per-1-min limit
         {
             last = await client.PostAsJsonAsync("/api/v1/auth/login",
                 new { email = "attacker@evil.com", password = "wrong" });
@@ -31,7 +31,7 @@ public class RateLimitingTests
         var client = factory.CreateClient();
 
         HttpResponseMessage? last = null;
-        for (int i = 0; i < 5; i++) // exactly 5 — at the limit, not over
+        for (int i = 0; i < 20; i++) // exactly 20 — at the limit, not over
         {
             last = await client.PostAsJsonAsync("/api/v1/auth/login",
                 new { email = "attacker@evil.com", password = "wrong" });
@@ -47,7 +47,7 @@ public class RateLimitingTests
         var client = factory.CreateClient();
 
         HttpResponseMessage? last = null;
-        for (int i = 0; i <= 5; i++)
+        for (int i = 0; i <= 20; i++)
         {
             last = await client.PostAsJsonAsync("/api/v1/auth/register",
                 new { email = $"user{i}@evil.com", password = "wrong", name = "Evil" });
@@ -63,7 +63,7 @@ public class RateLimitingTests
         var client = factory.CreateClient();
 
         HttpResponseMessage? last = null;
-        for (int i = 0; i <= 5; i++)
+        for (int i = 0; i <= 20; i++)
         {
             last = await client.PostAsJsonAsync("/api/v1/auth/forgot-password",
                 new { email = "victim@example.com" });
@@ -78,9 +78,9 @@ public class RateLimitingTests
         await using var factory = new WebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
-        // Send 6 requests to exhaust the limit (6th is first rejection, discarded).
-        // Assert the body shape on the 7th, which is also rejected.
-        for (int i = 0; i < 6; i++)
+        // Send 21 requests to exhaust the limit (21st is first rejection, discarded).
+        // Assert the body shape on the 22nd, which is also rejected.
+        for (int i = 0; i < 21; i++)
             await client.PostAsJsonAsync("/api/v1/auth/login",
                 new { email = "x@x.com", password = "wrong" });
 
@@ -97,17 +97,17 @@ public class RateLimitingTests
     [Fact]
     public async Task CrossEndpoint_SharedBucket_ExhaustsLimit()
     {
-        // 3 login + 3 register = 6 requests against the shared 5-permit bucket.
-        // The 6th request (2nd register) should be rejected regardless of endpoint.
+        // 11 login + 10 register = 21 requests against the shared 20-permit bucket.
+        // The 21st request (last register) should be rejected regardless of endpoint.
         await using var factory = new WebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 11; i++)
             await client.PostAsJsonAsync("/api/v1/auth/login",
                 new { email = "x@x.com", password = "wrong" });
 
         HttpResponseMessage? last = null;
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 10; i++)
             last = await client.PostAsJsonAsync("/api/v1/auth/register",
                 new { email = $"u{i}@x.com", password = "wrong", name = "X" });
 
@@ -120,7 +120,7 @@ public class RateLimitingTests
         await using var factory = new WebApplicationFactory<Program>();
         var client = factory.CreateClient();
 
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 21; i++)
             await client.PostAsJsonAsync("/api/v1/auth/login",
                 new { email = "x@x.com", password = "wrong" });
 
