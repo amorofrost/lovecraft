@@ -121,7 +121,7 @@ public class AzureAuthService : IAuthService
             Email = request.Email,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             Name = request.Name,
-            Age = request.Age,
+            Age = request.Age ?? 0,
             Location = request.Location,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio,

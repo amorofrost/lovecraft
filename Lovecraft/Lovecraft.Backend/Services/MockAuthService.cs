@@ -106,7 +106,7 @@ public class MockAuthService : IAuthService
             EmailVerified = false, // Must verify email
             AuthMethods = new List<string> { "local" },
             CreatedAt = DateTime.UtcNow,
-            Age = request.Age,
+            Age = request.Age ?? 0,
             Location = request.Location,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio
