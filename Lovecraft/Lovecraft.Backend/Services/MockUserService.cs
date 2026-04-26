@@ -48,6 +48,7 @@ public class MockUserService : IUserService
         existing.FavoriteSong = user.FavoriteSong;
         existing.Preferences = user.Preferences;
         existing.Settings = user.Settings;
+        existing.InstagramHandle = user.InstagramHandle;
 
         var config = await _appConfig.GetConfigAsync();
         return AugmentWithRank(existing, config.Ranks);

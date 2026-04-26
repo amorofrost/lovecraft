@@ -67,6 +67,7 @@ public class AzureUserService : IUserService
             entity.Location = dto.Location;
             entity.Gender = dto.Gender.ToString();
             entity.ProfileImage = dto.ProfileImage;
+            entity.InstagramHandle = dto.InstagramHandle ?? string.Empty;
             entity.ImagesJson = JsonSerializer.Serialize(dto.Images ?? new List<string>());
             entity.IsOnline = dto.IsOnline;
             entity.PreferencesJson = JsonSerializer.Serialize(dto.Preferences);
@@ -216,6 +217,7 @@ public class AzureUserService : IUserService
             Rank = RankCalculator.Compute(entity, ranks),
             StaffRole = staffRole,
             RegistrationSourceEventId = entity.RegistrationSourceEventId,
+            InstagramHandle = string.IsNullOrEmpty(entity.InstagramHandle) ? null : entity.InstagramHandle,
         };
     }
 }

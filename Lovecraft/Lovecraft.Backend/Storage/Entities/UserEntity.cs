@@ -47,6 +47,9 @@ public class UserEntity : ITableEntity
     /// <summary>Google <c>sub</c> when the account uses Google sign-in; empty otherwise.</summary>
     public string GoogleUserId { get; set; } = string.Empty;
 
+    /// <summary>Instagram username (without @), optional.</summary>
+    public string InstagramHandle { get; set; } = string.Empty;
+
     public static string GetPartitionKey(string userId) =>
         $"user-{userId[0].ToString().ToLower()}";
 }

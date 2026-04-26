@@ -27,6 +27,9 @@ public class UserDto
 
     /// <summary>Event id for the invite used at signup, if any.</summary>
     public string? RegistrationSourceEventId { get; set; }
+
+    /// <summary>Instagram username without @, optional.</summary>
+    public string? InstagramHandle { get; set; }
 }
 
 public class UserPreferencesDto
