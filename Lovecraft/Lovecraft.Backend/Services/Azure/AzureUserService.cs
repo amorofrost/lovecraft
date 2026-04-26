@@ -174,7 +174,7 @@ public class AzureUserService : IUserService
 
     private static UserDto ToDto(UserEntity entity, RankThresholds ranks)
     {
-        Enum.TryParse<Gender>(entity.Gender, out var gender);
+        Enum.TryParse<Gender>(entity.Gender, ignoreCase: true, out var gender);
 
         UserPreferencesDto prefs;
         try { prefs = JsonSerializer.Deserialize<UserPreferencesDto>(entity.PreferencesJson) ?? new UserPreferencesDto(); }

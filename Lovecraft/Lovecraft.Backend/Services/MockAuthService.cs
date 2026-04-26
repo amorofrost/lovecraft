@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Lovecraft.Common.DTOs.Auth;
+using Lovecraft.Common.Enums;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.MockData;
@@ -107,7 +108,7 @@ public class MockAuthService : IAuthService
             CreatedAt = DateTime.UtcNow,
             Age = request.Age,
             Location = request.Location,
-            Gender = request.Gender,
+            Gender = NormalizeGender(request.Gender),
             Bio = request.Bio
         };
 
@@ -240,7 +241,7 @@ public class MockAuthService : IAuthService
             CreatedAt = DateTime.UtcNow,
             Age = request.Age > 0 ? request.Age : 18,
             Location = string.IsNullOrWhiteSpace(request.Location) ? "Telegram" : request.Location,
-            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             TelegramUserId = tgKey,
         };
@@ -444,7 +445,7 @@ public class MockAuthService : IAuthService
             CreatedAt = now,
             Age = request.Age > 0 ? request.Age : 18,
             Location = string.IsNullOrWhiteSpace(request.Location) ? "—" : request.Location,
-            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             GoogleUserId = gInfo.Sub,
         };
@@ -897,6 +898,13 @@ public class MockAuthService : IAuthService
     {
         public string UserId { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
+    }
+
+    private static string NormalizeGender(string? gender)
+    {
+        if (Enum.TryParse<Gender>(gender, ignoreCase: true, out var g))
+            return g.ToString();
+        return Gender.PreferNotToSay.ToString();
     }
 
     private class AttachPending

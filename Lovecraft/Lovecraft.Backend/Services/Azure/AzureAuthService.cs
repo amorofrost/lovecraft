@@ -9,6 +9,7 @@ using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Auth;
+using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Options;
 
 namespace Lovecraft.Backend.Services.Azure;
@@ -122,7 +123,7 @@ public class AzureAuthService : IAuthService
             Name = request.Name,
             Age = request.Age,
             Location = request.Location,
-            Gender = request.Gender,
+            Gender = NormalizeGender(request.Gender),
             Bio = request.Bio,
             EmailVerified = false,
             AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "local" }),
@@ -329,7 +330,7 @@ public class AzureAuthService : IAuthService
             Name = displayName,
             Age = request.Age > 0 ? request.Age : 18,
             Location = string.IsNullOrWhiteSpace(request.Location) ? "Telegram" : request.Location,
-            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             ProfileImage = tgInfo.PhotoUrl ?? string.Empty,
             EmailVerified = true,
@@ -755,7 +756,7 @@ public class AzureAuthService : IAuthService
             Name = displayName,
             Age = request.Age > 0 ? request.Age : 18,
             Location = string.IsNullOrWhiteSpace(request.Location) ? "—" : request.Location,
-            Gender = string.IsNullOrWhiteSpace(request.Gender) ? "PreferNotToSay" : request.Gender,
+            Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             ProfileImage = gInfo.PictureUrl ?? string.Empty,
             EmailVerified = gInfo.EmailVerified,
@@ -1450,6 +1451,13 @@ public class AzureAuthService : IAuthService
             IsRevoked = false
         };
         await _refreshTokensTable.UpsertEntityAsync(entity);
+    }
+
+    private static string NormalizeGender(string? gender)
+    {
+        if (Enum.TryParse<Gender>(gender, ignoreCase: true, out var g))
+            return g.ToString();
+        return Gender.PreferNotToSay.ToString();
     }
 
     private static string HashToken(string token)
