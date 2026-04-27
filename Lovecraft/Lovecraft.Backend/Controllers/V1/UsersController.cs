@@ -42,6 +42,11 @@ public class UsersController : ControllerBase
         try
         {
             var users = await _userService.GetUsersAsync(skip, take);
+            await Task.WhenAll(users.Select(async u =>
+            {
+                var attended = await _eventService.GetEventsAttendedByUserAsync(u.Id);
+                u.AttendedEvents = attended.Select(StripEventForProfile).ToList();
+            }));
             return Ok(ApiResponse<List<UserDto>>.SuccessResponse(users));
         }
         catch (Exception ex)
