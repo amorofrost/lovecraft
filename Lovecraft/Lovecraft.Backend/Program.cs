@@ -190,6 +190,7 @@ if (useAzure)
         ?? throw new InvalidOperationException("AZURE_STORAGE_CONNECTION_STRING not set");
     builder.Services.AddSingleton(new TableServiceClient(connectionString));
     builder.Services.AddSingleton(new BlobServiceClient(connectionString));
+    builder.Services.AddSingleton<UserCache>();
     builder.Services.AddSingleton<IAppConfigService, AzureAppConfigService>();
     builder.Services.AddSingleton<IImageService, AzureImageService>();
     builder.Services.AddSingleton<IEventInviteService, AzureEventInviteService>();
@@ -248,6 +249,15 @@ else
 }
 
 var app = builder.Build();
+
+// Pre-populate the in-memory user cache from Azure Table Storage on startup.
+if (useAzure)
+{
+    var userCache = app.Services.GetRequiredService<UserCache>();
+    var tableClient = app.Services.GetRequiredService<TableServiceClient>()
+        .GetTableClient(Lovecraft.Backend.Storage.TableNames.Users);
+    await userCache.LoadAsync(tableClient);
+}
 
 // Mock storage: seed predictable attendance invite codes per event (dev / automated tests)
 if (!useAzure)

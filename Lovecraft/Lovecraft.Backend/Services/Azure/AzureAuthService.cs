@@ -5,6 +5,7 @@ using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
+using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Backend.Services;
@@ -41,6 +42,7 @@ public class AzureAuthService : IAuthService
     private readonly TelegramAuthOptions _telegramOptions;
     private readonly GoogleAuthOptions _googleOptions;
     private readonly IImageService _imageService;
+    private readonly UserCache _userCache;
 
     public AzureAuthService(
         TableServiceClient tableServiceClient,
@@ -54,7 +56,8 @@ public class AzureAuthService : IAuthService
         IEventService events,
         IOptions<TelegramAuthOptions> telegramOptions,
         IOptions<GoogleAuthOptions> googleOptions,
-        IImageService imageService)
+        IImageService imageService,
+        UserCache userCache)
     {
         _jwtService = jwtService;
         _passwordHasher = passwordHasher;
@@ -67,6 +70,7 @@ public class AzureAuthService : IAuthService
         _telegramOptions = telegramOptions.Value;
         _googleOptions = googleOptions.Value;
         _imageService = imageService;
+        _userCache = userCache;
 
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _emailIndexTable = tableServiceClient.GetTableClient(TableNames.UserEmailIndex);
@@ -153,6 +157,7 @@ public class AzureAuthService : IAuthService
                 _usersTable.UpsertEntityAsync(userEntity),
                 _emailIndexTable.UpsertEntityAsync(emailIndexEntity)
             );
+            _userCache.Set(userEntity);
 
             if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
                 await _events.RegisterForEventAsync(userId, sourceEventId);
@@ -163,6 +168,7 @@ public class AzureAuthService : IAuthService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Registration failed after user row for {Email}", request.Email);
+            _userCache.Remove(userId);
             try
             {
                 await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX");
@@ -381,6 +387,7 @@ public class AzureAuthService : IAuthService
             await Task.WhenAll(
                 _usersTable.UpsertEntityAsync(userEntity),
                 _emailIndexTable.UpsertEntityAsync(emailIndexEntity));
+            _userCache.Set(userEntity);
 
             if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
                 await _events.RegisterForEventAsync(userId, sourceEventId);
@@ -391,6 +398,7 @@ public class AzureAuthService : IAuthService
         catch (Exception signupEx)
         {
             _logger.LogError(signupEx, "Telegram register failed after tg index write for tg {TgId}", tgKey);
+            _userCache.Remove(userId);
             try { await _telegramIndexTable.DeleteEntityAsync(tgKey, "INDEX"); } catch { /* ignore */ }
             try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* ignore */ }
             try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* ignore */ }
@@ -820,6 +828,7 @@ public class AzureAuthService : IAuthService
         {
             // Another registration claimed the email between our read-check and write.
             _logger.LogWarning("Google register: email index conflict for {Email}", emailLower);
+            _userCache.Remove(userId);
             try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* */ }
             try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* */ }
             return null;
@@ -827,6 +836,7 @@ public class AzureAuthService : IAuthService
         catch (Exception signupEx)
         {
             _logger.LogError(signupEx, "Google register failed after index write for sub {Sub}", gInfo.Sub);
+            _userCache.Remove(userId);
             try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* */ }
             try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* */ }
             try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* */ }
@@ -834,8 +844,9 @@ public class AzureAuthService : IAuthService
         }
 
         _logger.LogInformation("Google user registered: {UserId}, {Email}", userId, gInfo.Email);
-        return await IssueJwtPairAsync(
-            (await _usersTable.GetEntityAsync<UserEntity>(userEntity.PartitionKey, userId)).Value);
+        var reloadedEntity = (await _usersTable.GetEntityAsync<UserEntity>(userEntity.PartitionKey, userId)).Value;
+        _userCache.Set(reloadedEntity);
+        return await IssueJwtPairAsync(reloadedEntity);
     }
 
     private async Task EnsureGoogleIndexAsync(string sub, string userId)
@@ -896,6 +907,7 @@ public class AzureAuthService : IAuthService
         }
         userEntity.UpdatedAt = DateTime.UtcNow;
         await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag, TableUpdateMode.Replace);
+        _userCache.Set(userEntity);
         return true;
     }
 
@@ -950,6 +962,7 @@ public class AzureAuthService : IAuthService
         }
         userEntity.UpdatedAt = DateTime.UtcNow;
         await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag);
+        _userCache.Set(userEntity);
         return true;
     }
 

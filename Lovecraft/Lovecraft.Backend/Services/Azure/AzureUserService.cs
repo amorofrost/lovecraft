@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
+using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Users;
@@ -14,14 +15,17 @@ public class AzureUserService : IUserService
     private readonly TableClient _usersTable;
     private readonly ILogger<AzureUserService> _logger;
     private readonly IAppConfigService _appConfig;
+    private readonly UserCache _cache;
 
     public AzureUserService(
         TableServiceClient tableServiceClient,
         ILogger<AzureUserService> logger,
-        IAppConfigService appConfig)
+        IAppConfigService appConfig,
+        UserCache cache)
     {
         _logger = logger;
         _appConfig = appConfig;
+        _cache = cache;
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _usersTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
@@ -29,21 +33,31 @@ public class AzureUserService : IUserService
     public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
     {
         var config = await _appConfig.GetConfigAsync();
-        var results = new List<UserDto>();
-        await foreach (var entity in _usersTable.QueryAsync<UserEntity>())
+        var all = _cache.GetAll();
+        // Fisher-Yates shuffle so the swipe deck ordering is random per request
+        for (int i = all.Count - 1; i > 0; i--)
         {
-            results.Add(ToDto(entity, config.Ranks));
+            int j = Random.Shared.Next(i + 1);
+            (all[i], all[j]) = (all[j], all[i]);
         }
-        return results.Skip(skip).Take(take).ToList();
+        return all.Skip(skip).Take(take).Select(e => ToDto(e, config.Ranks)).ToList();
     }
 
     public async Task<UserDto?> GetUserByIdAsync(string userId)
     {
+        var cached = _cache.Get(userId);
+        if (cached is not null)
+        {
+            var config = await _appConfig.GetConfigAsync();
+            return ToDto(cached, config.Ranks);
+        }
+
         try
         {
             var config = await _appConfig.GetConfigAsync();
             var response = await _usersTable.GetEntityAsync<UserEntity>(
                 UserEntity.GetPartitionKey(userId), userId);
+            _cache.Set(response.Value);
             return ToDto(response.Value, config.Ranks);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -78,6 +92,7 @@ public class AzureUserService : IUserService
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+            _cache.Set(entity);
             return ToDto(entity, config.Ranks);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -88,10 +103,6 @@ public class AzureUserService : IUserService
 
     public async Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1)
     {
-        // Read-modify-write with ETag. Concurrent increments to the same user
-        // (e.g. rapid reply posts, or LikesReceived+MatchCount races on mutual
-        // match) produce 412 Precondition Failed on the losing writer; retry
-        // a bounded number of times with small jitter to spread the herd.
         const int maxAttempts = 3;
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
@@ -109,6 +120,7 @@ public class AzureUserService : IUserService
                 }
                 entity.UpdatedAt = DateTime.UtcNow;
                 await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+                _cache.Set(entity);
                 return;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
@@ -124,9 +136,6 @@ public class AzureUserService : IUserService
                 await Task.Delay(Random.Shared.Next(5, 25));
             }
         }
-        // Unreachable: each attempt either returns on success/404, continues on
-        // retryable 412, or lets the 412 bubble on the final attempt (filter is
-        // false so the catch doesn't match). Caller shields with try/catch.
     }
 
     public async Task SetStaffRoleAsync(string userId, StaffRole role)
@@ -139,6 +148,7 @@ public class AzureUserService : IUserService
             entity.StaffRole = role.ToString().ToLowerInvariant();
             entity.UpdatedAt = DateTime.UtcNow;
             await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+            _cache.Set(entity);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -166,6 +176,7 @@ public class AzureUserService : IUserService
             }
             entity.UpdatedAt = DateTime.UtcNow;
             await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+            _cache.Set(entity);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {

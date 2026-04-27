@@ -18,11 +18,13 @@ public class MockUserService : IUserService
     public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
     {
         var config = await _appConfig.GetConfigAsync();
-        return MockDataStore.Users
-            .Skip(skip)
-            .Take(take)
-            .Select(dto => AugmentWithRank(dto, config.Ranks))
-            .ToList();
+        var all = MockDataStore.Users.ToList();
+        for (int i = all.Count - 1; i > 0; i--)
+        {
+            int j = Random.Shared.Next(i + 1);
+            (all[i], all[j]) = (all[j], all[i]);
+        }
+        return all.Skip(skip).Take(take).Select(dto => AugmentWithRank(dto, config.Ranks)).ToList();
     }
 
     public async Task<UserDto?> GetUserByIdAsync(string userId)
