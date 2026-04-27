@@ -19,7 +19,10 @@ Lovecraft.slnx
 │   ├── Controllers/V1/        # REST API controllers (Auth, Users, Events, Matching, Store, Blog, Forum)
 │   ├── Services/              # IServices.cs + Mock*Service + Azure/*Service implementations
 │   │   ├── MockUserService.cs, MockEventService.cs, ...  (USE_AZURE_STORAGE=false)
-│   │   └── Azure/AzureAuthService.cs, AzureUserService.cs, ...  (USE_AZURE_STORAGE=true)
+│   │   ├── Azure/AzureAuthService.cs, AzureUserService.cs, ...  (USE_AZURE_STORAGE=true)
+│   │   └── Caching/           # In-process caching layer
+│   │       ├── UserCache.cs   # ConcurrentDictionary<string,UserEntity> — populated from Azure on startup; updated on every write
+│   │       ├── CachingEventService.cs, CachingForumService.cs, ...  (IMemoryCache wrappers)
 │   ├── Storage/               # Azure Table Storage layer
 │   │   ├── TableNames.cs      # 18 table name properties; optional AZURE_TABLE_PREFIX for isolated datasets
 │   │   └── Entities/          # 17 entity classes (UserEntity, EventEntity, ChatEntity, etc.)
@@ -31,7 +34,7 @@ Lovecraft.slnx
 ├── Lovecraft.Tools.Seeder/    # CLI tool: seeds Azure Table Storage from MockDataStore
 │   └── Program.cs             # Reads .env, seeds users/events/store/blog/forum + like edges; respects AZURE_TABLE_PREFIX
 │
-└── Lovecraft.UnitTests/       # xUnit tests (81 tests)
+└── Lovecraft.UnitTests/       # xUnit tests (264 tests)
 ```
 
 ### API Endpoints Implemented
@@ -202,7 +205,7 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Testing
 
-- **193 passing** — xUnit unit + integration tests (`dotnet test Lovecraft.UnitTests`)
+- **264 passing** — xUnit unit + integration tests (`dotnet test Lovecraft.UnitTests`)
   - Existing suites: `AuthenticationTests`, `ServiceTests`, `RefreshTokenTests`, `ChatTests`, `MatchingTests`, `ForumTests` (all extended with rank/ACL coverage where applicable)
   - New suites (Roles & ACL spec):
     - `AppConfigServiceTests` — cache hits/misses, 1-hour TTL, fallback to `RankThresholds.Defaults` / `PermissionConfig.Defaults` on missing or invalid rows, `LogWarning` on parse failure
@@ -210,6 +213,10 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
     - `RankCalculatorTests` — top-down OR-matching from crew → novice, honours `RankOverride`, threshold boundary conditions
     - `AzureUserServiceTests` — counter increments retry 3× on ETag 412 and swallow exceptions so counter failures never fail the primary operation
     - `AclTests` — integration tests using `WebApplicationFactory<Program>` + a custom `TestAuthHandler` that injects `staffRole` claims; exercises `section.MinRank`, `topic.MinRank`, `topic.NoviceVisible`, `topic.NoviceCanReply` rejections (`INSUFFICIENT_RANK` / `MODERATOR_REQUIRED` / `ADMIN_REQUIRED`)
+  - New suites (UserCache & performance):
+    - `UserCacheTests` — `Set`/`Get`/`Remove`/`GetAll` correctness, snapshot independence, 300-element concurrent write safety, `LoadAsync` from a mocked `AsyncPageable<UserEntity>`
+    - `AzureUserServiceCacheTests` — `GetUsersAsync` reads cache not Azure (verified via Moq), `GetUserByIdAsync` cache hit vs miss, all four write methods update the cache entry
+    - `MockUserServiceShuffleTests` — shuffle preserves all items with no duplicates and produces different orderings across repeated calls
 - Tests run with `dotnet test`
 - Assembly-level `[CollectionBehavior(DisableTestParallelization = true)]` (in `Lovecraft.UnitTests/AssemblyInfo.cs`) serialises the entire suite — a pragmatic workaround for `MockDataStore` static state (tracked as `followup-mock-state-hygiene` for a proper migration off shared static state)
 
@@ -275,6 +282,7 @@ dotnet test
 
 - JWT authentication fully operational; all content endpoints require `[Authorize]`
 - **Azure Table Storage** active when `USE_AZURE_STORAGE=true` in `.env`; falls back to in-memory mock services when false
+- **`UserCache`** — `Services/Caching/UserCache.cs`; a `ConcurrentDictionary<string, UserEntity>` singleton registered in DI. `Program.cs` calls `LoadAsync(TableClient)` on startup (Azure mode only) to populate it with every row from the `users` table before the first request is served. `AzureUserService.GetUsersAsync` and `GetUserByIdAsync` read from the cache; all five write methods (`UpdateUser`, `IncrementCounter`, `SetStaffRole`, `SetRankOverride`, and `AzureAuthService` user-creation paths) call `_cache.Set(entity)` after each successful Azure write. `GetUsersAsync` Fisher-Yates shuffles the cache snapshot before applying skip/take so the swipe deck order is random per request. `MockUserService.GetUsersAsync` also shuffles.
 - **`appconfig` table** (new in the Roles & ACL spec) — partitions: `rank_thresholds` (10 integer rows) and `permissions` (11 string rows). Served by `AzureAppConfigService` with 1-hour `IMemoryCache`; falls back to `RankThresholds.Defaults` / `PermissionConfig.Defaults` with `LogWarning` on missing/invalid rows. Seeded by `Lovecraft.Tools.Seeder`.
 - **`IAppConfigService`** — singleton; 1-hour cached read of the `appconfig` table; fallback to code-defined defaults for missing rows. `IUserService` gained `IncrementCounterAsync` / `SetStaffRoleAsync` / `SetRankOverrideAsync`; counter increments in the Azure implementation retry 3× on ETag 412 and are wrapped in try/catch so counter failures never fail the primary operation. `IForumService` gained `UpdateTopicAsync`.
 - **ACL enforcement**: `PermissionGuard.MeetsAsync(user, userService, requiredLevel)` is the shared helper; `[RequireStaffRole("moderator"|"admin")]` is a synchronous filter reading only the `staffRole` JWT claim; `[RequirePermission("<key>")]` is an `IFilterFactory` that resolves the required level from `AppConfig.Permissions` at runtime and delegates to `PermissionGuard`. Error codes: `INSUFFICIENT_RANK`, `MODERATOR_REQUIRED`, `ADMIN_REQUIRED`. JWT access tokens now embed `staffRole` as a custom claim.
