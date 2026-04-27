@@ -3,6 +3,7 @@ using Azure.Data.Tables;
 using Azure.Data.Tables.Models;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
+using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.Enums;
@@ -64,7 +65,8 @@ public class AzureUserServiceIncrementCounterTests
         var svc = new AzureUserService(
             tsc.Object,
             NullLogger<AzureUserService>.Instance,
-            new MockAppConfigService());
+            new MockAppConfigService(),
+            new UserCache());
         return (svc, tc);
     }
 
@@ -136,7 +138,7 @@ public class AzureUserServiceIncrementCounterTests
         tsc.Setup(x => x.GetTableClient(TableNames.Users)).Returns(tc.Object);
 
         var svc = new AzureUserService(
-            tsc.Object, NullLogger<AzureUserService>.Instance, new MockAppConfigService());
+            tsc.Object, NullLogger<AzureUserService>.Instance, new MockAppConfigService(), new UserCache());
 
         // Should not throw.
         await svc.IncrementCounterAsync("missing", UserCounter.ReplyCount);
