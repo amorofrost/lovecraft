@@ -14,9 +14,11 @@ public class AzureChatService : IChatService
     private readonly TableClient _chatsTable;
     private readonly TableClient _userChatsTable;
     private readonly TableClient _messagesTable;
+    private readonly IAppConfigService _appConfigService;
 
-    public AzureChatService(TableServiceClient tableService)
+    public AzureChatService(TableServiceClient tableService, IAppConfigService appConfigService)
     {
+        _appConfigService = appConfigService;
         _chatsTable    = tableService.GetTableClient(TableNames.Chats);
         _userChatsTable = tableService.GetTableClient(TableNames.UserChats);
         _messagesTable = tableService.GetTableClient(TableNames.Messages);
@@ -107,42 +109,41 @@ public class AzureChatService : IChatService
         };
     }
 
-    public async Task<PagedResult<MessageDto>> GetMessagesAsync(string chatId, string userId, string? cursor = null)
+    public async Task<PagedResult<MessageDto>> GetMessagesAsync(
+        string chatId, string userId, string? cursor = null)
     {
         if (!await ValidateAccessAsync(chatId, userId))
             return new PagedResult<MessageDto>();
 
+        var config   = await _appConfigService.GetConfigAsync();
         var pageSize = cursor == null
-            ? PaginationConfig.Defaults.MessagesInitial
-            : PaginationConfig.Defaults.MessagesBatch;
+            ? config.Pagination.MessagesInitial
+            : config.Pagination.MessagesBatch;
 
-        // Storage rows already use inverted-ticks rowKey so natural order = newest-first
-        var all = new List<MessageEntity>();
-        await foreach (var entity in _messagesTable.QueryAsync<MessageEntity>(e => e.PartitionKey == chatId))
-            all.Add(entity);
+        // RowKey = {invertedTicks:D20}_{msgId} — ascending storage order = newest first
+        var filter = string.IsNullOrEmpty(cursor)
+            ? $"PartitionKey eq '{chatId}'"
+            : $"PartitionKey eq '{chatId}' and RowKey gt '{cursor}'";
 
-        // Sort newest-first by SentAt
-        var sorted = all.OrderByDescending(e => e.SentAt).ToList();
-
-        var startIndex = 0;
-        if (cursor != null)
+        var entities = new List<MessageEntity>();
+        await foreach (var entity in _messagesTable.QueryAsync<MessageEntity>(filter: filter))
         {
-            var idx = sorted.FindIndex(e => e.MessageId == cursor);
-            startIndex = idx >= 0 ? idx + 1 : 0;
+            entities.Add(entity);
+            if (entities.Count == pageSize + 1) break;
         }
 
-        var batch = sorted.Skip(startIndex).Take(pageSize + 1).ToList();
-        var hasMore = batch.Count > pageSize;
-        var items = batch.Take(pageSize).Select(e => new MessageDto
+        var hasMore = entities.Count > pageSize;
+        var taken   = entities.Take(pageSize).ToList();
+        var items   = taken.Select(e => new MessageDto
         {
-            Id = e.MessageId,
-            ChatId = chatId,
-            SenderId = e.SenderId,
-            Content = e.Content,
+            Id        = e.MessageId,
+            ChatId    = chatId,
+            SenderId  = e.SenderId,
+            Content   = e.Content,
             Timestamp = e.SentAt,
-            Read = e.Read,
-            Type = MessageType.Text,
-            ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>()
+            Read      = e.Read,
+            Type      = MessageType.Text,
+            ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new()
         }).ToList();
 
         return new PagedResult<MessageDto>
@@ -150,7 +151,7 @@ public class AzureChatService : IChatService
             Items      = items,
             PageSize   = pageSize,
             HasMore    = hasMore,
-            NextCursor = items.Count > 0 ? items.Last().Id : null,
+            NextCursor = taken.Count > 0 ? taken.Last().RowKey : null,
         };
     }
 
