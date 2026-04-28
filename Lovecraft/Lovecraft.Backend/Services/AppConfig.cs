@@ -1,6 +1,6 @@
 namespace Lovecraft.Backend.Services;
 
-public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration);
+public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration, PaginationConfig Pagination);
 
 /// <summary>
 /// Site-wide registration policy (Azure Table appconfig partition <c>registration</c>).
@@ -8,6 +8,23 @@ public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, Regi
 public record RegistrationConfig(bool RequireEventInvite)
 {
     public static RegistrationConfig Defaults => new(RequireEventInvite: false);
+}
+
+public record PaginationConfig(
+    int MessagesInitial,
+    int MessagesBatch,
+    int RepliesInitial,
+    int RepliesBatch,
+    int TopicsInitial,
+    int TopicsBatch)
+{
+    public static PaginationConfig Defaults => new(
+        MessagesInitial: 30,
+        MessagesBatch:   20,
+        RepliesInitial:  20,
+        RepliesBatch:    15,
+        TopicsInitial:   25,
+        TopicsBatch:     15);
 }
 
 public record RankThresholds(
@@ -96,5 +113,15 @@ public static class AppConfigKeys
     public static class RegistrationKeys
     {
         public const string RequireEventInvite = "require_event_invite";
+    }
+
+    public static class PaginationKeys
+    {
+        public const string MessagesInitial = "messages_initial";
+        public const string MessagesBatch   = "messages_batch";
+        public const string RepliesInitial  = "replies_initial";
+        public const string RepliesBatch    = "replies_batch";
+        public const string TopicsInitial   = "topics_initial";
+        public const string TopicsBatch     = "topics_batch";
     }
 }

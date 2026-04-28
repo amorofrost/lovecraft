@@ -17,4 +17,5 @@ public class AppConfigEntity : ITableEntity
     public const string PartitionRankThresholds = "rank_thresholds";
     public const string PartitionPermissions = "permissions";
     public const string PartitionRegistration = "registration";
+    public const string PartitionPagination = "pagination";
 }

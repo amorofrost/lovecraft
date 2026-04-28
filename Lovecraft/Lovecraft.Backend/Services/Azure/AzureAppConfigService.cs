@@ -50,6 +50,9 @@ public class AzureAppConfigService : IAppConfigService
         var registration = rows
             .Where(r => r.PartitionKey == AppConfigEntity.PartitionRegistration)
             .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
+        var pagination = rows
+            .Where(r => r.PartitionKey == AppConfigEntity.PartitionPagination)
+            .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
 
         int I(string key, int fallback)
         {
@@ -83,6 +86,7 @@ public class AzureAppConfigService : IAppConfigService
 
         var d = RankThresholds.Defaults;
         var p = PermissionConfig.Defaults;
+        var pg = PaginationConfig.Defaults;
         return new AppConfig(
             new RankThresholds(
                 ActiveReplies: I(AppConfigKeys.RankThresholdsKeys.ActiveReplies, d.ActiveReplies),
@@ -108,6 +112,13 @@ public class AzureAppConfigService : IAppConfigService
                 ManageBlog: S(AppConfigKeys.PermissionKeys.ManageBlog, p.ManageBlog),
                 ManageStore: S(AppConfigKeys.PermissionKeys.ManageStore, p.ManageStore)),
             new RegistrationConfig(
-                RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)));
+                RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)),
+            new PaginationConfig(
+                MessagesInitial: I(AppConfigKeys.PaginationKeys.MessagesInitial, pg.MessagesInitial),
+                MessagesBatch: I(AppConfigKeys.PaginationKeys.MessagesBatch, pg.MessagesBatch),
+                RepliesInitial: I(AppConfigKeys.PaginationKeys.RepliesInitial, pg.RepliesInitial),
+                RepliesBatch: I(AppConfigKeys.PaginationKeys.RepliesBatch, pg.RepliesBatch),
+                TopicsInitial: I(AppConfigKeys.PaginationKeys.TopicsInitial, pg.TopicsInitial),
+                TopicsBatch: I(AppConfigKeys.PaginationKeys.TopicsBatch, pg.TopicsBatch)));
     }
 }

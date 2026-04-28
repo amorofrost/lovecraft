@@ -45,6 +45,19 @@ public class MockAppConfigServiceTests
 
         Assert.False(config.Registration.RequireEventInvite);
     }
+
+    [Fact]
+    public async Task GetConfigAsync_ReturnsPaginationDefaults()
+    {
+        var svc = new MockAppConfigService();
+        var config = await svc.GetConfigAsync();
+        Assert.Equal(30, config.Pagination.MessagesInitial);
+        Assert.Equal(20, config.Pagination.MessagesBatch);
+        Assert.Equal(20, config.Pagination.RepliesInitial);
+        Assert.Equal(15, config.Pagination.RepliesBatch);
+        Assert.Equal(25, config.Pagination.TopicsInitial);
+        Assert.Equal(15, config.Pagination.TopicsBatch);
+    }
 }
 
 public class AzureAppConfigServiceTests
