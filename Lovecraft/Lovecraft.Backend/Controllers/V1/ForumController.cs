@@ -68,31 +68,32 @@ public class ForumController : ControllerBase
     /// Topics for one event's discussion partition (same permission rules as summary).
     /// </summary>
     [HttpGet("event-discussions/{eventId}/topics")]
-    public async Task<ActionResult<ApiResponse<List<ForumTopicDto>>>> GetEventDiscussionTopics(string eventId)
+    public async Task<ActionResult<ApiResponse<PagedResult<ForumTopicDto>>>> GetEventDiscussionTopics(
+        string eventId, [FromQuery] int page = 1)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
-            return Unauthorized(ApiResponse<List<ForumTopicDto>>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+            return Unauthorized(ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
 
         var staff = User.FindFirst("staffRole")?.Value ?? "none";
         var isElevated = staff is "moderator" or "admin";
         try
         {
-            var topicsResult = await _forumService.GetEventDiscussionTopicsAsync(userId, eventId, isElevated);
+            var topicsResult = await _forumService.GetEventDiscussionTopicsAsync(userId, eventId, isElevated, page);
             if (topicsResult is null)
-                return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Event discussions not available"));
+                return NotFound(ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Event discussions not available"));
 
             var callerRank = await GetCallerRankAsync();
-            var topicsList = callerRank == UserRank.Novice
-                ? topicsResult.Items.Where(t => t.NoviceVisible).ToList()
-                : topicsResult.Items;
-
-            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topicsList));
+            if (callerRank == UserRank.Novice)
+            {
+                topicsResult.Items = topicsResult.Items.Where(t => t.NoviceVisible).ToList();
+            }
+            return Ok(ApiResponse<PagedResult<ForumTopicDto>>.SuccessResponse(topicsResult));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting event discussion topics for {EventId}", eventId);
-            return StatusCode(500, ApiResponse<List<ForumTopicDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to load topics"));
+            return StatusCode(500, ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to load topics"));
         }
     }
 
@@ -118,35 +119,36 @@ public class ForumController : ControllerBase
     /// Get topics in a section
     /// </summary>
     [HttpGet("sections/{sectionId}/topics")]
-    public async Task<ActionResult<ApiResponse<List<ForumTopicDto>>>> GetTopics(string sectionId)
+    public async Task<ActionResult<ApiResponse<PagedResult<ForumTopicDto>>>> GetTopics(
+        string sectionId, [FromQuery] int page = 1)
     {
         try
         {
             if (sectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
-                return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Use GET /forum/event-discussions/{eventId}/topics"));
+                return NotFound(ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Use GET /forum/event-discussions/{eventId}/topics"));
 
             var section = (await _forumService.GetSectionsAsync()).FirstOrDefault(s => s.Id == sectionId);
             if (section is null)
-                return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Section not found"));
+                return NotFound(ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Section not found"));
 
             var allowed = await PermissionGuard.MeetsAsync(User, _userService, section.MinRank);
             if (!allowed)
                 return StatusCode(StatusCodes.Status403Forbidden,
-                    ApiResponse<List<ForumTopicDto>>.ErrorResponse(
+                    ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse(
                         AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
 
-            var topicsResult = await _forumService.GetTopicsAsync(sectionId);
+            var topicsResult = await _forumService.GetTopicsAsync(sectionId, page);
             var callerRank = await GetCallerRankAsync();
-            var topicsList = callerRank == UserRank.Novice
-                ? topicsResult.Items.Where(t => t.NoviceVisible).ToList()
-                : topicsResult.Items;
-
-            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topicsList));
+            if (callerRank == UserRank.Novice)
+            {
+                topicsResult.Items = topicsResult.Items.Where(t => t.NoviceVisible).ToList();
+            }
+            return Ok(ApiResponse<PagedResult<ForumTopicDto>>.SuccessResponse(topicsResult));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting topics for section {SectionId}", sectionId);
-            return StatusCode(500, ApiResponse<List<ForumTopicDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get topics"));
+            return StatusCode(500, ApiResponse<PagedResult<ForumTopicDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get topics"));
         }
     }
 
@@ -189,23 +191,24 @@ public class ForumController : ControllerBase
     /// Get all replies for a topic
     /// </summary>
     [HttpGet("topics/{topicId}/replies")]
-    public async Task<ActionResult<ApiResponse<List<ForumReplyDto>>>> GetReplies(string topicId)
+    public async Task<ActionResult<ApiResponse<PagedResult<ForumReplyDto>>>> GetReplies(
+        string topicId, [FromQuery] string? cursor = null)
     {
         try
         {
             var topic = await _forumService.GetTopicByIdAsync(topicId);
             if (topic == null)
-                return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
+                return NotFound(ApiResponse<PagedResult<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
             if (!await CallerMayAccessEventTopicContentAsync(topic))
-                return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
+                return NotFound(ApiResponse<PagedResult<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
 
-            var repliesResult = await _forumService.GetRepliesAsync(topicId);
-            return Ok(ApiResponse<List<ForumReplyDto>>.SuccessResponse(repliesResult.Items));
+            var repliesResult = await _forumService.GetRepliesAsync(topicId, cursor);
+            return Ok(ApiResponse<PagedResult<ForumReplyDto>>.SuccessResponse(repliesResult));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting replies for topic {TopicId}", topicId);
-            return StatusCode(500, ApiResponse<List<ForumReplyDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get replies"));
+            return StatusCode(500, ApiResponse<PagedResult<ForumReplyDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get replies"));
         }
     }
 

@@ -148,8 +148,8 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         using var client = _factory.CreateClientAsUser("novice-user-3");
         var resp = await client.GetAsync("/api/v1/forum/sections/general/topics");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<List<ForumTopicDto>>>();
-        Assert.DoesNotContain(payload!.Data!, t => t.Id == "hidden-1");
+        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<PagedResult<ForumTopicDto>>>();
+        Assert.DoesNotContain(payload!.Data!.Items, t => t.Id == "hidden-1");
     }
 
     [Fact]
@@ -163,8 +163,8 @@ public class AclTests : IClassFixture<AclTests.TestAppFactory>, IDisposable
         });
         using var client = _factory.CreateClientAsUser("active-user-2");
         var resp = await client.GetAsync("/api/v1/forum/sections/general/topics");
-        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<List<ForumTopicDto>>>();
-        Assert.Contains(payload!.Data!, t => t.Id == "hidden-2");
+        var payload = await resp.Content.ReadFromJsonAsync<ApiResponse<PagedResult<ForumTopicDto>>>();
+        Assert.Contains(payload!.Data!.Items, t => t.Id == "hidden-2");
     }
 
     [Fact]

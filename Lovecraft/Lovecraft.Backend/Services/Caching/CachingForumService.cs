@@ -28,7 +28,7 @@ public class CachingForumService : IForumService
     private static readonly TimeSpan RepliesTtl  = TimeSpan.FromSeconds(30);
 
     private const string SectionsKey = "forum:sections";
-    private static string TopicsKey(string sectionId)  => $"forum:topics:{sectionId}";
+    private static string TopicsKey(string sectionId, int page = 1) => $"forum:topics:{sectionId}:{page}";
     private static string TopicKey(string topicId)      => $"forum:topic:{topicId}";
     private static string RepliesKey(string topicId)    => $"forum:replies:{topicId}";
 
@@ -56,7 +56,7 @@ public class CachingForumService : IForumService
 
     public async Task<PagedResult<ForumTopicDto>> GetTopicsAsync(string sectionId, int page = 1)
     {
-        var key = TopicsKey(sectionId);
+        var key = TopicsKey(sectionId, page);
         if (_cache.TryGetValue(key, out PagedResult<ForumTopicDto>? cached) && cached is not null)
             return cached;
 
@@ -110,7 +110,7 @@ public class CachingForumService : IForumService
     {
         var result = await _inner.CreateTopicAsync(
             sectionId, authorId, authorName, title, content, noviceVisible, noviceCanReply);
-        _cache.Remove(TopicsKey(sectionId));
+        _cache.Remove(TopicsKey(sectionId, 1));
         _cache.Remove(SectionsKey);
         return result;
     }
@@ -123,7 +123,7 @@ public class CachingForumService : IForumService
         // (pin/lock state affects ordering and visibility). Reply list is unaffected.
         _cache.Remove(TopicKey(topicId));
         if (result is not null)
-            _cache.Remove(TopicsKey(result.SectionId));
+            _cache.Remove(TopicsKey(result.SectionId, 1));
 
         return result;
     }
@@ -155,7 +155,7 @@ public class CachingForumService : IForumService
             _cache.Remove(TopicKey(topicId));
             _cache.Remove(RepliesKey(topicId));
             if (before is not null)
-                _cache.Remove(TopicsKey(before.SectionId));
+                _cache.Remove(TopicsKey(before.SectionId, 1));
             _cache.Remove(SectionsKey);
         }
         return ok;
