@@ -7,6 +7,7 @@ using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 
 namespace Lovecraft.Backend.Services;
 
@@ -88,10 +89,10 @@ public interface IForumService
 {
     Task<List<ForumSectionDto>> GetSectionsAsync();
     Task<List<EventDiscussionSectionDto>> GetEventDiscussionSectionsAsync(string userId, bool isElevated);
-    Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated);
-    Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId);
+    Task<PagedResult<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated, int page = 1);
+    Task<PagedResult<ForumTopicDto>> GetTopicsAsync(string sectionId, int page = 1);
     Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
-    Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
+    Task<PagedResult<ForumReplyDto>> GetRepliesAsync(string topicId, string? cursor = null);
     Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null);
     Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName);
     Task<ForumTopicDto> CreateTopicAsync(
@@ -127,7 +128,7 @@ public interface IChatService
     Task<List<ChatDto>> GetChatsAsync(string userId);
     Task<ChatDto> GetOrCreateChatAsync(string userId, string targetUserId);
     // TODO(Task 14): remove fully-qualified name once Matching.MessageDto ambiguity is resolved
-    Task<List<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50);
+    Task<PagedResult<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, string? cursor = null);
     Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null);
     Task<bool> ValidateAccessAsync(string chatId, string userId);
 }
