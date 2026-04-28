@@ -380,7 +380,15 @@ await UpsertAppConfigAsync("permissions", "manage_store", "admin");
 
 // registration (site-wide — see spec: require_event_invite)
 await UpsertAppConfigAsync("registration", "require_event_invite", "false");
-Console.WriteLine("  [appconfig]     10 rank_thresholds + 11 permissions + 1 registration");
+
+// pagination (runtime-tunable page sizes — see PaginationConfig.Defaults for semantics)
+await UpsertAppConfigAsync("pagination", "messages_initial", "30");
+await UpsertAppConfigAsync("pagination", "messages_batch",   "20");
+await UpsertAppConfigAsync("pagination", "replies_initial",  "20");
+await UpsertAppConfigAsync("pagination", "replies_batch",    "15");
+await UpsertAppConfigAsync("pagination", "topics_initial",   "25");
+await UpsertAppConfigAsync("pagination", "topics_batch",     "15");
+Console.WriteLine("  [appconfig]     10 rank_thresholds + 11 permissions + 1 registration + 6 pagination");
 
 // Likes + LikesReceived
 // Scenarios:
