@@ -1,5 +1,6 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Common.Models;
 using System.Collections.Generic;
 using System.Linq;
 using Xunit;
@@ -188,5 +189,24 @@ public class ChatTests
         var history = await svc.GetMessagesAsync("chat-1", "current-user");
         var persisted = history.First(m => m.Id == msg.Id);
         Assert.Equal(imageUrls, persisted.ImageUrls);
+    }
+
+    [Fact]
+    public void PagedResult_HasNextCursorAndNullableTotal()
+    {
+        var result = new PagedResult<int>
+        {
+            Items = new List<int> { 1, 2, 3 },
+            PageSize = 3,
+            HasMore = true,
+            NextCursor = "some-cursor",
+            Total = 42
+        };
+        Assert.Equal("some-cursor", result.NextCursor);
+        Assert.Equal(42, result.Total);
+
+        var noTotal = new PagedResult<int> { Items = new(), PageSize = 5, HasMore = false };
+        Assert.Null(noTotal.NextCursor);
+        Assert.Null(noTotal.Total);
     }
 }
