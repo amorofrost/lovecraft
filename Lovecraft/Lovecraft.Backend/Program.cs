@@ -222,6 +222,7 @@ if (useAzure)
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<IUserService>(),
             sp.GetRequiredService<IEventService>(),
+            sp.GetRequiredService<IAppConfigService>(),
             sp.GetRequiredService<ILogger<AzureForumService>>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IChatService, AzureChatService>();

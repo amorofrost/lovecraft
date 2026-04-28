@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
+using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Events;
@@ -23,14 +24,17 @@ public class AzureForumService : IForumService
     private readonly TableClient _usersTable;
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
+    private readonly IAppConfigService _appConfigService;
     private readonly ILogger<AzureForumService> _logger;
 
     public AzureForumService(
         TableServiceClient tableServiceClient,
         IUserService userService,
         IEventService eventService,
+        IAppConfigService appConfigService,
         ILogger<AzureForumService> logger)
     {
+        _appConfigService = appConfigService;
         _userService = userService;
         _eventService = eventService;
         _logger = logger;
@@ -130,7 +134,22 @@ public class AzureForumService : IForumService
             .OrderByDescending(t => t.IsPinned)
             .ThenByDescending(t => t.UpdatedAt)
             .ToList();
-        return new PagedResult<ForumTopicDto> { Items = items, PageSize = items.Count, HasMore = false };
+
+        var config   = await _appConfigService.GetConfigAsync();
+        var pageSize = page == 1
+            ? config.Pagination.TopicsInitial
+            : config.Pagination.TopicsBatch;
+        var offset = page == 1
+            ? 0
+            : config.Pagination.TopicsInitial + (page - 2) * config.Pagination.TopicsBatch;
+        var batch   = items.Skip(offset).Take(pageSize + 1).ToList();
+        return new PagedResult<ForumTopicDto>
+        {
+            Items    = batch.Take(pageSize).ToList(),
+            PageSize = pageSize,
+            HasMore  = batch.Count > pageSize,
+            Total    = items.Count,
+        };
     }
 
     private async Task<int> CountVisibleEventDiscussionTopicsAsync(EventDto ev, string userId, bool isElevated)
@@ -171,14 +190,38 @@ public class AzureForumService : IForumService
         if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
             return new PagedResult<ForumTopicDto>();
 
+        var config   = await _appConfigService.GetConfigAsync();
+        var pageSize = page == 1
+            ? config.Pagination.TopicsInitial
+            : config.Pagination.TopicsBatch;
+
         var pk = ForumTopicEntity.GetPartitionKey(sectionId);
-        var results = new List<ForumTopicDto>();
+        var all = new List<ForumTopicDto>();
         await foreach (var entity in _topicsTable.QueryAsync<ForumTopicEntity>(
             filter: $"PartitionKey eq '{pk}'"))
         {
-            results.Add(ToTopicDto(entity));
+            all.Add(ToTopicDto(entity));
         }
-        return new PagedResult<ForumTopicDto> { Items = results, PageSize = results.Count, HasMore = false };
+
+        var sorted = all
+            .OrderByDescending(t => t.IsPinned)
+            .ThenByDescending(t => t.UpdatedAt)
+            .ToList();
+
+        var offset = page == 1
+            ? 0
+            : config.Pagination.TopicsInitial + (page - 2) * config.Pagination.TopicsBatch;
+
+        var batch   = sorted.Skip(offset).Take(pageSize + 1).ToList();
+        var hasMore = batch.Count > pageSize;
+
+        return new PagedResult<ForumTopicDto>
+        {
+            Items    = batch.Take(pageSize).ToList(),
+            PageSize = pageSize,
+            HasMore  = hasMore,
+            Total    = sorted.Count,
+        };
     }
 
     public async Task<ForumTopicDto?> GetTopicByIdAsync(string topicId)
@@ -210,37 +253,48 @@ public class AzureForumService : IForumService
 
     public async Task<PagedResult<ForumReplyDto>> GetRepliesAsync(string topicId, string? cursor = null)
     {
+        var config   = await _appConfigService.GetConfigAsync();
+        var pageSize = cursor == null
+            ? config.Pagination.RepliesInitial
+            : config.Pagination.RepliesBatch;
+
         var pk = ForumReplyEntity.GetPartitionKey(topicId);
+        // Ascending RowKey = reversed-ticks ascending = newest reply first
+        var filter = string.IsNullOrEmpty(cursor)
+            ? $"PartitionKey eq '{pk}'"
+            : $"PartitionKey eq '{pk}' and RowKey gt '{cursor}'";
+
         var entities = new List<ForumReplyEntity>();
-        // Results come back newest-first due to reversed-ticks RK ordering
-        await foreach (var entity in _repliesTable.QueryAsync<ForumReplyEntity>(
-            filter: $"PartitionKey eq '{pk}'"))
+        await foreach (var entity in _repliesTable.QueryAsync<ForumReplyEntity>(filter: filter))
         {
             entities.Add(entity);
+            if (entities.Count == pageSize + 1) break;
         }
 
-        // Fetch current avatar for each unique author so stale cached URLs don't persist
-        // after a user updates their profile picture.
-        var authorIds = entities.Select(e => e.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
-        var avatars = new Dictionary<string, string?>();
-        var userInfo = new Dictionary<string, UserDto?>();
+        var hasMore = entities.Count > pageSize;
+        var page    = entities.Take(pageSize).ToList();
+
+        // Fetch current avatar and user info for each unique author
+        var authorIds = page.Select(e => e.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+        var avatars   = new Dictionary<string, string?>();
+        var userInfo  = new Dictionary<string, UserDto?>();
         foreach (var authorId in authorIds)
         {
-            avatars[authorId] = await GetAuthorAvatarAsync(authorId);
+            avatars[authorId]  = await GetAuthorAvatarAsync(authorId);
             userInfo[authorId] = await _userService.GetUserByIdAsync(authorId);
         }
 
-        var ordered = entities.OrderBy(e => e.CreatedAt).ToList();
         var results = new List<ForumReplyDto>();
-        foreach (var e in ordered)
-        {
-            results.Add(await ToReplyDtoAsync(
-                e,
-                avatars.GetValueOrDefault(e.AuthorId),
-                userInfo.GetValueOrDefault(e.AuthorId)));
-        }
+        foreach (var e in page)
+            results.Add(await ToReplyDtoAsync(e, avatars.GetValueOrDefault(e.AuthorId), userInfo.GetValueOrDefault(e.AuthorId)));
 
-        return new PagedResult<ForumReplyDto> { Items = results, PageSize = results.Count, HasMore = false };
+        return new PagedResult<ForumReplyDto>
+        {
+            Items      = results,
+            PageSize   = pageSize,
+            HasMore    = hasMore,
+            NextCursor = page.Count > 0 ? page.Last().RowKey : null,
+        };
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
