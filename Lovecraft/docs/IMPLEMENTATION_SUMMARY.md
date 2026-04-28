@@ -4,7 +4,7 @@
 
 A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM at `https://aloeve.club` behind Cloudflare (DNS proxy + DDoS protection) and nginx (TLS termination, HTTP→HTTPS redirect).
 
-> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, HTTPS via Cloudflare Origin Certificate, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. For **events** (visibility, invites, forum), see [EVENTS.md](./EVENTS.md). Last updated April 18, 2026.
+> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, HTTPS via Cloudflare Origin Certificate, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. For **events** (visibility, invites, forum), see [EVENTS.md](./EVENTS.md). Last updated April 28, 2026.
 
 ### Solution Structure
 
@@ -83,13 +83,13 @@ All endpoints return data in the format:
 
 #### Forum (`/api/v1/forum`)
 - `GET /api/v1/forum/event-discussions/summary` - One row per event the user may see in Talks (includes filtered topic counts)
-- `GET /api/v1/forum/event-discussions/{eventId}/topics` - Topics for that event (`sectionId` `events`), filtered by per-topic visibility — see **[EVENTS.md](./EVENTS.md)**
+- `GET /api/v1/forum/event-discussions/{eventId}/topics` - Topics for that event (`?page=1`; returns `PagedResult<ForumTopicDto>`), filtered by per-topic visibility — see **[EVENTS.md](./EVENTS.md)**
 - `GET /api/v1/forum/sections` - List forum sections
-- `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section (not used for `events`; use event-discussions path)
+- `GET /api/v1/forum/sections/{sectionId}/topics` - Get topics in section (`?page=1`; returns `PagedResult<ForumTopicDto>`; pinned-first then `UpdatedAt` desc)
 - `POST /api/v1/forum/sections/{sectionId}/topics` - Create topic in section
 - `GET /api/v1/forum/topics/{topicId}` - Get topic detail (title, content, author, pin status)
 - `PUT /api/v1/forum/topics/{topicId}` - Update topic (author + moderator; `IsPinned`/`IsLocked` require moderator+). Returns `INSUFFICIENT_RANK` or `MODERATOR_REQUIRED` on rejection.
-- `GET /api/v1/forum/topics/{topicId}/replies` - Get all replies for a topic
+- `GET /api/v1/forum/topics/{topicId}/replies` - Get cursor-paginated replies (`?cursor=<rowKey>`; returns `PagedResult<ForumReplyDto>` newest-first)
 - `POST /api/v1/forum/topics/{topicId}/replies` - Post a reply (`{ content }` body)
 
 #### Admin (`/api/v1/admin`)
@@ -98,7 +98,7 @@ All endpoints return data in the format:
 
 #### Chats (`/api/v1/chats`)
 - `GET /api/v1/chats` - List user's chats
-- `GET /api/v1/chats/{id}/messages` - Get paginated messages (`?page=1&pageSize=50`)
+- `GET /api/v1/chats/{id}/messages` - Get cursor-paginated messages (`?cursor=<rowKey>`; returns `PagedResult<MessageDto>` newest-first)
 - `POST /api/v1/chats` - Get or create private chat (`{ targetUserId }` body)
 - `POST /api/v1/chats/{id}/messages` - Send message via REST (`{ content }` body)
 
@@ -205,7 +205,7 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Testing
 
-- **264 passing** — xUnit unit + integration tests (`dotnet test Lovecraft.UnitTests`)
+- **272 passing** — xUnit unit + integration tests (`dotnet test Lovecraft.UnitTests`)
   - Existing suites: `AuthenticationTests`, `ServiceTests`, `RefreshTokenTests`, `ChatTests`, `MatchingTests`, `ForumTests` (all extended with rank/ACL coverage where applicable)
   - New suites (Roles & ACL spec):
     - `AppConfigServiceTests` — cache hits/misses, 1-hour TTL, fallback to `RankThresholds.Defaults` / `PermissionConfig.Defaults` on missing or invalid rows, `LogWarning` on parse failure
@@ -283,8 +283,9 @@ dotnet test
 - JWT authentication fully operational; all content endpoints require `[Authorize]`
 - **Azure Table Storage** active when `USE_AZURE_STORAGE=true` in `.env`; falls back to in-memory mock services when false
 - **`UserCache`** — `Services/Caching/UserCache.cs`; a `ConcurrentDictionary<string, UserEntity>` singleton registered in DI. `Program.cs` calls `LoadAsync(TableClient)` on startup (Azure mode only) to populate it with every row from the `users` table before the first request is served. `AzureUserService.GetUsersAsync` and `GetUserByIdAsync` read from the cache; all five write methods (`UpdateUser`, `IncrementCounter`, `SetStaffRole`, `SetRankOverride`, and `AzureAuthService` user-creation paths) call `_cache.Set(entity)` after each successful Azure write. `GetUsersAsync` Fisher-Yates shuffles the cache snapshot before applying skip/take so the swipe deck order is random per request. `MockUserService.GetUsersAsync` also shuffles.
-- **`appconfig` table** (new in the Roles & ACL spec) — partitions: `rank_thresholds` (10 integer rows) and `permissions` (11 string rows). Served by `AzureAppConfigService` with 1-hour `IMemoryCache`; falls back to `RankThresholds.Defaults` / `PermissionConfig.Defaults` with `LogWarning` on missing/invalid rows. Seeded by `Lovecraft.Tools.Seeder`.
-- **`IAppConfigService`** — singleton; 1-hour cached read of the `appconfig` table; fallback to code-defined defaults for missing rows. `IUserService` gained `IncrementCounterAsync` / `SetStaffRoleAsync` / `SetRankOverrideAsync`; counter increments in the Azure implementation retry 3× on ETag 412 and are wrapped in try/catch so counter failures never fail the primary operation. `IForumService` gained `UpdateTopicAsync`.
+- **`appconfig` table** — partitions: `rank_thresholds` (10 integer rows), `permissions` (11 string rows), `registration` (1 row), and `pagination` (6 rows: `messages_initial`=30, `messages_batch`=20, `replies_initial`=20, `replies_batch`=15, `topics_initial`=25, `topics_batch`=15). Served by `AzureAppConfigService` with 1-hour `IMemoryCache`; falls back to typed defaults with `LogWarning` on missing/invalid rows. Seeded by `Lovecraft.Tools.Seeder`.
+- **`IAppConfigService`** — singleton; 1-hour cached read of the `appconfig` table; fallback to code-defined defaults for missing rows. `IUserService` gained `IncrementCounterAsync` / `SetStaffRoleAsync` / `SetRankOverrideAsync`; counter increments in the Azure implementation retry 3× on ETag 412 and are wrapped in try/catch so counter failures never fail the primary operation. `IForumService` gained `UpdateTopicAsync`, cursor-based `GetRepliesAsync(topicId, cursor?)`, and offset-based `GetTopicsAsync(sectionId, page)`.
+- **Infinite-scroll pagination** — `PagedResult<T>` now carries `NextCursor?` (string, Azure RowKey) and nullable `Total`. Chat messages and forum replies use `RowKey gt cursor` Azure Table filter (O(pageSize), no full-partition scan). Forum topics use in-memory sort (pinned-first, `UpdatedAt` desc) then skip/take. Page sizes are runtime-tunable via the `appconfig` `pagination` partition; `CachingForumService` keys the topics cache by `sectionId:page`.
 - **ACL enforcement**: `PermissionGuard.MeetsAsync(user, userService, requiredLevel)` is the shared helper; `[RequireStaffRole("moderator"|"admin")]` is a synchronous filter reading only the `staffRole` JWT claim; `[RequirePermission("<key>")]` is an `IFilterFactory` that resolves the required level from `AppConfig.Permissions` at runtime and delegates to `PermissionGuard`. Error codes: `INSUFFICIENT_RANK`, `MODERATOR_REQUIRED`, `ADMIN_REQUIRED`. JWT access tokens now embed `staffRole` as a custom claim.
 - **SignalR** at `/hubs/chat` — JWT passed as `?access_token=` query string; nginx `/hubs/` location block proxies WebSocket upgrade
 - **Matching**: all controllers extract the caller's ID via `User.FindFirst(ClaimTypes.NameIdentifier)` — `"current-user"` placeholder is gone. Matches are computed at query time as the intersection of the `likes` and `likesreceived` tables; there is no dedicated `matches` table. A 1-on-1 chat is auto-created when a mutual like is detected (both mock and Azure paths).
