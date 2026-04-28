@@ -4,6 +4,7 @@ using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Store;
+using Lovecraft.Common.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Moq;
 
@@ -230,13 +231,13 @@ public class CachingTests
     public async Task Forum_GetTopics_CacheHit_DoesNotCallInner()
     {
         var inner = new Mock<IForumService>();
-        inner.Setup(s => s.GetTopicsAsync("sec1")).ReturnsAsync(new List<ForumTopicDto> { new() });
+        inner.Setup(s => s.GetTopicsAsync("sec1", It.IsAny<int>())).ReturnsAsync(new PagedResult<ForumTopicDto> { Items = new List<ForumTopicDto> { new() }, PageSize = 1 });
         var svc = new CachingForumService(inner.Object, NewCache());
 
         await svc.GetTopicsAsync("sec1");
         await svc.GetTopicsAsync("sec1");
 
-        inner.Verify(s => s.GetTopicsAsync("sec1"), Times.Once);
+        inner.Verify(s => s.GetTopicsAsync("sec1", It.IsAny<int>()), Times.Once);
     }
 
     [Fact]
@@ -256,13 +257,13 @@ public class CachingTests
     public async Task Forum_GetReplies_CacheHit_DoesNotCallInner()
     {
         var inner = new Mock<IForumService>();
-        inner.Setup(s => s.GetRepliesAsync("t1")).ReturnsAsync(new List<ForumReplyDto> { new() });
+        inner.Setup(s => s.GetRepliesAsync("t1", It.IsAny<string>())).ReturnsAsync(new PagedResult<ForumReplyDto> { Items = new List<ForumReplyDto> { new() }, PageSize = 1 });
         var svc = new CachingForumService(inner.Object, NewCache());
 
         await svc.GetRepliesAsync("t1");
         await svc.GetRepliesAsync("t1");
 
-        inner.Verify(s => s.GetRepliesAsync("t1"), Times.Once);
+        inner.Verify(s => s.GetRepliesAsync("t1", It.IsAny<string>()), Times.Once);
     }
 
     [Fact]
@@ -270,7 +271,7 @@ public class CachingTests
     {
         var inner = new Mock<IForumService>();
         inner.Setup(s => s.GetTopicByIdAsync("t1")).ReturnsAsync(new ForumTopicDto { Id = "t1" });
-        inner.Setup(s => s.GetRepliesAsync("t1")).ReturnsAsync(new List<ForumReplyDto>());
+        inner.Setup(s => s.GetRepliesAsync("t1", It.IsAny<string>())).ReturnsAsync(new PagedResult<ForumReplyDto> { Items = new List<ForumReplyDto>(), PageSize = 0 });
         inner.Setup(s => s.CreateReplyAsync("t1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
              .ReturnsAsync(new ForumReplyDto());
         var svc = new CachingForumService(inner.Object, NewCache());
@@ -282,6 +283,6 @@ public class CachingTests
         await svc.GetRepliesAsync("t1");    // must re-fetch
 
         inner.Verify(s => s.GetTopicByIdAsync("t1"), Times.Exactly(2));
-        inner.Verify(s => s.GetRepliesAsync("t1"), Times.Exactly(2));
+        inner.Verify(s => s.GetRepliesAsync("t1", It.IsAny<string>()), Times.Exactly(2));
     }
 }

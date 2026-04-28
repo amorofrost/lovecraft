@@ -125,10 +125,10 @@ public class AdminController : ControllerBase
         if (string.IsNullOrEmpty(userId))
             return Unauthorized(ApiResponse<List<ForumTopicDto>>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
 
-        var topics = await _forum.GetEventDiscussionTopicsAsync(userId, eventId, isElevated: true);
-        if (topics is null)
+        var topicsResult = await _forum.GetEventDiscussionTopicsAsync(userId, eventId, isElevated: true);
+        if (topicsResult is null)
             return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Event not found"));
-        return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
+        return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topicsResult.Items));
     }
 
     [HttpPost("events/{eventId}/forum-topics")]
@@ -244,8 +244,8 @@ public class AdminController : ControllerBase
         var section = (await _forum.GetSectionsAsync()).FirstOrDefault(s => s.Id == sectionId);
         if (section is null)
             return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Section not found"));
-        var topics = await _forum.GetTopicsAsync(sectionId);
-        return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
+        var topicsResult = await _forum.GetTopicsAsync(sectionId);
+        return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topicsResult.Items));
     }
 
     [HttpPost("forum-sections/{sectionId}/topics")]

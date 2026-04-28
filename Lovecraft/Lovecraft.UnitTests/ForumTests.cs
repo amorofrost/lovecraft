@@ -136,7 +136,7 @@ public class ForumTests : IDisposable
         Assert.Equal(0, result.ReplyCount);
 
         var topics = await service.GetTopicsAsync(SectionId);
-        Assert.Contains(topics, t => t.Id == result.Id);
+        Assert.Contains(topics.Items, t => t.Id == result.Id);
     }
 
     [Fact]
@@ -175,14 +175,14 @@ public class ForumTests : IDisposable
     {
         var service = CreateService();
 
-        var topics = await service.GetTopicsAsync(SectionId);
+        var topicsResult = await service.GetTopicsAsync(SectionId);
 
-        Assert.Contains(topics, t => t.IsPinned);
-        Assert.Contains(topics, t => !t.IsPinned);
+        Assert.Contains(topicsResult.Items, t => t.IsPinned);
+        Assert.Contains(topicsResult.Items, t => !t.IsPinned);
 
         // All pinned topics must appear before all unpinned topics
         bool seenUnpinned = false;
-        foreach (var topic in topics)
+        foreach (var topic in topicsResult.Items)
         {
             if (!topic.IsPinned) seenUnpinned = true;
             if (seenUnpinned && topic.IsPinned)
@@ -197,16 +197,16 @@ public class ForumTests : IDisposable
     {
         var service = CreateService();
 
-        var topics = await service.GetTopicsAsync(SectionId);
-        var topicId = topics.First().Id;
-        var before = topics.First().ReplyCount;
+        var topicsResult = await service.GetTopicsAsync(SectionId);
+        var topicId = topicsResult.Items.First().Id;
+        var before = topicsResult.Items.First().ReplyCount;
 
         await service.CreateReplyAsync(
             topicId, "user1", "TestUser",
             "This is a reply with enough content to be valid");
 
-        topics = await service.GetTopicsAsync(SectionId);
-        var after = topics.First(t => t.Id == topicId).ReplyCount;
+        topicsResult = await service.GetTopicsAsync(SectionId);
+        var after = topicsResult.Items.First(t => t.Id == topicId).ReplyCount;
 
         Assert.Equal(before + 1, after);
     }

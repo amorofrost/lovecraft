@@ -56,21 +56,54 @@ public class ChatTests
     }
 
     [Fact]
-    public async Task GetMessagesAsync_ReturnsMessagesOldestFirst()
+    public async Task GetMessagesAsync_ReturnsNewestFirst()
     {
         var svc = CreateService();
-        var msgs = await svc.GetMessagesAsync("chat-1", "current-user");
-        Assert.NotEmpty(msgs);
-        for (int i = 1; i < msgs.Count; i++)
-            Assert.True(msgs[i].Timestamp >= msgs[i - 1].Timestamp);
+        var result = await svc.GetMessagesAsync("chat-1", "current-user");
+        Assert.NotEmpty(result.Items);
+        var timestamps = result.Items.Select(m => m.Timestamp).ToList();
+        for (int i = 0; i < timestamps.Count - 1; i++)
+            Assert.True(timestamps[i] >= timestamps[i + 1], "Items should be newest-first");
     }
 
     [Fact]
-    public async Task GetMessagesAsync_ReturnsEmptyForNonParticipant()
+    public async Task GetMessagesAsync_NoCursor_HasMoreWhenMoreExist()
     {
         var svc = CreateService();
-        var msgs = await svc.GetMessagesAsync("chat-1", "stranger-user");
-        Assert.Empty(msgs);
+        var chat = await svc.GetOrCreateChatAsync("user-test-a", "user-test-b");
+        for (int i = 0; i < 32; i++)
+            await svc.SendMessageAsync(chat.Id, "user-test-a", $"msg {i}");
+
+        var result = await svc.GetMessagesAsync(chat.Id, "user-test-a");
+        Assert.Equal(30, result.Items.Count);   // MessagesInitial default
+        Assert.True(result.HasMore);
+        Assert.NotNull(result.NextCursor);
+    }
+
+    [Fact]
+    public async Task GetMessagesAsync_WithCursor_ReturnsOlderBatch()
+    {
+        var svc = CreateService();
+        var chat = await svc.GetOrCreateChatAsync("user-cur-a", "user-cur-b");
+        for (int i = 0; i < 35; i++)
+            await svc.SendMessageAsync(chat.Id, "user-cur-a", $"msg {i}");
+
+        var page1 = await svc.GetMessagesAsync(chat.Id, "user-cur-a");
+        Assert.NotNull(page1.NextCursor);
+
+        var page2 = await svc.GetMessagesAsync(chat.Id, "user-cur-a", page1.NextCursor);
+        Assert.NotEmpty(page2.Items);
+        var page1OldestTime = page1.Items.Last().Timestamp;
+        Assert.All(page2.Items, m => Assert.True(m.Timestamp <= page1OldestTime));
+    }
+
+    [Fact]
+    public async Task GetMessagesAsync_ReturnsEmptyPagedResult_ForNonParticipant()
+    {
+        var svc = CreateService();
+        var result = await svc.GetMessagesAsync("chat-1", "stranger-user");
+        Assert.Empty(result.Items);
+        Assert.False(result.HasMore);
     }
 
     [Fact]
@@ -79,7 +112,7 @@ public class ChatTests
         var svc = CreateService();
         var msg = await svc.SendMessageAsync("chat-1", "current-user", "Hello!");
         var history = await svc.GetMessagesAsync("chat-1", "current-user");
-        Assert.Contains(history, m => m.Id == msg.Id && m.Content == "Hello!");
+        Assert.Contains(history.Items, m => m.Id == msg.Id && m.Content == "Hello!");
     }
 
     [Fact]
@@ -115,14 +148,6 @@ public class ChatTests
         Assert.False(result);
     }
 
-    [Fact]
-    public async Task GetMessagesAsync_PaginatesCorrectly()
-    {
-        var svc = CreateService();
-        // chat-1 has 3 seeded messages; page 1 with pageSize 2 → 2 messages
-        var page1 = await svc.GetMessagesAsync("chat-1", "current-user", page: 1, pageSize: 2);
-        Assert.Equal(2, page1.Count);
-    }
 
     // --- Hub path tests (via MockChatService, which ChatHub delegates to) ---
 
@@ -161,7 +186,7 @@ public class ChatTests
         var svc = CreateService();
         var msg = await svc.SendMessageAsync("chat-1", "current-user", "Hub send test");
         var recipientView = await svc.GetMessagesAsync("chat-1", "user-anna");
-        Assert.Contains(recipientView, m => m.Id == msg.Id);
+        Assert.Contains(recipientView.Items, m => m.Id == msg.Id);
     }
 
     [Fact]
@@ -172,7 +197,7 @@ public class ChatTests
         var svc = CreateService();
         var msg = await svc.SendMessageAsync("chat-1", "current-user", "Self-visible");
         var senderView = await svc.GetMessagesAsync("chat-1", "current-user");
-        Assert.Contains(senderView, m => m.Id == msg.Id);
+        Assert.Contains(senderView.Items, m => m.Id == msg.Id);
     }
 
     [Fact]
@@ -187,7 +212,7 @@ public class ChatTests
         var msg = await svc.SendMessageAsync("chat-1", "current-user", "See photos!", imageUrls);
         Assert.Equal(imageUrls, msg.ImageUrls);
         var history = await svc.GetMessagesAsync("chat-1", "current-user");
-        var persisted = history.First(m => m.Id == msg.Id);
+        var persisted = history.Items.First(m => m.Id == msg.Id);
         Assert.Equal(imageUrls, persisted.ImageUrls);
     }
 

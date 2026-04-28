@@ -2,6 +2,7 @@ using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Helpers;
 
@@ -57,7 +58,7 @@ public class MockForumService : IForumService
         return list.OrderBy(x => x.Date).ToList();
     }
 
-    public async Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated)
+    public async Task<PagedResult<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated, int page = 1)
     {
         var ev = isElevated
             ? await _eventService.GetEventByIdAdminAsync(eventId)
@@ -73,7 +74,7 @@ public class MockForumService : IForumService
             .OrderByDescending(t => t.IsPinned)
             .ThenByDescending(t => t.UpdatedAt)
             .ToList();
-        return topics;
+        return new PagedResult<ForumTopicDto> { Items = topics, PageSize = topics.Count, HasMore = false };
     }
 
     private static string? ResolveEventId(ForumTopicDto t)
@@ -87,16 +88,16 @@ public class MockForumService : IForumService
         return null;
     }
 
-    public Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
+    public Task<PagedResult<ForumTopicDto>> GetTopicsAsync(string sectionId, int page = 1)
     {
         if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult(new List<ForumTopicDto>());
+            return Task.FromResult(new PagedResult<ForumTopicDto>());
 
         var topics = MockDataStore.ForumTopics
             .Where(t => t.SectionId == sectionId)
             .OrderByDescending(t => t.IsPinned)
             .ToList();
-        return Task.FromResult(topics);
+        return Task.FromResult(new PagedResult<ForumTopicDto> { Items = topics, PageSize = topics.Count, HasMore = false });
     }
 
     public Task<ForumTopicDto?> GetTopicByIdAsync(string topicId)
@@ -105,7 +106,7 @@ public class MockForumService : IForumService
         return Task.FromResult(topic);
     }
 
-    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<PagedResult<ForumReplyDto>> GetRepliesAsync(string topicId, string? cursor = null)
     {
         var stored = MockDataStore.ForumReplies
             .Where(r => r.TopicId == topicId)
@@ -141,7 +142,7 @@ public class MockForumService : IForumService
             });
         }
 
-        return list;
+        return new PagedResult<ForumReplyDto> { Items = list, PageSize = list.Count, HasMore = false };
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)

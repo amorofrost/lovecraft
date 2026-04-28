@@ -1,6 +1,7 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 
 namespace Lovecraft.Backend.Services;
 
@@ -61,19 +62,38 @@ public class MockChatService : IChatService
         return Task.FromResult(chat);
     }
 
-    public Task<List<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50)
+    public Task<PagedResult<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(
+        string chatId, string userId, string? cursor = null)
     {
         if (!MockDataStore.Chats.Any(c => c.Id == chatId && c.Participants.Contains(userId)))
-            return Task.FromResult(new List<Lovecraft.Common.DTOs.Chats.MessageDto>());
+            return Task.FromResult(new PagedResult<Lovecraft.Common.DTOs.Chats.MessageDto>());
 
-        var all = MockDataStore.Messages.GetValueOrDefault(chatId) ?? new();
-        var paged = all
+        var pageSize = cursor == null
+            ? PaginationConfig.Defaults.MessagesInitial
+            : PaginationConfig.Defaults.MessagesBatch;
+
+        var sorted = (MockDataStore.Messages.GetValueOrDefault(chatId) ?? new())
             .OrderByDescending(m => m.Timestamp)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .OrderBy(m => m.Timestamp) // oldest-first to client
             .ToList();
-        return Task.FromResult(paged);
+
+        var startIndex = 0;
+        if (cursor != null)
+        {
+            var idx = sorted.FindIndex(m => m.Id == cursor);
+            startIndex = idx >= 0 ? idx + 1 : 0;
+        }
+
+        var batch = sorted.Skip(startIndex).Take(pageSize + 1).ToList();
+        var hasMore = batch.Count > pageSize;
+        var items = batch.Take(pageSize).ToList();
+
+        return Task.FromResult(new PagedResult<Lovecraft.Common.DTOs.Chats.MessageDto>
+        {
+            Items      = items,
+            PageSize   = pageSize,
+            HasMore    = hasMore,
+            NextCursor = items.Count > 0 ? items.Last().Id : null,
+        });
     }
 
     public Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null)

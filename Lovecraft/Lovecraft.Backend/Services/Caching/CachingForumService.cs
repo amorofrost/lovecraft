@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 
 namespace Lovecraft.Backend.Services.Caching;
 
@@ -50,16 +51,16 @@ public class CachingForumService : IForumService
     public Task<List<EventDiscussionSectionDto>> GetEventDiscussionSectionsAsync(string userId, bool isElevated) =>
         _inner.GetEventDiscussionSectionsAsync(userId, isElevated);
 
-    public Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated) =>
-        _inner.GetEventDiscussionTopicsAsync(userId, eventId, isElevated);
+    public Task<PagedResult<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated, int page = 1) =>
+        _inner.GetEventDiscussionTopicsAsync(userId, eventId, isElevated, page);
 
-    public async Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
+    public async Task<PagedResult<ForumTopicDto>> GetTopicsAsync(string sectionId, int page = 1)
     {
         var key = TopicsKey(sectionId);
-        if (_cache.TryGetValue(key, out List<ForumTopicDto>? cached) && cached is not null)
+        if (_cache.TryGetValue(key, out PagedResult<ForumTopicDto>? cached) && cached is not null)
             return cached;
 
-        var result = await _inner.GetTopicsAsync(sectionId);
+        var result = await _inner.GetTopicsAsync(sectionId, page);
         _cache.Set(key, result, TopicsTtl);
         return result;
     }
@@ -76,13 +77,13 @@ public class CachingForumService : IForumService
         return result;
     }
 
-    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<PagedResult<ForumReplyDto>> GetRepliesAsync(string topicId, string? cursor = null)
     {
         var key = RepliesKey(topicId);
-        if (_cache.TryGetValue(key, out List<ForumReplyDto>? cached) && cached is not null)
+        if (_cache.TryGetValue(key, out PagedResult<ForumReplyDto>? cached) && cached is not null)
             return cached;
 
-        var result = await _inner.GetRepliesAsync(topicId);
+        var result = await _inner.GetRepliesAsync(topicId, cursor);
         _cache.Set(key, result, RepliesTtl);
         return result;
     }
@@ -192,7 +193,7 @@ public class CachingForumService : IForumService
         if (ok)
         {
             _cache.Remove(SectionsKey);
-            foreach (var t in before)
+            foreach (var t in before.Items)
             {
                 _cache.Remove(TopicKey(t.Id));
                 _cache.Remove(RepliesKey(t.Id));

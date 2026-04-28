@@ -35,14 +35,14 @@ public class ChatsController : ControllerBase
     }
 
     [HttpGet("{id}/messages")]
-    public async Task<ActionResult<ApiResponse<List<MessageDto>>>> GetMessages(
-        string id, [FromQuery] int page = 1)
+    public async Task<ActionResult<ApiResponse<PagedResult<MessageDto>>>> GetMessages(
+        string id, [FromQuery] string? cursor = null)
     {
         if (!await _chatService.ValidateAccessAsync(id, CurrentUserId))
             return Forbid();
 
-        var messages = await _chatService.GetMessagesAsync(id, CurrentUserId, page);
-        return Ok(ApiResponse<List<MessageDto>>.SuccessResponse(messages));
+        var messages = await _chatService.GetMessagesAsync(id, CurrentUserId, cursor);
+        return Ok(ApiResponse<PagedResult<MessageDto>>.SuccessResponse(messages));
     }
 
     [HttpPost]

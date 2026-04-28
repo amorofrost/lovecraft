@@ -78,15 +78,16 @@ public class ForumController : ControllerBase
         var isElevated = staff is "moderator" or "admin";
         try
         {
-            var topics = await _forumService.GetEventDiscussionTopicsAsync(userId, eventId, isElevated);
-            if (topics is null)
+            var topicsResult = await _forumService.GetEventDiscussionTopicsAsync(userId, eventId, isElevated);
+            if (topicsResult is null)
                 return NotFound(ApiResponse<List<ForumTopicDto>>.ErrorResponse("NOT_FOUND", "Event discussions not available"));
 
             var callerRank = await GetCallerRankAsync();
-            if (callerRank == UserRank.Novice)
-                topics = topics.Where(t => t.NoviceVisible).ToList();
+            var topicsList = callerRank == UserRank.Novice
+                ? topicsResult.Items.Where(t => t.NoviceVisible).ToList()
+                : topicsResult.Items;
 
-            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
+            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topicsList));
         }
         catch (Exception ex)
         {
@@ -134,12 +135,13 @@ public class ForumController : ControllerBase
                     ApiResponse<List<ForumTopicDto>>.ErrorResponse(
                         AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
 
-            var topics = await _forumService.GetTopicsAsync(sectionId);
+            var topicsResult = await _forumService.GetTopicsAsync(sectionId);
             var callerRank = await GetCallerRankAsync();
-            if (callerRank == UserRank.Novice)
-                topics = topics.Where(t => t.NoviceVisible).ToList();
+            var topicsList = callerRank == UserRank.Novice
+                ? topicsResult.Items.Where(t => t.NoviceVisible).ToList()
+                : topicsResult.Items;
 
-            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topics));
+            return Ok(ApiResponse<List<ForumTopicDto>>.SuccessResponse(topicsList));
         }
         catch (Exception ex)
         {
@@ -197,8 +199,8 @@ public class ForumController : ControllerBase
             if (!await CallerMayAccessEventTopicContentAsync(topic))
                 return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
 
-            var replies = await _forumService.GetRepliesAsync(topicId);
-            return Ok(ApiResponse<List<ForumReplyDto>>.SuccessResponse(replies));
+            var repliesResult = await _forumService.GetRepliesAsync(topicId);
+            return Ok(ApiResponse<List<ForumReplyDto>>.SuccessResponse(repliesResult.Items));
         }
         catch (Exception ex)
         {

@@ -8,6 +8,7 @@ using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 
 namespace Lovecraft.Backend.Services.Azure;
 
@@ -101,7 +102,7 @@ public class AzureForumService : IForumService
         return list.OrderBy(x => x.Date).ToList();
     }
 
-    public async Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated)
+    public async Task<PagedResult<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated, int page = 1)
     {
         var ev = isElevated
             ? await _eventService.GetEventByIdAdminAsync(eventId)
@@ -125,10 +126,11 @@ public class AzureForumService : IForumService
             results.Add(dto);
         }
 
-        return results
+        var items = results
             .OrderByDescending(t => t.IsPinned)
             .ThenByDescending(t => t.UpdatedAt)
             .ToList();
+        return new PagedResult<ForumTopicDto> { Items = items, PageSize = items.Count, HasMore = false };
     }
 
     private async Task<int> CountVisibleEventDiscussionTopicsAsync(EventDto ev, string userId, bool isElevated)
@@ -164,10 +166,10 @@ public class AzureForumService : IForumService
         return null;
     }
 
-    public async Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId)
+    public async Task<PagedResult<ForumTopicDto>> GetTopicsAsync(string sectionId, int page = 1)
     {
         if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
-            return new List<ForumTopicDto>();
+            return new PagedResult<ForumTopicDto>();
 
         var pk = ForumTopicEntity.GetPartitionKey(sectionId);
         var results = new List<ForumTopicDto>();
@@ -176,7 +178,7 @@ public class AzureForumService : IForumService
         {
             results.Add(ToTopicDto(entity));
         }
-        return results;
+        return new PagedResult<ForumTopicDto> { Items = results, PageSize = results.Count, HasMore = false };
     }
 
     public async Task<ForumTopicDto?> GetTopicByIdAsync(string topicId)
@@ -206,7 +208,7 @@ public class AzureForumService : IForumService
         }
     }
 
-    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<PagedResult<ForumReplyDto>> GetRepliesAsync(string topicId, string? cursor = null)
     {
         var pk = ForumReplyEntity.GetPartitionKey(topicId);
         var entities = new List<ForumReplyEntity>();
@@ -238,7 +240,7 @@ public class AzureForumService : IForumService
                 userInfo.GetValueOrDefault(e.AuthorId)));
         }
 
-        return results;
+        return new PagedResult<ForumReplyDto> { Items = results, PageSize = results.Count, HasMore = false };
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
@@ -774,7 +776,7 @@ public class AzureForumService : IForumService
         }
 
         var topics = await GetTopicsAsync(sectionId);
-        foreach (var t in topics)
+        foreach (var t in topics.Items)
             await DeleteTopicAsync(t.Id).ConfigureAwait(false);
 
         try

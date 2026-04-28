@@ -5,6 +5,7 @@ using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 
 namespace Lovecraft.Backend.Services.Azure;
 
@@ -106,33 +107,51 @@ public class AzureChatService : IChatService
         };
     }
 
-    public async Task<List<MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50)
+    public async Task<PagedResult<MessageDto>> GetMessagesAsync(string chatId, string userId, string? cursor = null)
     {
         if (!await ValidateAccessAsync(chatId, userId))
-            return new List<MessageDto>();
+            return new PagedResult<MessageDto>();
 
-        // Fetch all messages for this chat (inverted ticks = newest first in storage)
-        // Then skip/take for pagination, re-reverse to oldest-first for client
+        var pageSize = cursor == null
+            ? PaginationConfig.Defaults.MessagesInitial
+            : PaginationConfig.Defaults.MessagesBatch;
+
+        // Storage rows already use inverted-ticks rowKey so natural order = newest-first
         var all = new List<MessageEntity>();
         await foreach (var entity in _messagesTable.QueryAsync<MessageEntity>(e => e.PartitionKey == chatId))
             all.Add(entity);
 
-        return all
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .OrderBy(e => e.SentAt) // oldest-first to client
-            .Select(e => new MessageDto
-            {
-                Id = e.MessageId,
-                ChatId = chatId,
-                SenderId = e.SenderId,
-                Content = e.Content,
-                Timestamp = e.SentAt,
-                Read = e.Read,
-                Type = MessageType.Text,
-                ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>()
-            })
-            .ToList();
+        // Sort newest-first by SentAt
+        var sorted = all.OrderByDescending(e => e.SentAt).ToList();
+
+        var startIndex = 0;
+        if (cursor != null)
+        {
+            var idx = sorted.FindIndex(e => e.MessageId == cursor);
+            startIndex = idx >= 0 ? idx + 1 : 0;
+        }
+
+        var batch = sorted.Skip(startIndex).Take(pageSize + 1).ToList();
+        var hasMore = batch.Count > pageSize;
+        var items = batch.Take(pageSize).Select(e => new MessageDto
+        {
+            Id = e.MessageId,
+            ChatId = chatId,
+            SenderId = e.SenderId,
+            Content = e.Content,
+            Timestamp = e.SentAt,
+            Read = e.Read,
+            Type = MessageType.Text,
+            ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>()
+        }).ToList();
+
+        return new PagedResult<MessageDto>
+        {
+            Items      = items,
+            PageSize   = pageSize,
+            HasMore    = hasMore,
+            NextCursor = items.Count > 0 ? items.Last().Id : null,
+        };
     }
 
     public async Task<MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null)
