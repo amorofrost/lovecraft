@@ -71,10 +71,25 @@ public class MockForumService : IForumService
         var topics = MockDataStore.ForumTopics
             .Where(t => t.SectionId == EventSectionId && string.Equals(ResolveEventId(t), eventId, StringComparison.Ordinal))
             .Where(t => EventTopicAccess.CanViewEventTopic(ev, t, userId, isElevated))
+            .ToList();
+        var pageSize = page == 1
+            ? PaginationConfig.Defaults.TopicsInitial
+            : PaginationConfig.Defaults.TopicsBatch;
+        var sorted = topics
             .OrderByDescending(t => t.IsPinned)
             .ThenByDescending(t => t.UpdatedAt)
             .ToList();
-        return new PagedResult<ForumTopicDto> { Items = topics, PageSize = topics.Count, HasMore = false };
+        var offset = page == 1
+            ? 0
+            : PaginationConfig.Defaults.TopicsInitial + (page - 2) * PaginationConfig.Defaults.TopicsBatch;
+        var batch = sorted.Skip(offset).Take(pageSize + 1).ToList();
+        return new PagedResult<ForumTopicDto>
+        {
+            Items    = batch.Take(pageSize).ToList(),
+            PageSize = pageSize,
+            HasMore  = batch.Count > pageSize,
+            Total    = sorted.Count,
+        };
     }
 
     private static string? ResolveEventId(ForumTopicDto t)
@@ -93,11 +108,30 @@ public class MockForumService : IForumService
         if (sectionId.Equals(EventSectionId, StringComparison.OrdinalIgnoreCase))
             return Task.FromResult(new PagedResult<ForumTopicDto>());
 
-        var topics = MockDataStore.ForumTopics
+        var pageSize = page == 1
+            ? PaginationConfig.Defaults.TopicsInitial
+            : PaginationConfig.Defaults.TopicsBatch;
+
+        var sorted = MockDataStore.ForumTopics
             .Where(t => t.SectionId == sectionId)
             .OrderByDescending(t => t.IsPinned)
+            .ThenByDescending(t => t.UpdatedAt)
             .ToList();
-        return Task.FromResult(new PagedResult<ForumTopicDto> { Items = topics, PageSize = topics.Count, HasMore = false });
+
+        var offset = page == 1
+            ? 0
+            : PaginationConfig.Defaults.TopicsInitial + (page - 2) * PaginationConfig.Defaults.TopicsBatch;
+
+        var batch = sorted.Skip(offset).Take(pageSize + 1).ToList();
+        var hasMore = batch.Count > pageSize;
+
+        return Task.FromResult(new PagedResult<ForumTopicDto>
+        {
+            Items    = batch.Take(pageSize).ToList(),
+            PageSize = pageSize,
+            HasMore  = hasMore,
+            Total    = sorted.Count,
+        });
     }
 
     public Task<ForumTopicDto?> GetTopicByIdAsync(string topicId)
@@ -108,41 +142,63 @@ public class MockForumService : IForumService
 
     public async Task<PagedResult<ForumReplyDto>> GetRepliesAsync(string topicId, string? cursor = null)
     {
+        var pageSize = cursor == null
+            ? PaginationConfig.Defaults.RepliesInitial
+            : PaginationConfig.Defaults.RepliesBatch;
+
         var stored = MockDataStore.ForumReplies
             .Where(r => r.TopicId == topicId)
-            .OrderBy(r => r.CreatedAt)
+            .OrderByDescending(r => r.CreatedAt)
             .ToList();
 
-        var authorIds = stored.Select(r => r.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct();
+        var startIndex = 0;
+        if (cursor != null)
+        {
+            var idx = stored.FindIndex(r => r.Id == cursor);
+            startIndex = idx >= 0 ? idx + 1 : 0;
+        }
+
+        var batch = stored.Skip(startIndex).Take(pageSize + 1).ToList();
+        var hasMore = batch.Count > pageSize;
+        var page = batch.Take(pageSize).ToList();
+
+        var authorIds = page.Select(r => r.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct();
         var authors = new Dictionary<string, UserDto?>();
         foreach (var id in authorIds)
             authors[id] = await _userService.GetUserByIdAsync(id);
 
-        var list = new List<ForumReplyDto>();
-        foreach (var r in stored.OrderBy(x => x.CreatedAt))
+        var items = new List<ForumReplyDto>();
+        foreach (var r in page)
         {
             var (urls, total) = string.IsNullOrEmpty(r.AuthorId)
                 ? (new List<string>(), 0)
                 : await _eventService.GetUserEventBadgePreviewAsync(r.AuthorId);
-            list.Add(new ForumReplyDto
+            var author = authors.GetValueOrDefault(r.AuthorId);
+            items.Add(new ForumReplyDto
             {
-                Id = r.Id,
-                TopicId = r.TopicId,
-                AuthorId = r.AuthorId,
-                AuthorName = r.AuthorName,
-                AuthorAvatar = r.AuthorAvatar,
-                Content = r.Content,
-                CreatedAt = r.CreatedAt,
-                Likes = r.Likes,
-                ImageUrls = r.ImageUrls,
-                AuthorRank = authors.GetValueOrDefault(r.AuthorId)?.Rank ?? UserRank.Novice,
-                AuthorStaffRole = authors.GetValueOrDefault(r.AuthorId)?.StaffRole ?? StaffRole.None,
-                AuthorEventBadgeImageUrls = urls,
+                Id                         = r.Id,
+                TopicId                    = r.TopicId,
+                AuthorId                   = r.AuthorId,
+                AuthorName                 = r.AuthorName,
+                AuthorAvatar               = r.AuthorAvatar,
+                Content                    = r.Content,
+                CreatedAt                  = r.CreatedAt,
+                Likes                      = r.Likes,
+                ImageUrls                  = r.ImageUrls ?? new(),
+                AuthorRank                 = author?.Rank ?? UserRank.Novice,
+                AuthorStaffRole            = author?.StaffRole ?? StaffRole.None,
+                AuthorEventBadgeImageUrls  = urls,
                 AuthorEventBadgeTotalCount = total,
             });
         }
 
-        return new PagedResult<ForumReplyDto> { Items = list, PageSize = list.Count, HasMore = false };
+        return new PagedResult<ForumReplyDto>
+        {
+            Items      = items,
+            PageSize   = pageSize,
+            HasMore    = hasMore,
+            NextCursor = items.Count > 0 ? items.Last().Id : null,
+        };
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)

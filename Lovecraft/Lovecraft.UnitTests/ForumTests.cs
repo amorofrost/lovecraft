@@ -3,6 +3,7 @@ using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.Enums;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -238,5 +239,84 @@ public class ForumTests : IDisposable
         // With only 1 reply and no other activity, user is still novice (threshold 5)
         Assert.Equal(UserRank.Novice, user!.Rank);
         MockDataStore.UserActivity.Clear();
+    }
+
+    // ── GetReplies pagination ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetReplies_NoCursor_ReturnsInitialPage_NewestFirst()
+    {
+        var service = CreateService();
+        // seed 22 replies (more than RepliesInitial default of 20)
+        var topic = await service.CreateTopicAsync(SectionId, "u1", "User One", "Paginate replies", "Content for pagination test");
+        for (int i = 0; i < 22; i++)
+            await service.CreateReplyAsync(topic.Id, "u1", "User One", $"reply {i}");
+
+        var result = await service.GetRepliesAsync(topic.Id);
+        Assert.Equal(20, result.Items.Count);
+        Assert.True(result.HasMore);
+        Assert.NotNull(result.NextCursor);
+        // newest first
+        var times = result.Items.Select(r => r.CreatedAt).ToList();
+        for (int i = 0; i < times.Count - 1; i++)
+            Assert.True(times[i] >= times[i + 1]);
+    }
+
+    [Fact]
+    public async Task GetReplies_WithCursor_ReturnsOlderBatch()
+    {
+        var service = CreateService();
+        var topic = await service.CreateTopicAsync(SectionId, "u1", "User One", "Cursor replies", "Content for cursor test");
+        for (int i = 0; i < 25; i++)
+            await service.CreateReplyAsync(topic.Id, "u1", "User One", $"reply {i}");
+
+        var page1 = await service.GetRepliesAsync(topic.Id);
+        var page2 = await service.GetRepliesAsync(topic.Id, page1.NextCursor);
+
+        Assert.NotEmpty(page2.Items);
+        var page1OldestTime = page1.Items.Last().CreatedAt;
+        Assert.All(page2.Items, r => Assert.True(r.CreatedAt <= page1OldestTime));
+    }
+
+    // ── GetTopics pagination ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetTopics_Page1_ReturnsTopicsInitialCount()
+    {
+        var service = CreateService();
+        for (int i = 0; i < 27; i++)
+            await service.CreateTopicAsync(SectionId, "u1", "User One", $"topic {i}", "Content body");
+
+        var result = await service.GetTopicsAsync(SectionId, page: 1);
+        Assert.Equal(25, result.Items.Count);   // TopicsInitial default
+        Assert.True(result.HasMore);
+        Assert.Equal(31, result.Total);
+    }
+
+    [Fact]
+    public async Task GetTopics_Page2_ReturnsNextBatch()
+    {
+        var service = CreateService();
+        for (int i = 0; i < 30; i++)
+            await service.CreateTopicAsync(SectionId, "u1", "User One", $"topic {i}", "Content body");
+
+        var page2 = await service.GetTopicsAsync(SectionId, page: 2);
+        Assert.Equal(9, page2.Items.Count);    // 34 total (4 seeded + 30) - 25 = 9 on page 2
+        Assert.False(page2.HasMore);
+    }
+
+    [Fact]
+    public async Task GetTopics_ReturnsPinnedFirst_Paginated()
+    {
+        var service = CreateService();
+        for (int i = 0; i < 3; i++)
+            await service.CreateTopicAsync(SectionId, "u1", "User One", $"regular {i}", "Content body");
+        var pinned = await service.CreateTopicAsync(SectionId, "u1", "User One", "pinned", "Content body");
+
+        var stored = MockDataStore.ForumTopics.First(t => t.Id == pinned.Id);
+        stored.IsPinned = true;
+
+        var result = await service.GetTopicsAsync(SectionId, 1);
+        Assert.True(result.Items[0].IsPinned);
     }
 }
