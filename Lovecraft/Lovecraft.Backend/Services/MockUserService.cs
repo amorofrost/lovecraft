@@ -51,6 +51,7 @@ public class MockUserService : IUserService
         existing.Preferences = user.Preferences;
         existing.Settings = user.Settings;
         existing.InstagramHandle = user.InstagramHandle;
+        existing.Prompts = user.Prompts;
 
         var config = await _appConfig.GetConfigAsync();
         return AugmentWithRank(existing, config.Ranks);

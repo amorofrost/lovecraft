@@ -234,4 +234,45 @@ public class ServiceTests
 
         MockDataStore.UserActivity.Clear();
     }
+
+    [Fact]
+    public async Task MockUserService_UpdateUser_RoundTripsPrompts()
+    {
+        var svc = new MockUserService(new MockAppConfigService());
+
+        // Get an existing mock user
+        var existing = MockDataStore.Users.First();
+        var userId = existing.Id;
+
+        // Create a payload with Prompts
+        var payload = new UserDto
+        {
+            Id = existing.Id,
+            Name = existing.Name,
+            Age = existing.Age,
+            Bio = existing.Bio,
+            Location = existing.Location,
+            Gender = existing.Gender,
+            ProfileImage = existing.ProfileImage,
+            Images = existing.Images != null ? new List<string>(existing.Images) : new List<string>(),
+            LastSeen = existing.LastSeen,
+            IsOnline = existing.IsOnline,
+            FavoriteSong = existing.FavoriteSong,
+            Preferences = existing.Preferences,
+            Settings = existing.Settings,
+            Prompts = new List<PromptAnswerDto>
+            {
+                new() { PromptId = "looking_for", Answer = "Tour buddies" }
+            }
+        };
+
+        // Act
+        var result = await svc.UpdateUserAsync(userId, payload);
+
+        // Assert
+        Assert.NotNull(result.Prompts);
+        Assert.Single(result.Prompts);
+        Assert.Equal("looking_for", result.Prompts[0].PromptId);
+        Assert.Equal("Tour buddies", result.Prompts[0].Answer);
+    }
 }
