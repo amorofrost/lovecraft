@@ -30,6 +30,9 @@ public class UserDto
 
     /// <summary>Instagram username without @, optional.</summary>
     public string? InstagramHandle { get; set; }
+
+    /// <summary>Up to 3 prompt answers chosen from the curated prompt catalogue.</summary>
+    public List<PromptAnswerDto>? Prompts { get; set; }
 }
 
 public class UserPreferencesDto
@@ -56,4 +59,10 @@ public class AloeVeraSongDto
     public string Duration { get; set; } = string.Empty;
     public string PreviewUrl { get; set; } = string.Empty;
     public int Year { get; set; }
+}
+
+public class PromptAnswerDto
+{
+    public string PromptId { get; set; } = string.Empty;
+    public string Answer { get; set; } = string.Empty;
 }
