@@ -6,6 +6,7 @@ using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
+using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -146,5 +147,105 @@ public class AzureUserServiceIncrementCounterTests
         tc.Verify(t => t.UpdateEntityAsync(
             It.IsAny<UserEntity>(), It.IsAny<ETag>(), It.IsAny<TableUpdateMode>(), It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+}
+
+/// <summary>
+/// Tests for AzureUserService.UpdateUserAsync covering field round-trips through JSON columns.
+/// </summary>
+public class AzureUserServiceUpdateTests
+{
+    private static UserEntity BuildSeedEntity(string userId) => new()
+    {
+        PartitionKey = UserEntity.GetPartitionKey(userId),
+        RowKey = userId,
+        Name = "Seed",
+        Age = 25,
+        Bio = string.Empty,
+        Location = string.Empty,
+        Gender = "PreferNotToSay",
+        ProfileImage = string.Empty,
+        ImagesJson = "[]",
+        PromptsJson = "[]",
+        PreferencesJson = "{}",
+        SettingsJson = "{}",
+        FavoriteSongJson = string.Empty,
+        StaffRole = "none",
+        ETag = new ETag("\"etag-v1\"")
+    };
+
+    private static (AzureUserService svc, List<UserEntity> capturedUpdates) BuildService(UserEntity seedEntity)
+    {
+        var tc = new Mock<TableClient>();
+
+        tc.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue<TableItem>(null!, Mock.Of<Response>()));
+
+        tc.Setup(t => t.GetEntityAsync<UserEntity>(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue(seedEntity, Mock.Of<Response>()));
+
+        var capturedUpdates = new List<UserEntity>();
+        tc.Setup(t => t.UpdateEntityAsync(
+                It.IsAny<UserEntity>(), It.IsAny<ETag>(), It.IsAny<TableUpdateMode>(), It.IsAny<CancellationToken>()))
+            .Callback<UserEntity, ETag, TableUpdateMode, CancellationToken>((entity, _, _, _) =>
+                capturedUpdates.Add(entity))
+            .ReturnsAsync(Mock.Of<Response>());
+
+        var tsc = new Mock<TableServiceClient>();
+        tsc.Setup(x => x.GetTableClient(TableNames.Users)).Returns(tc.Object);
+
+        var svc = new AzureUserService(
+            tsc.Object,
+            NullLogger<AzureUserService>.Instance,
+            new MockAppConfigService(),
+            new UserCache());
+
+        return (svc, capturedUpdates);
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_RoundTripsPromptsThroughPromptsJson()
+    {
+        const string userId = "user1";
+        var seed = BuildSeedEntity(userId);
+        var (svc, capturedUpdates) = BuildService(seed);
+
+        var dto = new UserDto
+        {
+            Id = userId,
+            Name = "Test User",
+            Age = 25,
+            Bio = string.Empty,
+            Location = string.Empty,
+            Gender = Gender.PreferNotToSay,
+            ProfileImage = string.Empty,
+            Images = new List<string>(),
+            Preferences = new UserPreferencesDto(),
+            Settings = new UserSettingsDto(),
+            Prompts = new List<PromptAnswerDto>
+            {
+                new() { PromptId = "aloevera_song", Answer = "Hometown" },
+                new() { PromptId = "looking_for",   Answer = "Someone who travels for shows" }
+            }
+        };
+
+        var returned = await svc.UpdateUserAsync(userId, dto);
+
+        // Assert: PromptsJson was serialised with both prompt fields
+        Assert.Single(capturedUpdates);
+        var persisted = capturedUpdates[0];
+        Assert.Contains("aloevera_song", persisted.PromptsJson);
+        Assert.Contains("Hometown", persisted.PromptsJson);
+
+        // Assert: the returned DTO round-trips both prompts back
+        Assert.NotNull(returned.Prompts);
+        Assert.Equal(2, returned.Prompts!.Count);
+
+        var song = returned.Prompts.Single(p => p.PromptId == "aloevera_song");
+        Assert.Equal("Hometown", song.Answer);
+
+        var looking = returned.Prompts.Single(p => p.PromptId == "looking_for");
+        Assert.Equal("Someone who travels for shows", looking.Answer);
     }
 }

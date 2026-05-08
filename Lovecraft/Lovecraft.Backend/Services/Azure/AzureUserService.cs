@@ -83,6 +83,7 @@ public class AzureUserService : IUserService
             entity.ProfileImage = dto.ProfileImage;
             entity.InstagramHandle = dto.InstagramHandle ?? string.Empty;
             entity.ImagesJson = JsonSerializer.Serialize(dto.Images ?? new List<string>());
+            entity.PromptsJson = JsonSerializer.Serialize(dto.Prompts ?? new List<PromptAnswerDto>());
             entity.IsOnline = dto.IsOnline;
             entity.PreferencesJson = JsonSerializer.Serialize(dto.Preferences);
             entity.SettingsJson = JsonSerializer.Serialize(dto.Settings);
@@ -200,6 +201,10 @@ public class AzureUserService : IUserService
         try { images = JsonSerializer.Deserialize<List<string>>(entity.ImagesJson) ?? new List<string>(); }
         catch { images = new List<string>(); }
 
+        List<PromptAnswerDto> prompts;
+        try { prompts = JsonSerializer.Deserialize<List<PromptAnswerDto>>(entity.PromptsJson) ?? new List<PromptAnswerDto>(); }
+        catch { prompts = new List<PromptAnswerDto>(); }
+
         AloeVeraSongDto? song = null;
         if (!string.IsNullOrEmpty(entity.FavoriteSongJson))
         {
@@ -229,6 +234,7 @@ public class AzureUserService : IUserService
             StaffRole = staffRole,
             RegistrationSourceEventId = entity.RegistrationSourceEventId,
             InstagramHandle = string.IsNullOrEmpty(entity.InstagramHandle) ? null : entity.InstagramHandle,
+            Prompts = prompts.Count > 0 ? prompts : null,
         };
     }
 }
