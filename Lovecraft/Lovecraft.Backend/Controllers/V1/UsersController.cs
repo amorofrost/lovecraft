@@ -6,6 +6,7 @@ using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Auth;
+using Lovecraft.Backend.Constants;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Helpers;
 
@@ -93,6 +94,28 @@ public class UsersController : ControllerBase
             return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in location"));
         if (HtmlGuard.ContainsHtml(user.Bio))
             return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in bio"));
+
+        if (user.Prompts is { } prompts)
+        {
+            if (prompts.Count > 3)
+                return BadRequest(ApiResponse<UserDto>.ErrorResponse("PROMPTS_TOO_MANY", "At most 3 prompts allowed"));
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var p in prompts)
+            {
+                if (!PromptIds.All.Contains(p.PromptId))
+                    return BadRequest(ApiResponse<UserDto>.ErrorResponse("UNKNOWN_PROMPT_ID", $"Prompt id '{p.PromptId}' is not in the catalogue"));
+                if (!seen.Add(p.PromptId))
+                    return BadRequest(ApiResponse<UserDto>.ErrorResponse("DUPLICATE_PROMPT_ID", "A prompt id appears more than once"));
+                if ((p.Answer ?? string.Empty).Length > 200)
+                    return BadRequest(ApiResponse<UserDto>.ErrorResponse("PROMPT_ANSWER_TOO_LONG", "Prompt answer must be 200 characters or less"));
+                if (HtmlGuard.ContainsHtml(p.Answer))
+                    return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in prompt answers"));
+            }
+        }
+
+        if (user.Images is { Count: > 6 })
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("IMAGES_TOO_MANY", "At most 6 images allowed"));
 
         try
         {
