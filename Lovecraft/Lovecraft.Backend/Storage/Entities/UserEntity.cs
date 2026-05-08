@@ -20,6 +20,7 @@ public class UserEntity : ITableEntity
     public string Gender { get; set; } = string.Empty;
     public string ProfileImage { get; set; } = string.Empty;
     public string ImagesJson { get; set; } = "[]";
+    public string PromptsJson { get; set; } = "[]";
     public bool IsOnline { get; set; }
     public DateTime LastSeen { get; set; }
     public bool EmailVerified { get; set; }
