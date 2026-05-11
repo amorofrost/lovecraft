@@ -12,13 +12,6 @@ public static class PromptIds
         "aloevera_song",
         "concert_memory",
         "looking_for",
-        "weekend",
-        "road_trip",
-        "playlist",
-        "instrument",
-        "unpopular_opinion",
-        "dream_setlist",
-        "first_date",
-        "dealbreaker",
+        "instrument"
     };
 }
