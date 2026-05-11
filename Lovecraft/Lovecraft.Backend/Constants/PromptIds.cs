@@ -12,6 +12,7 @@ public static class PromptIds
         "aloevera_song",
         "concert_memory",
         "looking_for",
+        "playlist",
         "instrument"
     };
 }
