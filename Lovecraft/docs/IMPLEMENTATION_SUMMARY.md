@@ -286,6 +286,7 @@ dotnet test
 - ✅ HTTPS via Cloudflare + Origin Certificate (deployed at https://aloeve.club)
 - ✅ User-visible error handling, form validation, profile image upload, BB code, image attachments, SEO metadata
 - ✅ Structured `Country`/`Region` on user profiles + search filtering by country and region
+- ✅ Optional secondary `Country`/`Region` slot on user profiles; OR-match in `GetUsersAsync`
 
 ### Still open
 1. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
