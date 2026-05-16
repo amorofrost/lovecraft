@@ -1,649 +1,275 @@
-# Azure Storage Schema Design
+# Azure Storage Schema
 
-**AloeVera Harmony Meet** - Data Storage Schema
+**LoveCraft Backend — data persistence layer**
 
-**Storage Type**: Azure Table Storage + Azure Blob Storage  
-**Last Updated**: February 17, 2026
-
----
-
-## 📊 Overview
-
-This document describes the data schema for Azure Storage (Tables and Blobs). Azure Table Storage is a NoSQL key-value store optimized for fast queries using PartitionKey and RowKey.
-
-### Design Principles
-
-1. **Denormalization**: Duplicate data for query performance
-2. **PartitionKey Optimization**: Design for common query patterns
-3. **No Joins**: All data in single table or denormalized
-4. **Eventually Consistent**: Accept eventual consistency
-5. **Query-First Design**: Schema optimized for read patterns
+**Last Updated**: 2026-05-15
+**Storage types**: Azure Table Storage (relational-style data) + Azure Blob Storage (images)
+**Mode switch**: `USE_AZURE_STORAGE=true|false` in env
 
 ---
 
-## 🗄️ Azure Table Storage
+## Overview
 
-### Table: `Users`
+23 tables under `TableNames.Prefix + name`. The optional `AZURE_TABLE_PREFIX` env var (e.g. `dev_`, `test_`) lets staging and integration tests share an Azure Storage account without colliding. Both the backend and the `Lovecraft.Tools.Seeder` CLI respect the prefix.
 
-Stores user profiles and authentication data.
+Design principles:
+- **Denormalisation over joins** — Table Storage has no JOIN; reverse-lookup indexes are separate tables
+- **Partition-first queries** — point queries (PK + RK) are O(1); avoid table scans
+- **Reverse-timestamp RowKeys** for streams that need "newest first" (messages, forum replies)
 
-**PartitionKey Strategy**: `USER#{firstLetter of userId}`  
-**RowKey**: `userId` (GUID)
+---
 
-**Entity Schema**:
+## Tables (23)
+
+### Identity & auth
+
+#### `users`
+PK `user-{firstChar(userId)}` · RK `userId` (GUID)
+
+Stores the full user profile. See [AUTHENTICATION.md](./AUTHENTICATION.md#-storage-schema) for the field list. Notable fields beyond name/age/etc.:
+
+- `AuthMethodsJson` — list of `"local"`, `"google"`, `"telegram"` (any combination)
+- `TelegramUserId`, `GoogleUserId` — non-empty when those providers are linked
+- `InstagramHandle` — optional public handle
+- `EmailVerified`, `IsOnline`, `LastSeen`
+- `StaffRole` (`"none"|"moderator"|"admin"`), `RankOverride` (admin-set; otherwise null and rank is computed)
+- `ReplyCount`, `LikesReceived`, `EventsAttended`, `MatchCount` — counters feeding `RankCalculator`
+- `RegistrationSourceEventId`, `RegistrationSourceRedeemedAtUtc` — immutable invite-source audit
+- `PreferencesJson`, `SettingsJson`, `FavoriteSongJson`, `ImagesJson`, `PromptsJson`
+
+#### `useremailindex`
+PK `lowercased(email)` · RK `"INDEX"` · value `UserId`
+
+Reverse lookup for email-based login.
+
+#### `usertelegramindex`
+PK `telegramUserId` (string) · RK `"INDEX"` · value `UserId`
+
+Reverse lookup for `TelegramLoginAsync` / Mini App. Added when an account links Telegram.
+
+#### `usergoogleindex`
+PK `googleSubject` · RK `"INDEX"` · value `UserId`
+
+Reverse lookup for Google sign-in. Added when an account links Google.
+
+#### `refreshtokens`
+PK `userId` · RK `tokenId`
+
+Hashed refresh tokens with `ExpiresAt`, `RevokedAt`, `ReplacedByTokenId` (rotation chain).
+
+#### `authtokens`
+PK `EMAIL_VERIFY` or `PASSWORD_RESET` · RK `token`
+
+Short-lived single-use tokens (24 h verify / 30 min reset).
+
+### Events & invites
+
+#### `events`
+PK `"EVENTS"` (single partition — events are read together) · RK `eventId`
+
+Notable fields: `Title`, `Description` (multi-line preserved), `ImageUrl`, `BadgeImageUrl`, `Date`, `EndDate`, `Location`, `Capacity`, `Category`, `Price` (free-text string, e.g. `"2500 ₽"`), `Organizer`, `ExternalUrl`, `IsSecret` (legacy bool), `Visibility` (`Public`|`SecretTeaser`|`SecretHidden`), `ForumTopicId` (primary public discussion topic id), `Archived`.
+
+See [EVENTS.md](./EVENTS.md) for visibility semantics.
+
+#### `eventattendees`
+PK `eventId` · RK `userId`
+
+Forward index of registered attendees.
+
+#### `eventinterested`
+PK `eventId` · RK `userId`
+
+Tracks the "interested" flag separately from attendance. Does not grant attendee-only forum topic access.
+
+#### `eventinvites`
+PK `"INVITE"` · RK normalised plaintext code (uppercase, trimmed)
+
+Readable codes (case-insensitive lookup). Fields: `EventId` (real event id, or **negative** integer string for campaign codes), `CampaignLabel`, `PlainCode` (duplicate of RowKey), `ExpiresAtUtc`, `Revoked`, `CreatedAtUtc`, `RegistrationCount`, `EventAttendanceClaimCount`.
+
+See [INVITES.md](./INVITES.md).
+
+### Matching
+
+#### `likes`
+PK `fromUserId` · RK `toUserId`
+
+#### `likesreceived`
+PK `toUserId` · RK `fromUserId`
+
+Reverse index so "who liked me" is a partition scan rather than a table scan.
+
+#### `matches`
+PK `userId1` · RK `userId2` (lex-sorted)
+
+Note: matches are also computed at query time as the intersection of `likes` and `likesreceived`. This table is denormalised metadata.
+
+### Chats
+
+#### `chats`
+PK `"CHAT"` · RK `chatId`
+
+`ParticipantIds` (comma-separated), `CreatedAt`.
+
+#### `userchats`
+PK `userId` · RK `chatId`
+
+Per-user index for chat list. Fields: `OtherUserId`, `LastMessageContent` (truncated), `LastMessageAt`, `UnreadCount`, `UpdatedAt`.
+
+#### `messages`
+PK `chatId` · RK `{invertedTicks}_{messageId}` so newest messages sort first
+
+`MessageId`, `SenderId`, `Content`, `SentAt`, `Type`, `Read`, image attachments via separate fields.
+
+See [CHAT_ARCHITECTURE.md](./CHAT_ARCHITECTURE.md).
+
+### Forum
+
+#### `forumsections`
+PK `"FORUM"` · RK `sectionId`
+
+`Name`, `Description`, `OrderIndex`, `TopicCount`, `MinRank`.
+
+#### `forumtopics`
+PK `"SECTION#{sectionId}"` · RK `topicId`
+
+`Title`, `Content`, `AuthorId`, `IsPinned`, `IsLocked`, `ReplyCount` (denormalised), `MinRank`, `NoviceVisible`, `NoviceCanReply`, `EventId` (when in `events` section), `EventTopicVisibility` (`public`|`attendeesOnly`|`specificUsers`), `AllowedUserIdsJson`.
+
+#### `forumtopicindex`
+PK `"TOPIC_INDEX"` · RK `topicId` · value `sectionId`
+
+Lets `GET /forum/topics/{id}` look up the section partition without scanning.
+
+#### `forumreplies`
+PK `"TOPIC#{topicId}"` · RK `{invertedTicks}_{replyId}`
+
+`ReplyId`, `AuthorId`, `Content`, `ImageUrlsJson`, `Likes`, `CreatedAt`.
+
+### Store, blog, app config
+
+#### `storeitems`
+PK `STORE#{category}` · RK `itemId`
+
+Catalog (read-mostly). `Title`, `Description`, `Price` (decimal), `ImageUrl`, `Category`, `StockQuantity`, `IsAvailable`, `ExternalPurchaseUrl`.
+
+#### `blogposts`
+PK `"BLOG"` · RK `{invertedTicks}_{postId}` (newest first)
+
+`PostId`, `Title`, `Excerpt`, `Content`, `ImageUrl`, `AuthorId`, `TagsJson`, `PublishedAt`, `IsPublished`.
+
+#### `appconfig`
+PK is one of:
+- `rank_thresholds` (10 integer rows: `active_replies`, `active_likes`, `active_events`, `friend_replies`, `friend_likes`, `friend_events`, `crew_replies`, `crew_likes`, `crew_events`, `crew_matches`)
+- `permissions` (11 string rows: `create_topic`, `delete_own_reply`, `delete_any_reply`, `delete_any_topic`, `pin_topic`, `ban_user`, `assign_role`, `override_rank`, `manage_events`, `manage_blog`, `manage_store` → minimum required rank/role name)
+- `registration` (`require_event_invite` → `true|false`)
+
+RK is the config key, `Value` is the string-encoded value. Served by `AzureAppConfigService` with a 1-hour `IMemoryCache`. Fallback to `RankThresholds.Defaults` / `PermissionConfig.Defaults` on missing or invalid rows. Seeded by `Lovecraft.Tools.Seeder`.
+
+---
+
+## Blob Storage
+
+Two public-read containers (currently — see TD.8 for SAS-token plan):
+
+### `profile-images`
+Naming: `{userId}/{guid}.jpg`
+
+Profile photo uploads via `POST /api/v1/users/{id}/images` and external-CDN downloads from Google/Telegram. The GUID-per-upload pattern (added 2026-04-15) eliminates enumeration risk — old blobs are deleted on re-upload.
+
+### `content-images`
+Naming: `{userId}/{guid}.jpg`
+
+Forum reply / chat message attachments via `POST /api/v1/images/upload`. Backend validates content-type (JPEG/PNG/GIF/WebP), enforces ≤10 MB, resizes to 1200 px max, re-encodes as JPEG Q85.
+
+`AzureImageService` creates containers on first startup with `CreateIfNotExistsAsync(PublicAccessType.Blob)`.
+
+---
+
+## Query patterns
+
+### Fast (use these)
+
+**Point query** (PK + RK):
+
 ```csharp
-public class UserEntity : ITableEntity
-{
-    // ITableEntity properties
-    public string PartitionKey { get; set; }  // USER#A, USER#B, etc.
-    public string RowKey { get; set; }        // user-guid
-    public DateTimeOffset? Timestamp { get; set; }
-    public ETag ETag { get; set; }
-
-    // User properties
-    public string Email { get; set; }
-    public string PasswordHash { get; set; }
-    public string Name { get; set; }
-    public int Age { get; set; }
-    public string Bio { get; set; }
-    public string Location { get; set; }
-    public string Gender { get; set; }  // male, female, non-binary, prefer-not-to-say
-    public string ProfileImage { get; set; }   // Azure Blob URL (profile-images container)
-    public string InstagramHandle { get; set; } // Instagram username without @, optional
-    public bool IsOnline { get; set; }
-    public DateTime LastSeen { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
-    public DateTime? DeletedAt { get; set; }  // Soft delete
-}
+var user = await tableClient.GetEntityAsync<UserEntity>(
+    partitionKey: UserEntity.GetPartitionKey(userId),
+    rowKey: userId);
 ```
 
-**Indexes**: PartitionKey + RowKey (automatic)
+~5–10 ms.
 
-**Example Entities**:
-```json
-{
-  "PartitionKey": "USER#a",
-  "RowKey": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "Email": "anna@example.com",
-  "Name": "Анна",
-  "Age": 25,
-  "Location": "Москва"
-}
-```
+**Partition query** (single PK):
 
-**Common Queries**:
-- Get user by ID: `PartitionKey = "USER#a" AND RowKey = "{userId}"`
-- List users (paginated): Query with continuation token
-
----
-
-### Table: `UserImages`
-
-Stores references to user profile images.
-
-**PartitionKey**: `userId`  
-**RowKey**: `imageId` (GUID)
-
-**Entity Schema**:
 ```csharp
-public class UserImageEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // userId
-    public string RowKey { get; set; }        // imageId
-    public DateTimeOffset? Timestamp { get; set; }
-    public ETag ETag { get; set; }
-
-    public string BlobUrl { get; set; }       // Full blob URL
-    public int OrderIndex { get; set; }       // Display order (0-9)
-    public DateTime UploadedAt { get; set; }
-}
+var attendees = tableClient.QueryAsync<EventAttendeeEntity>(
+    filter: $"PartitionKey eq '{eventId}'");
 ```
 
-**Queries**:
-- Get user's images: `PartitionKey = "{userId}"`
+~10–50 ms depending on row count.
+
+### Slow (avoid)
+
+Table scans (no PK filter) — multi-second response on populated tables. Add a reverse-lookup index instead.
 
 ---
 
-### Table: `UserPreferences`
+## Consistency patterns
 
-User search and matching preferences.
+### Eventually consistent
 
-**PartitionKey**: `userId`  
-**RowKey**: `PREFS` (constant)
+Counter updates retry up to 3× on ETag 412 and are wrapped in try/catch — counter failures **never** fail the primary operation.
 
-**Entity Schema**:
-```csharp
-public class UserPreferencesEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // userId
-    public string RowKey { get; set; }        // "PREFS"
-    
-    public int AgeRangeMin { get; set; }
-    public int AgeRangeMax { get; set; }
-    public int MaxDistanceKm { get; set; }
-    public string ShowMe { get; set; }        // everyone, men, women, non-binary
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
----
-
-### Table: `UserSettings`
-
-User app settings and privacy.
-
-**PartitionKey**: `userId`  
-**RowKey**: `SETTINGS` (constant)
-
-**Entity Schema**:
-```csharp
-public class UserSettingsEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // userId
-    public string RowKey { get; set; }        // "SETTINGS"
-    
-    public string ProfileVisibility { get; set; }  // public, private, friends
-    public bool AnonymousLikes { get; set; }
-    public string Language { get; set; }           // ru, en
-    public bool NotificationsEnabled { get; set; }
-    public bool EmailNotifications { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
----
-
-### Table: `Likes`
-
-User likes (sent to other users).
-
-**PartitionKey**: `fromUserId`  
-**RowKey**: `toUserId`
-
-**Entity Schema**:
-```csharp
-public class LikeEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // fromUserId
-    public string RowKey { get; set; }        // toUserId
-    
-    public string FromUserId { get; set; }    // Redundant for ease
-    public string ToUserId { get; set; }      // Redundant for ease
-    public DateTime CreatedAt { get; set; }
-    public bool IsMatch { get; set; }         // True if mutual like exists
-}
-```
-
-**Queries**:
-- Sent likes: `PartitionKey = "{userId}"`
-- Received likes: Reverse query needed (see below)
-
-**Reverse Index** (separate table or same table):
-To efficiently query "who liked me", create reverse entries:
-- When user A likes user B:
-  - Store: `PartitionKey = A, RowKey = B` (sent like)
-  - Store: `PartitionKey = B_RECEIVED, RowKey = A` (received like index)
-
----
-
-### Table: `Matches`
-
-Mutual likes (matches).
-
-**PartitionKey**: `userId1` (lexicographically smaller)  
-**RowKey**: `userId2` (lexicographically larger)
-
-**Entity Schema**:
-```csharp
-public class MatchEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // userId1
-    public string RowKey { get; set; }        // userId2
-    
-    public string User1Id { get; set; }
-    public string User2Id { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public bool IsActive { get; set; }        // False if unmatched
-    public string ChatId { get; set; }        // Reference to chat
-}
-```
-
-**Notes**:
-- Always store userIds in consistent order to avoid duplicates
-- Query matches for a user: `PartitionKey = "{userId}"`
-
----
-
-### Table: `Events`
-
-Events (concerts, meetups, etc.).
-
-**PartitionKey**: `EVENT#{category}`  
-**RowKey**: `eventId` (GUID)
-
-**Entity Schema**:
-```csharp
-public class EventEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // EVENT#concert, EVENT#meetup, etc.
-    public string RowKey { get; set; }        // eventId
-    
-    public string Title { get; set; }
-    public string Description { get; set; }
-    public string ImageUrl { get; set; }
-    public DateTime StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
-    public string Location { get; set; }
-    public int? Capacity { get; set; }
-    public string Category { get; set; }      // concert, meetup, festival, party, yachting
-    public decimal? Price { get; set; }
-    public string OrganizerId { get; set; }
-    public bool IsSecret { get; set; }
-    public bool IsPublished { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
-**Queries**:
-- All events: Query across all partitions (paginated)
-- Events by category: `PartitionKey = "EVENT#{category}"`
-
----
-
-### Table: `EventAttendees`
-
-Event registrations.
-
-**PartitionKey**: `eventId`  
-**RowKey**: `userId`
-
-**Entity Schema**:
-```csharp
-public class EventAttendeeEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // eventId
-    public string RowKey { get; set; }        // userId
-    
-    public DateTime RegisteredAt { get; set; }
-    public bool Attended { get; set; }        // Post-event: did they show up?
-}
-```
-
-**Queries**:
-- Get event attendees: `PartitionKey = "{eventId}"`
-- Get user's events: Need reverse index
-
-**Reverse Index**: `UserEvents` table
-- PartitionKey: `userId`
-- RowKey: `eventId`
-
----
-
-### Table: `Chats`
-
-Chat metadata (private or group).
-
-**PartitionKey**: `CHAT#{type}`  
-**RowKey**: `chatId` (GUID)
-
-**Entity Schema**:
-```csharp
-public class ChatEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // CHAT#private or CHAT#group
-    public string RowKey { get; set; }        // chatId
-    
-    public string Type { get; set; }          // private, group
-    public string Name { get; set; }          // For group chats
-    public string Description { get; set; }   // For group chats
-    public string EventId { get; set; }       // For event chats
-    public string Participants { get; set; }  // JSON array of userIds
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
----
-
-### Table: `Messages`
-
-Chat messages.
-
-**PartitionKey**: `chatId`  
-**RowKey**: `{timestamp-ticks-reversed}#{messageId}` (for chronological order)
-
-**Entity Schema**:
-```csharp
-public class MessageEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // chatId
-    public string RowKey { get; set; }        // reversed timestamp + messageId
-    
-    public string MessageId { get; set; }
-    public string SenderId { get; set; }
-    public string Content { get; set; }
-    public string Type { get; set; }          // text, image, system
-    public DateTime Timestamp { get; set; }
-    public bool IsRead { get; set; }
-    public DateTime? EditedAt { get; set; }
-    public DateTime? DeletedAt { get; set; }
-}
-```
-
-**RowKey Design**:
-- To query messages in chronological order (newest first):
-- RowKey = `{DateTime.MaxValue.Ticks - timestamp.Ticks:D19}#{messageId}`
-- This reverses the order for efficient "latest messages" queries
-
-**Queries**:
-- Latest messages: `PartitionKey = "{chatId}"` (auto-sorted by RowKey)
-- Pagination: Use RowKey continuation token
-
----
-
-### Table: `ForumSections`
-
-Forum sections (categories).
-
-**PartitionKey**: `FORUM`  
-**RowKey**: `sectionId` (GUID or slug)
-
-**Entity Schema**:
-```csharp
-public class ForumSectionEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // "FORUM"
-    public string RowKey { get; set; }        // sectionId
-    
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public int OrderIndex { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-```
-
----
-
-### Table: `ForumTopics`
-
-Forum topics.
-
-**PartitionKey**: `SECTION#{sectionId}`  
-**RowKey**: `topicId` (GUID)
-
-**Entity Schema**:
-```csharp
-public class ForumTopicEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // SECTION#{sectionId}
-    public string RowKey { get; set; }        // topicId
-    
-    public string Title { get; set; }
-    public string Content { get; set; }
-    public string AuthorId { get; set; }
-    public bool IsPinned { get; set; }
-    public bool IsLocked { get; set; }
-    public int ReplyCount { get; set; }       // Denormalized
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    public DateTime? DeletedAt { get; set; }
-}
-```
-
----
-
-### Table: `ForumReplies`
-
-Forum topic replies.
-
-**PartitionKey**: `TOPIC#{topicId}`  
-**RowKey**: `{timestamp-reversed}#{replyId}`
-
-**Entity Schema**:
-```csharp
-public class ForumReplyEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // TOPIC#{topicId}
-    public string RowKey { get; set; }        // reversed timestamp + replyId
-    
-    public string ReplyId { get; set; }
-    public string AuthorId { get; set; }
-    public string Content { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? EditedAt { get; set; }
-    public DateTime? DeletedAt { get; set; }
-}
-```
-
----
-
-### Table: `StoreItems`
-
-Store product catalog.
-
-**PartitionKey**: `STORE#{category}`  
-**RowKey**: `itemId` (GUID)
-
-**Entity Schema**:
-```csharp
-public class StoreItemEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // STORE#clothing, STORE#music, etc.
-    public string RowKey { get; set; }        // itemId
-    
-    public string Title { get; set; }
-    public string Description { get; set; }
-    public decimal Price { get; set; }
-    public string ImageUrl { get; set; }
-    public string Category { get; set; }
-    public int StockQuantity { get; set; }
-    public bool IsAvailable { get; set; }
-    public string ExternalPurchaseUrl { get; set; }  // Official band store
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
----
-
-### Table: `BlogPosts`
-
-Blog posts from the band.
-
-**PartitionKey**: `BLOG`  
-**RowKey**: `{timestamp-reversed}#{postId}` (newest first)
-
-**Entity Schema**:
-```csharp
-public class BlogPostEntity : ITableEntity
-{
-    public string PartitionKey { get; set; }  // "BLOG"
-    public string RowKey { get; set; }        // reversed timestamp + postId
-    
-    public string PostId { get; set; }
-    public string Title { get; set; }
-    public string Excerpt { get; set; }
-    public string Content { get; set; }
-    public string ImageUrl { get; set; }
-    public string AuthorId { get; set; }
-    public string Tags { get; set; }          // JSON array
-    public DateTime PublishedAt { get; set; }
-    public bool IsPublished { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-```
-
----
-
-## 🗂️ Azure Blob Storage
-
-### Container: `profile-images`
-
-User profile photos.
-
-**Blob Naming**: `{userId}/{imageId}.{ext}`
-
-**Example**:
-- `a1b2c3d4-e5f6-7890-abcd-ef1234567890/img-001.jpg`
-- `a1b2c3d4-e5f6-7890-abcd-ef1234567890/img-002.jpg`
-
-**Access**: Public read (for now), or SAS tokens
-
----
-
-### Container: `event-images`
-
-Event photos.
-
-**Blob Naming**: `{eventId}/{imageId}.{ext}`
-
-**Example**:
-- `evt-12345678/banner.jpg`
-
----
-
-### Container: `store-images`
-
-Product images.
-
-**Blob Naming**: `{itemId}/{imageId}.{ext}`
-
----
-
-### Container: `blog-images`
-
-Blog post images.
-
-**Blob Naming**: `{postId}/{imageId}.{ext}`
-
----
-
-## 🔍 Query Patterns & Performance
-
-### Efficient Queries (Fast)
-
-1. **Point Query** (PartitionKey + RowKey):
-   ```csharp
-   var user = await tableClient.GetEntityAsync<UserEntity>(
-       partitionKey: "USER#a",
-       rowKey: userId
-   );
-   ```
-   **Performance**: ~5-10ms
-
-2. **Partition Query** (All entities in a partition):
-   ```csharp
-   var attendees = tableClient.QueryAsync<EventAttendeeEntity>(
-       filter: $"PartitionKey eq '{eventId}'"
-   );
-   ```
-   **Performance**: ~10-50ms (depending on size)
-
-### Inefficient Queries (Slow - Avoid)
-
-1. **Table Scan** (No partition key):
-   ```csharp
-   var allUsers = tableClient.QueryAsync<UserEntity>(
-       filter: $"Age gt 25"  // Scans entire table!
-   );
-   ```
-   **Performance**: Seconds to minutes
-
-**Solution**: Use secondary indexes or denormalization
-
----
-
-## 🔄 Data Consistency Patterns
-
-### Eventually Consistent
-
-Azure Table Storage is eventually consistent. Plan for:
-
-1. **Denormalized Counts**: Update async
-2. **Match Creation**: Two writes (like + match)
-3. **Reverse Indexes**: Write twice
-
-### Example: Like → Match Flow
+### Like → match flow
 
 ```
-1. Write Like:
-   PartitionKey: fromUserId, RowKey: toUserId
-
-2. Check Reverse Like:
-   PartitionKey: toUserId, RowKey: fromUserId
-
-3. If exists, create Match:
-   PartitionKey: userId1 (smaller), RowKey: userId2 (larger)
-
-4. Update both Likes with IsMatch = true
+1. Write to `likes`: PK=fromUserId, RK=toUserId
+2. Write to `likesreceived`: PK=toUserId, RK=fromUserId
+3. Check for reverse like (`likes` with PK=toUserId, RK=fromUserId)
+4. If exists, create `matches` row (PK=min(userId), RK=max(userId)) AND auto-create a 1-on-1 chat via IChatService.GetOrCreateChatAsync
 ```
 
----
-
-## 📊 Estimated Storage Costs
-
-### Azure Table Storage
-
-**Pricing** (Standard, LRS):
-- Storage: $0.045 per GB/month
-- Transactions: $0.00036 per 10,000 transactions
-
-**Example** (1000 users):
-- Users: ~1 MB
-- Likes: ~5 MB
-- Messages: ~50 MB
-- Events: ~1 MB
-- **Total**: ~60 MB × $0.045 = **$0.003/month**
-
-### Azure Blob Storage
-
-**Pricing** (Hot tier, LRS):
-- Storage: $0.018 per GB/month
-- Write operations: $0.05 per 10,000
-
-**Example** (1000 users, avg 3 photos):
-- Profile images: 3000 × 500 KB = 1.5 GB
-- Event images: 100 × 2 MB = 200 MB
-- **Total**: ~1.7 GB × $0.018 = **$0.03/month**
-
-**Combined Storage**: **~$0.03/month** (very cheap!)
+`GetOrCreateChatAsync` is idempotent — duplicate chats are never created.
 
 ---
 
-## 🛠️ Development Tools
+## Cost estimates (Standard LRS, Hot tier)
 
-### Azure Storage Explorer
+| Component | 1,000 users | 10,000 users |
+|---|---|---|
+| Table storage | ~$0.005/mo | ~$0.05/mo |
+| Blob storage (~500 KB avg profile image) | ~$0.03/mo | ~$0.30/mo |
+| Transactions (lookups + writes) | negligible | ~$1/mo |
 
-GUI tool for browsing/editing Azure Storage:
-- Download: https://azure.microsoft.com/features/storage-explorer/
-- Connect with connection string or account key
-- View/edit table entities
-- Upload/download blobs
+The dominant cost as the user base grows is blob storage. Switching to private blobs + SAS tokens (TD.8) adds no storage cost — just an auth check.
 
-### Azurite (Local Emulator)
+---
 
-Local Azure Storage emulator:
+## Development tools
+
+### Azurite (local emulator)
+
 ```bash
 npm install -g azurite
 azurite --location ./azurite-data
 ```
 
-**Connection String**:
+Set `AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true` in backend `.env`. Azurite emulates both Table and Blob services.
+
+### Azure Storage Explorer
+
+GUI for browsing tables and blobs: <https://azure.microsoft.com/features/storage-explorer/>.
+
+### Seeder
+
+```bash
+dotnet run --project Lovecraft.Tools.Seeder
 ```
-UseDevelopmentStorage=true
-```
+
+Populates all 23 tables from `MockDataStore`. Set `AZURE_TABLE_PREFIX` to seed into an isolated namespace.
 
 ---
 
-## 📚 References
+## References
 
-- [Azure Table Storage Best Practices](https://docs.microsoft.com/azure/cosmos-db/table-storage-design)
-- [Azure Storage Naming Conventions](https://docs.microsoft.com/rest/api/storageservices/naming-and-referencing-containers--blobs--and-metadata)
-- [Query Performance](https://docs.microsoft.com/azure/cosmos-db/table-storage-design-guide)
-
----
-
-**Next**: See [API.md](./API.md) for how these entities map to API responses
+- [Azure Table Storage design guide](https://learn.microsoft.com/azure/cosmos-db/table-storage-design)
+- [Azure Storage naming conventions](https://learn.microsoft.com/rest/api/storageservices/naming-and-referencing-containers--blobs--and-metadata)

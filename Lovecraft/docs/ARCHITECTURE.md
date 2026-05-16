@@ -1,12 +1,11 @@
 # LoveCraft Backend Architecture
 
-**AloeVera Harmony Meet** - Technical Backend Architecture
+**AloeVera Harmony Meet — backend architecture**
 
-**Version**: 1.0  
-**Last Updated**: April 18, 2026  
-**Technology**: .NET 10, Azure Storage, Docker
+**Last Updated**: 2026-05-15
+**Technology**: .NET 10 / ASP.NET Core, Azure Table Storage + Blob Storage, SignalR, Docker
 
-**Domain docs:** [EVENTS.md](./EVENTS.md) (events, forum topic access), [INVITES.md](./INVITES.md) (invite codes).
+**Domain docs:** [AUTHENTICATION.md](./AUTHENTICATION.md), [TELEGRAM_AUTH.md](./TELEGRAM_AUTH.md), [EVENTS.md](./EVENTS.md), [INVITES.md](./INVITES.md), [CHAT_ARCHITECTURE.md](./CHAT_ARCHITECTURE.md), [AZURE_STORAGE.md](./AZURE_STORAGE.md).
 
 ---
 
@@ -110,242 +109,137 @@ LoveCraft backend is a RESTful API service built with .NET 10 (ASP.NET Core) tha
 
 ```
 Lovecraft/
-├── Lovecraft.sln                           # Solution file
+├── Lovecraft.slnx                          # Solution
 │
-├── Lovecraft.Common/                       # Shared library
-│   ├── DTOs/                               # Data Transfer Objects
-│   │   ├── Auth/
-│   │   │   ├── LoginRequestDto.cs
-│   │   │   ├── RegisterRequestDto.cs
-│   │   │   ├── AuthResponseDto.cs
-│   │   │   └── TokenResponseDto.cs
-│   │   ├── Users/
-│   │   │   ├── UserDto.cs
-│   │   │   ├── UserProfileDto.cs
-│   │   │   ├── UserPreferencesDto.cs
-│   │   │   └── UserSettingsDto.cs
-│   │   ├── Events/
-│   │   │   ├── EventDto.cs
-│   │   │   ├── EventDetailsDto.cs
-│   │   │   └── EventRegistrationDto.cs
-│   │   ├── Matching/
-│   │   │   ├── LikeDto.cs
-│   │   │   ├── MatchDto.cs
-│   │   │   └── MatchDetailsDto.cs
-│   │   ├── Chats/
-│   │   │   ├── ChatDto.cs
-│   │   │   ├── MessageDto.cs
-│   │   │   └── ChatDetailsDto.cs
-│   │   ├── Forum/
-│   │   │   ├── ForumSectionDto.cs
-│   │   │   ├── ForumTopicDto.cs
-│   │   │   └── ForumReplyDto.cs
-│   │   ├── Store/
-│   │   │   └── StoreItemDto.cs
-│   │   └── Blog/
-│   │       └── BlogPostDto.cs
-│   │
-│   ├── Contracts/                          # Interfaces
-│   │   ├── Services/
-│   │   │   ├── IUserService.cs
-│   │   │   ├── IAuthService.cs
-│   │   │   ├── IMatchingService.cs
-│   │   │   └── ...
-│   │   └── Repositories/
-│   │       ├── IUserRepository.cs
-│   │       ├── IEventRepository.cs
-│   │       └── ...
-│   │
-│   ├── Models/                             # Common models
-│   │   ├── ApiResponse.cs
-│   │   ├── ErrorResponse.cs
-│   │   ├── PagedResult.cs
-│   │   └── ValidationError.cs
-│   │
-│   ├── Enums/                              # Enumerations
-│   │   ├── Gender.cs
-│   │   ├── EventCategory.cs
-│   │   ├── ChatType.cs
-│   │   └── ...
-│   │
-│   ├── Constants/                          # Constants
-│   │   ├── ErrorCodes.cs
-│   │   ├── ValidationMessages.cs
-│   │   └── StorageConstants.cs
-│   │
+├── Lovecraft.Common/                       # Shared DTOs + enums
+│   ├── DTOs/                               # Admin, Auth, Blog, Chats, Events,
+│   │                                          Forum, Images, Matching, Store, Users
+│   ├── Enums/                              # Gender, EventCategory, ChatType,
+│   │                                          MessageType, ProfileVisibility,
+│   │                                          ShowMePreference, Language,
+│   │                                          EventTopicVisibility, UserRank, StaffRole
+│   ├── Models/                             # ApiResponse<T>, PagedResult<T>
 │   └── Lovecraft.Common.csproj
 │
-├── Lovecraft.Backend/                      # Main API project
-│   ├── Controllers/                        # API Controllers
-│   │   ├── V1/
-│   │   │   ├── AuthController.cs
-│   │   │   ├── UsersController.cs
-│   │   │   ├── EventsController.cs
-│   │   │   ├── MatchesController.cs
-│   │   │   ├── LikesController.cs
-│   │   │   ├── ChatsController.cs
-│   │   │   ├── ForumController.cs
-│   │   │   ├── StoreController.cs
-│   │   │   └── BlogController.cs
-│   │   └── HealthController.cs
-│   │
-│   ├── Services/                           # Business logic
-│   │   ├── UserService.cs
-│   │   ├── AuthService.cs
-│   │   ├── MatchingService.cs
-│   │   ├── EventService.cs
-│   │   ├── ChatService.cs
-│   │   ├── ForumService.cs
-│   │   ├── StoreService.cs
-│   │   ├── BlogService.cs
-│   │   ├── ImageService.cs
-│   │   └── TokenService.cs
-│   │
-│   ├── Repositories/                       # Data access
-│   │   ├── UserRepository.cs
-│   │   ├── EventRepository.cs
-│   │   ├── MatchRepository.cs
-│   │   ├── LikeRepository.cs
-│   │   ├── ChatRepository.cs
-│   │   ├── MessageRepository.cs
-│   │   ├── ForumRepository.cs
-│   │   ├── StoreRepository.cs
-│   │   ├── BlogRepository.cs
-│   │   └── BaseRepository.cs
-│   │
-│   ├── Entities/                           # Database entities
-│   │   ├── UserEntity.cs
-│   │   ├── EventEntity.cs
-│   │   ├── MatchEntity.cs
-│   │   ├── LikeEntity.cs
-│   │   ├── ChatEntity.cs
-│   │   ├── MessageEntity.cs
-│   │   └── ...
-│   │
-│   ├── Middleware/                         # Middleware components
-│   │   ├── AuthenticationMiddleware.cs
-│   │   ├── ErrorHandlingMiddleware.cs
-│   │   ├── RequestLoggingMiddleware.cs
-│   │   └── RateLimitingMiddleware.cs
-│   │
-│   ├── Configuration/                      # Configuration classes
-│   │   ├── AzureStorageConfig.cs
-│   │   ├── JwtConfig.cs
-│   │   ├── CorsConfig.cs
-│   │   └── AppSettings.cs
-│   │
-│   ├── Extensions/                         # Extension methods
-│   │   ├── ServiceCollectionExtensions.cs
-│   │   ├── TableEntityExtensions.cs
-│   │   └── ClaimsPrincipalExtensions.cs
-│   │
-│   ├── Validators/                         # Input validators
-│   │   ├── LoginRequestValidator.cs
-│   │   ├── RegisterRequestValidator.cs
-│   │   ├── UserProfileValidator.cs
-│   │   └── ...
-│   │
-│   ├── Mappings/                           # AutoMapper profiles
-│   │   ├── UserMappingProfile.cs
-│   │   ├── EventMappingProfile.cs
-│   │   └── ...
-│   │
-│   ├── MockData/                           # Mock data (initial phase)
-│   │   ├── MockUsers.cs
-│   │   ├── MockEvents.cs
-│   │   └── ...
-│   │
-│   ├── Program.cs                          # Entry point
-│   ├── appsettings.json                    # Configuration
-│   ├── appsettings.Development.json        # Dev configuration
-│   ├── appsettings.Production.json         # Prod configuration
-│   ├── Dockerfile                          # Docker image
-│   ├── .dockerignore                       # Docker ignore
+├── Lovecraft.Backend/                      # Main ASP.NET Core Web API + SignalR
+│   ├── Controllers/V1/                     # Admin, Auth, Blog, Chats, Events,
+│   │                                          Forum, Images, Matching, Store, Users
+│   ├── Auth/                               # JwtService, JwtSettings, PasswordHasher,
+│   │                                          TelegramLoginVerifier (Login Widget HMAC),
+│   │                                          TelegramWebAppVerifier (Mini App HMAC),
+│   │                                          GoogleIdTokenVerifier (Google JWKS verify)
+│   ├── Attributes/                         # RequireStaffRoleAttribute (sync, claim-only),
+│   │                                          RequirePermissionAttribute (async, reads appconfig)
+│   ├── Configuration/                      # JwtSettings, TelegramAuthOptions, GoogleAuthOptions
+│   ├── Helpers/                            # RankCalculator, EffectiveLevel, PermissionGuard,
+│   │                                          EventForumAccess, EventTopicAccess, HtmlGuard,
+│   │                                          AppRuntime
+│   ├── Hubs/ChatHub.cs                     # SignalR hub (JoinChat, JoinTopic, SendMessage)
+│   ├── Services/                           # IServices.cs + Mock implementations
+│   │   ├── Azure/                          # 11 Azure-backed services (Auth, User, Event,
+│   │   │                                      Matching, Store, Blog, Forum, Chat, Image,
+│   │   │                                      AppConfig, EventInvite)
+│   │   ├── Caching/                        # UserCache (ConcurrentDictionary singleton,
+│   │   │                                      LoadAsync on startup) + IMemoryCache wrappers
+│   │   │                                      (CachingEventService, CachingStoreService,
+│   │   │                                      CachingBlogService, CachingForumService)
+│   │   ├── Email/                          # IEmailService, SendGridEmailService,
+│   │   │                                      NullEmailService (chosen by SENDGRID_API_KEY presence)
+│   │   ├── AppConfig.cs                    # RankThresholds.Defaults, PermissionConfig.Defaults
+│   │   ├── EventInviteHelpers.cs           # Code generation
+│   │   ├── EventInviteNormalizer.cs        # Trim + uppercase normalisation
+│   │   ├── InvalidInviteCodeException.cs   # Maps to INVALID_INVITE_CODE
+│   │   └── InviteRequiredException.cs      # Maps to INVITE_REQUIRED
+│   ├── Storage/
+│   │   ├── TableNames.cs                   # 23 table names + AZURE_TABLE_PREFIX support
+│   │   └── Entities/                       # 22 entity classes (see AZURE_STORAGE.md)
+│   ├── MockData/MockDataStore.cs           # Static in-memory seed when USE_AZURE_STORAGE=false
+│   ├── Program.cs                          # DI mode switch, JWT, SignalR, rate limiting, CORS
+│   ├── appsettings.json
 │   └── Lovecraft.Backend.csproj
 │
-├── Lovecraft.UnitTests/                    # Unit tests
-│   ├── Services/
-│   │   ├── UserServiceTests.cs
-│   │   ├── AuthServiceTests.cs
-│   │   ├── MatchingServiceTests.cs
-│   │   └── ...
-│   ├── Controllers/
-│   │   ├── AuthControllerTests.cs
-│   │   ├── UsersControllerTests.cs
-│   │   └── ...
-│   ├── Repositories/
-│   │   ├── UserRepositoryTests.cs
-│   │   └── ...
-│   ├── Helpers/
-│   │   ├── MockDataHelper.cs
-│   │   └── TestFixture.cs
-│   └── Lovecraft.UnitTests.csproj
+├── Lovecraft.TelegramBot/                  # Separate hosted-service worker
+│   ├── Program.cs                          # Host.CreateApplicationBuilder + AddHostedService
+│   ├── TelegramBotWorker.cs                # Long-poll worker
+│   └── Lovecraft.TelegramBot.csproj
 │
-├── docs/                                   # Documentation
-│   ├── API.md                              # API specification
-│   ├── ARCHITECTURE.md                     # This file
-│   ├── AZURE_STORAGE.md                    # Storage design
-│   ├── AUTHENTICATION.md                   # Auth design
-│   ├── DEPLOYMENT.md                       # Deployment guide
-│   ├── DEVELOPMENT.md                      # Dev setup
-│   └── TESTING.md                          # Testing guide
+├── Lovecraft.Tools.Seeder/                 # CLI: seed Azure Tables from MockDataStore
 │
-├── scripts/                                # Utility scripts
-│   ├── setup-azure.ps1                     # Azure setup
-│   ├── deploy.ps1                          # Deployment
-│   ├── run-tests.ps1                       # Run tests
-│   └── generate-jwt-secret.ps1             # JWT secret
+├── Lovecraft.UnitTests/                    # xUnit
+│   ├── AuthenticationTests, RefreshTokenTests, ServiceTests
+│   ├── TelegramLoginVerifierTests, TelegramPendingFlowTests, TelegramMiniAppFlowTests
+│   ├── GooglePendingFlowTests
+│   ├── AppConfigServiceTests, EffectiveLevelTests, RankCalculatorTests, AclTests
+│   ├── UserCacheTests, AzureUserServiceTests, CachingTests
+│   ├── ChatTests, MatchingTests, ForumTests, EventInviteServiceTests, EventTopicAccessTests
+│   ├── ImageTests, EmailServiceTests, HtmlGuardTests, RateLimitingTests
+│   ├── UsersControllerUpdateTests, TestAuthDependencies
+│   └── AssemblyInfo.cs                     # [CollectionBehavior(DisableTestParallelization=true)]
 │
-├── .gitignore
-├── .editorconfig
-├── docker-compose.yml                      # Local development
-├── docker-compose.prod.yml                 # Production
+├── docs/                                   # Documentation (this folder)
+│   ├── ARCHITECTURE.md (this file), AUTHENTICATION.md, TELEGRAM_AUTH.md,
+│   │   GOOGLE_OAUTH_SETUP.md, AZURE_STORAGE.md, CHAT_ARCHITECTURE.md,
+│   │   EVENTS.md, INVITES.md, DOCKER.md, QUICKSTART.md, API_TESTING.md,
+│   │   IMPLEMENTATION_SUMMARY.md
+│
+├── Dockerfile                              # Backend image
+├── Dockerfile.telegram-bot                 # Bot worker image
 └── README.md
 ```
+
+> The frontend repository's `docker-compose.yml` orchestrates three services: `frontend` (nginx + SPA), `backend` (this project), and `telegram-bot` (worker).
 
 ---
 
 ## 🔧 Technology Choices
 
-### Core Framework
-- **.NET 10** (latest LTS)
-- **ASP.NET Core** for REST API
-- **C# 13** (latest language features)
+### Core
+- **.NET 10** / ASP.NET Core
+- C# 13
 
-### Data Access
-- **Azure.Data.Tables** - Azure Table Storage SDK
-- **Azure.Storage.Blobs** - Azure Blob Storage SDK
-- No ORM needed (NoSQL)
+### Data
+- `Azure.Data.Tables` (Table Storage)
+- `Azure.Storage.Blobs` (image storage)
+- No ORM (NoSQL)
+- In-process caches: `UserCache` (ConcurrentDictionary singleton, `LoadAsync` on startup) + `IMemoryCache` wrappers for Event/Store/Blog/Forum/AppConfig (1-hour TTL)
 
 ### Authentication
-- **System.IdentityModel.Tokens.Jwt** - JWT handling
-- **BCrypt.Net** or **Argon2** - Password hashing
+- `Microsoft.AspNetCore.Authentication.JwtBearer` — Bearer JWT
+- Custom `PasswordHasher` (PBKDF2-HMAC-SHA256, 100k iterations, random 16-byte salt)
+- `Google.Apis.Auth` — Google ID token verification (JWKS)
+- Custom HMAC verifiers for Telegram Login Widget + Mini App `initData`
+
+### Real-time
+- `Microsoft.AspNetCore.SignalR` — `/hubs/chat`, JWT via query string
+
+### Email
+- `SendGrid` SDK when `SENDGRID_API_KEY` is set, otherwise `NullEmailService` (console logging)
+
+### Image processing
+- `ImageMagick` / `SixLabors.ImageSharp` (resize + JPEG re-encode)
+
+### Rate limiting
+- Built-in `Microsoft.AspNetCore.RateLimiting`, sliding window, shared bucket per IP
 
 ### Dependency Injection
-- Built-in ASP.NET Core DI container
+- Built-in ASP.NET Core container
 
-### API Documentation
-- **Swashbuckle** (Swagger/OpenAPI)
-
-### Validation
-- **FluentValidation** - Input validation
-
-### Mapping
-- **AutoMapper** - DTO/Entity mapping
+### API documentation
+- Swashbuckle (Swagger UI at `/swagger`)
 
 ### Testing
-- **xUnit** - Unit testing framework
-- **Moq** - Mocking framework
-- **FluentAssertions** - Assertion library
-
-### Logging
-- **Serilog** - Structured logging
-- **Application Insights** (production)
+- xUnit + Moq + `WebApplicationFactory<Program>` for integration tests
+- `Microsoft.AspNetCore.Mvc.Testing` for `AclTests` end-to-end auth filter coverage
 
 ### Configuration
-- **appsettings.json** - Configuration
-- **Environment variables** - Secrets
-- **Azure Key Vault** (production)
+- `appsettings.json` + environment variables / `.env`
+- `AZURE_TABLE_PREFIX` for isolated dataset namespaces
+
+### Not used (despite older mentions)
+- ❌ FluentValidation — using DataAnnotations + manual validation
+- ❌ AutoMapper — using hand-rolled mappers (e.g. `ToDto` extension methods)
+- ❌ Repositories layer — services talk directly to `TableClient` / `BlobClient`
+- ❌ Serilog / Application Insights — not yet integrated
 
 ---
 
@@ -395,35 +289,31 @@ Lovecraft/
   "sub": "user-guid",
   "email": "user@example.com",
   "name": "User Name",
-  "role": "user",
+  "staffRole": "none | moderator | admin",
   "iat": 1234567890,
-  "exp": 1234568790
+  "exp": 1234568790,
+  "iss": "AloeVeraAPI",
+  "aud": "AloeVeraClients"
 }
 ```
 
-**Refresh Token** (7 days expiry):
-```json
-{
-  "sub": "user-guid",
-  "token_type": "refresh",
-  "jti": "refresh-token-id",
-  "iat": 1234567890,
-  "exp": 1235172690
-}
-```
+`staffRole` is embedded so `[RequireStaffRole]` can authorise without hitting storage. The user's computed rank (Novice / ActiveMember / FriendOfAloe / AloeCrew) is **not** in the JWT — `[RequirePermission]` reads it from storage via `IUserService` on each request.
 
-### Security Measures
+**Refresh Token** — opaque random string stored hashed in the `refreshtokens` table with `ExpiresAt`, `RevokedAt`, `ReplacedByTokenId` (rotation chain).
 
-1. **HTTPS Only**: All communication encrypted
-2. **Password Hashing**: BCrypt with salt (cost factor 12)
-3. **JWT Signing**: HMAC-SHA256 with secret key
-4. **Token Expiration**: Short-lived access tokens
-5. **CORS**: Restricted to known origins
-6. **Rate Limiting**: Prevent abuse
-7. **Input Validation**: All inputs validated
-8. **SQL Injection**: N/A (NoSQL Table Storage)
-9. **XSS Prevention**: API returns JSON only
-10. **Secrets Management**: Environment vars / Key Vault
+### Security Measures (current)
+
+1. **HTTPS** via Cloudflare → Origin Certificate on nginx (port 443 only; port 80 redirects)
+2. **Password hashing**: PBKDF2-HMAC-SHA256, 100k iterations, random 16-byte salt per password
+3. **JWT signing**: HMAC-SHA256; access 15 min, refresh 7 d, rotating refresh tokens
+4. **CORS**: restricted to `localhost:{8080,5173,3000}` and `aloeve.club`/`www.aloeve.club`
+5. **Rate limiting**: sliding window, 20 req/min/IP, shared bucket across auth endpoints
+6. **Input sanitization**: `HtmlGuard` rejects HTML tags in forum/chat/user-update inputs (returns 400 `HTML_NOT_ALLOWED`)
+7. **SQL injection**: N/A (NoSQL Table Storage)
+8. **XSS**: React auto-escapes; BB-code renderer uses no `dangerouslySetInnerHTML`
+9. **Secrets**: env vars / `.env` (Azure Key Vault planned)
+10. **Telegram payload integrity**: HMAC verification with replay window (24 h widget / 1 h Mini App)
+11. **Google ID token verification**: full signature check against JWKS, audience + issuer + expiry checks
 
 ---
 

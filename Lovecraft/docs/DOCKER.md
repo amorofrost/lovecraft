@@ -131,25 +131,33 @@ curl http://localhost:5000/api/v1/blog \
 
 ### Current Status
 
-**Working mock implementation** — All data is in-memory. JWT authentication is fully operational.
+Production-ready and deployed on Azure VM at `https://aloeve.club`. Mode is controlled by `USE_AZURE_STORAGE` (false → in-memory mock; true → Azure Table Storage).
 
-**Current Features**:
-- ✅ REST API with all controllers (Auth, Users, Events, Matching, Store, Blog, Forum)
-- ✅ JWT Authentication — register, login, logout, refresh, email verify, password reset
-- ✅ **Token refresh** — accepts token in request body (HTTP) or HttpOnly cookie (HTTPS); rotates token pair on use
-- ✅ Password hashing (PBKDF2 + salt)
+**Implemented**:
+- ✅ REST API: Auth, Users, Events, Matching, Store, Blog, Forum, Chats, Images, Admin
+- ✅ JWT authentication: register/login/logout/refresh/verify-email/forgot/reset/change-password; access 15 min / refresh 7 d
+- ✅ **Token refresh** — body (HTTP) or HttpOnly cookie (HTTPS); rotates token pair
+- ✅ Password hashing (PBKDF2 + salt + 100k iterations)
+- ✅ **Google Sign-In** (Google Identity Services ID token verification)
+- ✅ **Telegram Login Widget** + **Telegram Mini App** authentication (HMAC verifiers, pending-ticket flow)
+- ✅ **Telegram Bot worker** (`Lovecraft.TelegramBot`) — separate hosted service, long-poll
+- ✅ Azure Table Storage (23 tables) with `Lovecraft.Tools.Seeder` CLI
+- ✅ Azure Blob Storage (`profile-images` + `content-images`); 1200px resize + JPEG 85%
+- ✅ Email delivery via SendGrid (falls back to `NullEmailService` logging when `SENDGRID_API_KEY` absent)
+- ✅ Real-time messaging via SignalR (`/hubs/chat`)
+- ✅ Rate limiting (sliding window 20 req/min/IP, shared bucket across auth endpoints; 429 + `Retry-After`)
+- ✅ HTTPS in production via Cloudflare Origin Certificate on nginx
 - ✅ Swagger/OpenAPI documentation
-- ✅ CORS configured for frontend (localhost:8080, localhost:5173)
-- ✅ Docker support with health checks
-- ✅ 35 unit tests passing
+- ✅ CORS for `localhost:8080`, `localhost:5173`, `localhost:3000`, `aloeve.club`, `www.aloeve.club`
+- ✅ Docker (multi-stage) + health checks
+- ✅ ~25 test classes (~250+ tests)
 
-**Not Yet Implemented**:
-- ❌ Azure Storage integration (data is in-memory, resets on restart)
-- ❌ Real email delivery (verification tokens logged to console only)
-- ❌ Real-time messaging (SignalR)
-- ❌ OAuth (Google, Facebook, VK)
-- ❌ Telegram bot authentication
-- ❌ Rate limiting / account lockout
+**Not yet implemented**:
+- ❌ Songs endpoint (frontend `songsApi.ts` always returns mock)
+- ❌ Azure Blob SAS tokens (blobs currently public-read; profile images use `{userId}/{guid}.jpg` to avoid enumeration)
+- ❌ Account lockout after failed logins
+- ❌ Notifications, online presence, typing indicators
+- ❌ Application Insights / structured logging
 
 ### Test Credentials
 
@@ -169,8 +177,11 @@ There is **no** `INVITE_CODE` environment variable. Whether new accounts must su
 
 The public endpoint `GET /api/v1/auth/registration-config` exposes this to the client as `requireEventInvite`. Invite codes are stored as **readable plaintext** in Table Storage (see [INVITES.md](./INVITES.md)). Admins create event invites with `POST /api/v1/admin/events/{eventId}/invites` and campaign invites with `POST /api/v1/admin/invites/campaigns`.
 
-### Next Steps
+### Related docs
 
-See the main [README.md](../../README.md) and:
-- [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) — auth details
-- [AZURE_STORAGE.md](./AZURE_STORAGE.md) — storage schema for when Azure is integrated
+- [README.md](../../README.md) — main entry point
+- [AUTHENTICATION.md](./AUTHENTICATION.md) — full auth surface (local, Google, Telegram)
+- [AZURE_STORAGE.md](./AZURE_STORAGE.md) — table schema
+- [TELEGRAM_AUTH.md](./TELEGRAM_AUTH.md) — Telegram Login Widget + Mini App + Bot worker
+- [GOOGLE_OAUTH_SETUP.md](./GOOGLE_OAUTH_SETUP.md) — Google Cloud Console setup
+- [INVITES.md](./INVITES.md) — event + campaign invite codes

@@ -1,40 +1,62 @@
 # Implementation Summary
 
-## What Was Created
+## What's Built
 
-A complete .NET 10 backend with REST API endpoints, JWT authentication, and Azure Table Storage. Full-stack deployed on Azure VM at `https://aloeve.club` behind Cloudflare (DNS proxy + DDoS protection) and nginx (TLS termination, HTTP→HTTPS redirect).
+A complete .NET 10 backend with REST API endpoints, JWT authentication, Azure Table Storage, SignalR real-time messaging, SendGrid email, and Google + Telegram identity providers. Full-stack deployed on Azure VM at `https://aloeve.club` behind Cloudflare (DNS proxy + DDoS protection) and nginx (TLS termination, HTTP→HTTPS redirect).
 
-> This document covers the full backend implementation. JWT auth, Azure Table Storage, Docker + nginx deployment, HTTPS via Cloudflare Origin Certificate, and all content API endpoints are implemented and operational. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for auth details. For **events** (visibility, invites, forum), see [EVENTS.md](./EVENTS.md). Last updated April 18, 2026.
+> See [AUTHENTICATION.md](./AUTHENTICATION.md) for the full auth surface (local + Google + Telegram), [TELEGRAM_AUTH.md](./TELEGRAM_AUTH.md) for the Telegram-specific flows, and [EVENTS.md](./EVENTS.md) for event visibility/invites/forum access. Last updated 2026-05-15.
 
 ### Solution Structure
 
 ```
 Lovecraft.slnx
 ├── Lovecraft.Common/           # Shared library (DTOs, Enums, Models)
-│   ├── DTOs/                  # Auth, Blog, Chats, Events, Forum, Matching, Store, Users
-│   ├── Enums/                 # All enumerations
-│   └── Models/                # ApiResponse<T>
+│   ├── DTOs/                  # Admin, Auth, Blog, Chats, Events, Forum, Images, Matching, Store, Users
+│   ├── Enums/                 # All enumerations (incl. EventTopicVisibility, UserRank, StaffRole)
+│   └── Models/                # ApiResponse<T>, PagedResult<T>
 │
-├── Lovecraft.Backend/         # ASP.NET Core Web API
-│   ├── Controllers/V1/        # REST API controllers (Auth, Users, Events, Matching, Store, Blog, Forum)
-│   ├── Services/              # IServices.cs + Mock*Service + Azure/*Service implementations
-│   │   ├── MockUserService.cs, MockEventService.cs, ...  (USE_AZURE_STORAGE=false)
-│   │   ├── Azure/AzureAuthService.cs, AzureUserService.cs, ...  (USE_AZURE_STORAGE=true)
-│   │   └── Caching/           # In-process caching layer
-│   │       ├── UserCache.cs   # ConcurrentDictionary<string,UserEntity> — populated from Azure on startup; updated on every write
-│   │       ├── CachingEventService.cs, CachingForumService.cs, ...  (IMemoryCache wrappers)
+├── Lovecraft.Backend/         # ASP.NET Core Web API + SignalR
+│   ├── Controllers/V1/        # Admin, Auth, Blog, Chats, Events, Forum, Images, Matching, Store, Users
+│   ├── Auth/                  # JwtService, PasswordHasher, JwtSettings,
+│   │                            TelegramLoginVerifier, TelegramWebAppVerifier, GoogleIdTokenVerifier
+│   ├── Attributes/            # RequireStaffRoleAttribute (sync), RequirePermissionAttribute (async)
+│   ├── Configuration/         # JwtSettings, TelegramAuthOptions, GoogleAuthOptions
+│   ├── Helpers/               # RankCalculator, EffectiveLevel, PermissionGuard,
+│   │                            EventForumAccess, EventTopicAccess, HtmlGuard, AppRuntime
+│   ├── Services/              # IServices.cs + Mock*Service implementations (USE_AZURE_STORAGE=false)
+│   │   ├── Azure/             # AzureAuthService, AzureUserService, AzureEventService,
+│   │   │                        AzureMatchingService, AzureStoreService, AzureBlogService,
+│   │   │                        AzureForumService, AzureChatService, AzureImageService,
+│   │   │                        AzureAppConfigService, AzureEventInviteService
+│   │   ├── Caching/           # UserCache (ConcurrentDictionary singleton),
+│   │   │                        CachingEventService, CachingStoreService,
+│   │   │                        CachingBlogService, CachingForumService
+│   │   ├── Email/             # IEmailService, SendGridEmailService, NullEmailService
+│   │   ├── EventInviteHelpers.cs, EventInviteNormalizer.cs
+│   │   └── ...
 │   ├── Storage/               # Azure Table Storage layer
-│   │   ├── TableNames.cs      # 18 table name properties; optional AZURE_TABLE_PREFIX for isolated datasets
-│   │   └── Entities/          # 17 entity classes (UserEntity, EventEntity, ChatEntity, etc.)
-│   ├── Hubs/                  # SignalR hubs
-│   │   └── ChatHub.cs         # Real-time chat hub (JWT auth, JoinChat/JoinTopic/SendMessage)
+│   │   ├── TableNames.cs      # 23 table-name properties; AZURE_TABLE_PREFIX support
+│   │   └── Entities/          # 22 entity classes (incl. UserGoogleIndexEntity, UserTelegramIndexEntity,
+│   │                            UserEmailIndexEntity, EventInviteEntity, EventInterestedEntity,
+│   │                            AppConfigEntity, AuthTokenEntity)
+│   ├── Hubs/ChatHub.cs        # SignalR hub (JoinChat/JoinTopic/SendMessage; JWT via query string)
 │   ├── MockData/              # MockDataStore.cs — in-memory seed data
-│   └── Program.cs             # Startup, DI, mode switch (USE_AZURE_STORAGE), SignalR
+│   └── Program.cs             # Startup, DI mode switch, JWT, SignalR, rate limiting, CORS
 │
-├── Lovecraft.Tools.Seeder/    # CLI tool: seeds Azure Table Storage from MockDataStore
-│   └── Program.cs             # Reads .env, seeds users/events/store/blog/forum + like edges; respects AZURE_TABLE_PREFIX
+├── Lovecraft.TelegramBot/     # Separate hosted-service worker (Telegram long-poll)
+│   ├── Program.cs             # Host.CreateApplicationBuilder + AddHostedService<TelegramBotWorker>
+│   └── TelegramBotWorker.cs
 │
-└── Lovecraft.UnitTests/       # xUnit tests (264 tests)
+├── Lovecraft.Tools.Seeder/    # CLI: seeds Azure Tables from MockDataStore (respects AZURE_TABLE_PREFIX)
+│
+└── Lovecraft.UnitTests/       # xUnit — ~25 test classes (AuthenticationTests, AclTests,
+                                  AppConfigServiceTests, CachingTests, ChatTests, EffectiveLevelTests,
+                                  EmailServiceTests, EventInviteServiceTests, EventTopicAccessTests,
+                                  ForumTests, GooglePendingFlowTests, HtmlGuardTests, ImageTests,
+                                  MatchingTests, RankCalculatorTests, RateLimitingTests,
+                                  RefreshTokenTests, ServiceTests, TelegramLoginVerifierTests,
+                                  TelegramMiniAppFlowTests, TelegramPendingFlowTests,
+                                  UserCacheTests, AzureUserServiceTests, UsersControllerUpdateTests)
 ```
 
 ### API Endpoints Implemented
@@ -161,13 +183,15 @@ All endpoints return data in the format:
 
 ### Mock Data
 
-Matches the frontend mock data (centralized in `src/data/` on the frontend):
-- 4 Users (Anna, Dmitry, Elena, Maria)
-- 10 Events (Concert, Meetup, Festival, Yachting, etc.)
-- 4 Store Items (T-shirt, Vinyl, Poster, Hoodie)
-- 3 Blog Posts
-- 4 Forum Sections with 12 Topics (General, Music, Cities, Offtopic) and 25 Replies
-- 3 AloeVera Songs
+`MockDataStore` (used when `USE_AZURE_STORAGE=false`) matches the frontend mock data in `aloevera-harmony-meet/src/data/`:
+- 4 users (Anna, Dmitry, Elena, Maria) + the seeded `test@example.com`
+- 10 events across all categories (Concert, Meetup, Festival, Yachting, Party, etc.) with mixed visibility (public + secret teaser + secret hidden)
+- 4 store items
+- 3 blog posts
+- 4 forum sections (General, Music, Cities, Offtopic) with 12 topics + 25 replies
+- 3 AloeVera songs
+
+Mock storage also auto-seeds `MOCK-ATTEND-{eventId}` invite codes per event at startup so tests can register without admin steps.
 
 ### Enum Serialization
 
@@ -183,42 +207,41 @@ Examples: `EventCategory.Concert` → `"concert"`, `Gender.NonBinary` → `"nonB
 
 ### Configuration
 
-**CORS:** Configured for frontend (localhost:8080, localhost:5173)
+**CORS:** `localhost:8080`, `localhost:5173`, `localhost:3000`, `aloeve.club`, `www.aloeve.club` (with credentials).
 
-**Swagger:** Full OpenAPI documentation at `/swagger`
+**Swagger:** OpenAPI 3 at `/swagger` (development environment only). Includes Authorize button for Bearer-token testing.
 
-**Health Check:** `/health` endpoint
+**Health Check:** `/health` is public; returns `{ status: "Healthy", timestamp, version, authentication }`.
 
-### Docker Support
+### Docker
 
-- `Dockerfile` - Multi-stage build (build → publish → runtime)
-- `docker-compose.yml` - Simple compose configuration
-- Port mapping: 5000 (host) → 8080 (container)
-- Health checks included
+- `Dockerfile` — multi-stage build for the backend (build → publish → runtime on `mcr.microsoft.com/dotnet/aspnet:10.0`)
+- `Dockerfile.telegram-bot` — image for the long-poll worker
+- The production `docker-compose.yml` lives in the **frontend** repo (`aloevera-harmony-meet/`) and orchestrates three services: `frontend` (nginx + SPA), `backend`, and `telegram-bot`
+- For backend-only local dev, this repo contains a simple `docker-compose.yml` that exposes the API on `http://localhost:5000`
 
 ### Documentation
 
-- `README.md` - Main documentation
-- `DOCKER.md` - Docker instructions and quick start
-- `API_TESTING.md` - API testing guide with curl examples
-- Existing docs updated with implementation status
+See [README.md](../../README.md) for the full doc index. Key docs:
+- **Auth**: `AUTHENTICATION.md`, `TELEGRAM_AUTH.md`, `GOOGLE_OAUTH_SETUP.md`
+- **Storage**: `AZURE_STORAGE.md`
+- **Real-time**: `CHAT_ARCHITECTURE.md`
+- **Domain**: `EVENTS.md`, `INVITES.md`
+- **Operations**: `DOCKER.md`, `QUICKSTART.md`, `API_TESTING.md`
 
 ### Testing
 
-- **264 passing** — xUnit unit + integration tests (`dotnet test Lovecraft.UnitTests`)
-  - Existing suites: `AuthenticationTests`, `ServiceTests`, `RefreshTokenTests`, `ChatTests`, `MatchingTests`, `ForumTests` (all extended with rank/ACL coverage where applicable)
-  - New suites (Roles & ACL spec):
-    - `AppConfigServiceTests` — cache hits/misses, 1-hour TTL, fallback to `RankThresholds.Defaults` / `PermissionConfig.Defaults` on missing or invalid rows, `LogWarning` on parse failure
-    - `EffectiveLevelTests` — unified 0–5 map: Novice=0, ActiveMember=1, FriendOfAloe=2, AloeCrew=3, Moderator=4, Admin=5; `For(user, computedRank) = Math.Max(rankLevel, staffLevel)`
-    - `RankCalculatorTests` — top-down OR-matching from crew → novice, honours `RankOverride`, threshold boundary conditions
-    - `AzureUserServiceTests` — counter increments retry 3× on ETag 412 and swallow exceptions so counter failures never fail the primary operation
-    - `AclTests` — integration tests using `WebApplicationFactory<Program>` + a custom `TestAuthHandler` that injects `staffRole` claims; exercises `section.MinRank`, `topic.MinRank`, `topic.NoviceVisible`, `topic.NoviceCanReply` rejections (`INSUFFICIENT_RANK` / `MODERATOR_REQUIRED` / `ADMIN_REQUIRED`)
-  - New suites (UserCache & performance):
-    - `UserCacheTests` — `Set`/`Get`/`Remove`/`GetAll` correctness, snapshot independence, 300-element concurrent write safety, `LoadAsync` from a mocked `AsyncPageable<UserEntity>`
-    - `AzureUserServiceCacheTests` — `GetUsersAsync` reads cache not Azure (verified via Moq), `GetUserByIdAsync` cache hit vs miss, all four write methods update the cache entry
-    - `MockUserServiceShuffleTests` — shuffle preserves all items with no duplicates and produces different orderings across repeated calls
-- Tests run with `dotnet test`
-- Assembly-level `[CollectionBehavior(DisableTestParallelization = true)]` (in `Lovecraft.UnitTests/AssemblyInfo.cs`) serialises the entire suite — a pragmatic workaround for `MockDataStore` static state (tracked as `followup-mock-state-hygiene` for a proper migration off shared static state)
+xUnit unit + integration tests in `Lovecraft.UnitTests/`. Run with `dotnet test`. Assembly-level `[CollectionBehavior(DisableTestParallelization = true)]` (in `AssemblyInfo.cs`) serialises the entire suite — pragmatic workaround for `MockDataStore` shared static state (tracked as `followup-mock-state-hygiene` for a proper migration off shared static state).
+
+Coverage by file:
+
+- **Auth core**: `AuthenticationTests`, `RefreshTokenTests`, `ServiceTests`
+- **Identity providers**: `TelegramLoginVerifierTests`, `TelegramPendingFlowTests`, `TelegramMiniAppFlowTests`, `GooglePendingFlowTests`
+- **Roles & ACL**: `AppConfigServiceTests` (cache hits/misses, 1-h TTL, fallback to `RankThresholds.Defaults`/`PermissionConfig.Defaults`, `LogWarning` on parse failure), `EffectiveLevelTests` (unified 0–5 map: Novice=0, ActiveMember=1, FriendOfAloe=2, AloeCrew=3, Moderator=4, Admin=5; `For(user, computedRank) = Math.Max(rankLevel, staffLevel)`), `RankCalculatorTests` (top-down OR-matching crew→novice, `RankOverride`, threshold boundaries), `AclTests` (integration via `WebApplicationFactory<Program>` + custom `TestAuthHandler`; `section.MinRank`, `topic.MinRank`, `topic.NoviceVisible`, `topic.NoviceCanReply` rejections returning `INSUFFICIENT_RANK` / `MODERATOR_REQUIRED` / `ADMIN_REQUIRED`)
+- **Storage & caching**: `UserCacheTests` (`Set`/`Get`/`Remove`/`GetAll`, snapshot independence, 300-element concurrent writes, `LoadAsync`), `AzureUserServiceTests` (counter increments retry 3× on ETag 412; cache hit vs miss; write paths update cache entry), `CachingTests`
+- **Domain**: `ChatTests`, `MatchingTests`, `ForumTests`, `EventTopicAccessTests`, `EventInviteServiceTests`, `ImageTests`, `UsersControllerUpdateTests`
+- **Security**: `HtmlGuardTests`, `RateLimitingTests`
+- **Infrastructure**: `EmailServiceTests`
 
 ## How to Use
 
@@ -249,34 +272,31 @@ dotnet test
 
 ## What's Next
 
-> **Note**: JWT authentication has since been implemented. See [AUTH_IMPLEMENTATION.md](./AUTH_IMPLEMENTATION.md) for details.
+### Done since the original plan
+- ✅ JWT authentication
+- ✅ Azure Table Storage (23 tables, 11 Azure services, `Lovecraft.Tools.Seeder`)
+- ✅ Chat endpoints (REST + SignalR `/hubs/chat`)
+- ✅ Azure Blob Storage (`profile-images`, `content-images`, 1200px resize + JPEG 85%)
+- ✅ Email delivery (SendGrid + `NullEmailService` fallback)
+- ✅ Rate limiting (sliding window, 20 req/min/IP, shared bucket)
+- ✅ Google sign-in (Google Identity Services ID token verification, pending-ticket flow)
+- ✅ Telegram Login Widget + Telegram Mini App (Lovecraft.TelegramBot worker also shipped)
+- ✅ Roles & ACL (rank thresholds + permissions in `appconfig`, `[RequireStaffRole]` + `[RequirePermission]`)
+- ✅ Event invites + campaign invites (`eventinvites` table, admin API)
+- ✅ HTTPS via Cloudflare + Origin Certificate (deployed at https://aloeve.club)
+- ✅ User-visible error handling, form validation, profile image upload, BB code, image attachments, SEO metadata
 
-### Immediate Next Steps (Backend)
-1. ~~Add JWT authentication~~ ✅ Done
-2. ~~Integrate Azure Table Storage~~ ✅ Done — 8 Azure services, 17 entities, seeder tool
-3. ~~Add chat endpoints~~ ✅ Done — REST + SignalR, 3 new tables, 18 new unit tests
-4. Integrate Azure Blob Storage (image uploads)
-5. Add email service (SMTP/SendGrid for verification and password reset)
-6. Add songs endpoint (frontend currently falls back to mock data)
-7. Add input validation (FluentValidation)
-8. Add logging (Serilog)
-
-### Frontend Integration
-1. ~~Auth endpoints connected to backend~~ ✅ Done
-2. ~~Implement token storage + protected routes~~ ✅ Done
-3. ~~Wire all pages to backend API~~ ✅ Done
-4. ~~Docker deployment~~ ✅ Done — nginx proxy on Azure VM
-5. ~~Token refresh~~ ✅ Done — silent refresh in `apiClient` (401 deduplication), proactive refresh in `ProtectedRoute` (<5 min expiry)
-6. ~~User-visible error handling~~ ✅ Done — sonner toasts via `showApiError` (`src/lib/apiError.ts`); success toasts on auth/save/reply
-7. ~~Form validation~~ ✅ Done — react-hook-form + Zod on all auth, profile, and forum reply forms (`src/lib/validators.ts`)
-
-### Advanced Features
-1. OAuth integration (Google, Facebook, VK)
-2. Telegram bot authentication
-3. ~~SignalR for real-time messaging~~ ✅ Done (basic send/receive; typing indicators and online presence are future work)
-4. Rate limiting and account lockout
-5. Redis cache
-6. Azure deployment
+### Still open
+1. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
+2. Azure Blob SAS tokens for private blobs (currently public-read; profile blobs use `{userId}/{guid}.jpg` to avoid enumeration)
+3. Account lockout after failed logins
+4. SignalR enhancements: online presence, typing indicators, unread push updates
+5. Notifications (in-app + push)
+6. Pagination on list views (server-side `PagedResult<T>` exists; client-side wiring pending)
+7. Application Insights / structured logging
+8. Admin panel content removal / moderation queue / user blocking
+9. Telegram Mini App polish (deep-link start params, command menu, full inline wizard)
+10. aloeband.ru scraper for events + store items
 
 ## Notes (Current State)
 
@@ -295,57 +315,10 @@ dotnet test
 - **Table prefix**: set `AZURE_TABLE_PREFIX` env var (e.g. `dev_`) to use isolated table sets for separate test datasets; respected by both the backend and the Seeder tool
 - **Seeder**: run `dotnet run --project Lovecraft.Tools.Seeder` from `Lovecraft/` to populate users, events, store, blog, forum, and like edges (sent, received, and mutual scenarios). Set `AZURE_TABLE_PREFIX` to seed into a prefixed namespace.
 - Test credentials after seeding: `test@example.com` / `Test123!@#`; mock users `user1@mock.local`–`user4@mock.local` / `Seed123!@#`
-- CORS allows localhost:8080, localhost:5173, and the Azure VM origin
-- Access token: 15 min; Refresh token: 7 days (HttpOnly cookie)
+- CORS allows `localhost:8080`, `localhost:5173`, `localhost:3000`, `aloeve.club`, `www.aloeve.club`
+- Access token: 15 min; Refresh token: 7 days (HttpOnly cookie + body-based fallback)
 - Enums serialize as camelCase strings in all API responses
-- No rate limiting, no external logging, no email service yet
-- **Deployed on Azure VM**: nginx proxies `/api/` on port 8080 to backend container; only port 8080 needs to be open
-
-## Files Created
-
-### Solution Files
-- `Lovecraft.sln`
-- `Dockerfile`
-- `docker-compose.yml`
-
-### Common Project (9 files)
-- `Enums/Enums.cs`
-- `DTOs/Auth/AuthDtos.cs`
-- `DTOs/Blog/BlogDtos.cs`
-- `DTOs/Chats/ChatDtos.cs`
-- `DTOs/Events/EventDtos.cs`
-- `DTOs/Forum/ForumDtos.cs`
-- `DTOs/Matching/MatchingDtos.cs`
-- `DTOs/Store/StoreDtos.cs`
-- `DTOs/Users/UserDto.cs`
-- `Models/ApiResponse.cs`
-
-### Backend Project (10 files)
-- `Program.cs`
-- `MockData/MockDataStore.cs`
-- `Services/IServices.cs`
-- `Services/MockUserService.cs`
-- `Services/MockEventService.cs`
-- `Services/MockMatchingService.cs`
-- `Services/MockStoreService.cs`
-- `Services/MockBlogService.cs`
-- `Services/MockForumService.cs`
-- `Controllers/V1/UsersController.cs`
-- `Controllers/V1/EventsController.cs`
-- `Controllers/V1/MatchingController.cs`
-- `Controllers/V1/StoreController.cs`
-- `Controllers/V1/BlogController.cs`
-- `Controllers/V1/ForumController.cs`
-
-### Tests Project (1 file)
-- `ServiceTests.cs`
-
-### Documentation (3 files)
-- `DOCKER.md`
-- `API_TESTING.md`
-- `IMPLEMENTATION_SUMMARY.md` (this file)
-
-### Updated Files
-- `README.md` - Added implementation status
-
-**Total: 37 new files created + 1 updated**
+- **Rate limiting**: sliding window 20 req/min/IP, shared bucket across all `[EnableRateLimiting("AuthRateLimit")]` endpoints (login, register, forgot-password, reset, telegram/google variants); returns 429 + `Retry-After: 60`. `refresh` and `logout` are intentionally NOT rate-limited.
+- **Email**: `SendGridEmailService` when `SENDGRID_API_KEY` is set, otherwise `NullEmailService` logs verification + reset links to console.
+- **Deployed on Azure VM** at `https://aloeve.club`: nginx in the frontend container terminates TLS (Cloudflare Origin Certificate), proxies `/api/`, `/hubs/`, and `/swagger` to backend over Docker internal network; only ports 80 + 443 are public-exposed.
+- **Telegram Bot worker** (`Lovecraft.TelegramBot`) runs as a separate hosted-service container (`telegram-bot` in docker-compose, image built from `Dockerfile.telegram-bot`). Long-polls Telegram for incoming messages — currently a scaffold for future deep-link / linking workflows.

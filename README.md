@@ -30,42 +30,55 @@ Lovecraft is the backend service for the AloeVera Harmony Meet platform, built w
 
 ```
 lovecraft/
-├── README.md                 # This file
+├── README.md                       # This file
 └── Lovecraft/
-    ├── Lovecraft.sln         # Solution file
-    ├── Lovecraft.Common/     # Shared DTOs, enums, models
-    │   ├── DTOs/             # Auth, Users, Events, Matching, Store, Blog, Forum, Chat DTOs
-    │   ├── Enums/            # All enumerations
-    │   └── Models/           # ApiResponse<T>
-    ├── Lovecraft.Backend/    # Main API project
-    │   ├── Auth/             # JwtService, PasswordHasher, JwtSettings
-    │   ├── Controllers/V1/   # AuthController + all resource controllers
-    │   ├── Services/         # IServices.cs + Mock*Service implementations
-    │   ├── MockData/         # MockDataStore.cs — in-memory seed data
-    │   └── Program.cs        # Application startup
-    ├── Lovecraft.UnitTests/  # xUnit tests (22 tests)
-    ├── Dockerfile            # Multi-stage Docker build
-    ├── docker-compose.yml    # Docker Compose
-    └── docs/                 # Technical documentation
+    ├── Lovecraft.slnx              # Solution
+    ├── Lovecraft.Common/           # Shared DTOs (Admin, Auth, Blog, Chats, Events,
+    │                                  Forum, Images, Matching, Store, Users), enums, ApiResponse<T>
+    ├── Lovecraft.Backend/          # ASP.NET Core API + SignalR
+    │   ├── Auth/                   # JwtService, PasswordHasher,
+    │   │                              TelegramLoginVerifier, TelegramWebAppVerifier,
+    │   │                              GoogleIdTokenVerifier
+    │   ├── Attributes/             # RequireStaffRoleAttribute, RequirePermissionAttribute
+    │   ├── Configuration/          # JwtSettings, TelegramAuthOptions, GoogleAuthOptions
+    │   ├── Controllers/V1/         # Admin, Auth, Blog, Chats, Events, Forum,
+    │   │                              Images, Matching, Store, Users
+    │   ├── Helpers/                # RankCalculator, EffectiveLevel, PermissionGuard,
+    │   │                              EventForumAccess, EventTopicAccess, HtmlGuard
+    │   ├── Hubs/                   # ChatHub (SignalR)
+    │   ├── Services/               # IServices.cs + Mock implementations
+    │   │   ├── Azure/              # 11 Azure-backed implementations
+    │   │   ├── Caching/            # UserCache + IMemoryCache wrappers
+    │   │   └── Email/              # SendGridEmailService, NullEmailService
+    │   ├── Storage/                # TableNames + 22 entity classes
+    │   ├── MockData/               # MockDataStore.cs
+    │   └── Program.cs              # Startup, DI mode switch
+    ├── Lovecraft.TelegramBot/      # Separate hosted-service worker (long-poll)
+    ├── Lovecraft.Tools.Seeder/     # CLI: seed Azure Tables from mock data
+    ├── Lovecraft.UnitTests/        # xUnit — ~25 test classes
+    ├── Dockerfile                  # Backend image
+    ├── Dockerfile.telegram-bot     # Bot worker image
+    └── docs/                       # Technical documentation
 ```
 
 ---
 
 ## 📚 Documentation
 
-Comprehensive documentation is available in the `Lovecraft/docs/` folder:
+In `Lovecraft/docs/`:
 
-- **[QUICKSTART.md](./Lovecraft/docs/QUICKSTART.md)** - 30-second start guide
-- **[DOCKER.md](./Lovecraft/docs/DOCKER.md)** - Docker setup and commands
-- **[IMPLEMENTATION_SUMMARY.md](./Lovecraft/docs/IMPLEMENTATION_SUMMARY.md)** - What's implemented
-- **[AUTHENTICATION.md](./Lovecraft/docs/AUTHENTICATION.md)** - Auth design and flows
-- **[AUTH_IMPLEMENTATION.md](./Lovecraft/docs/AUTH_IMPLEMENTATION.md)** - Auth implementation details
-- **[AUTH_FLOWS.md](./Lovecraft/docs/AUTH_FLOWS.md)** - Authentication flow diagrams
-- **[AUTH_DECISIONS.md](./Lovecraft/docs/AUTH_DECISIONS.md)** - Auth design decisions
-- **[API_TESTING.md](./Lovecraft/docs/API_TESTING.md)** - API testing with curl/Swagger
-- **[ARCHITECTURE.md](./Lovecraft/docs/ARCHITECTURE.md)** - System architecture
-- **[AZURE_STORAGE.md](./Lovecraft/docs/AZURE_STORAGE.md)** - Data schema and storage patterns
-- **[EVENTS.md](./Lovecraft/docs/EVENTS.md)** - Events: visibility, registration, interest, forum topics & per-topic access
+- **[QUICKSTART.md](./Lovecraft/docs/QUICKSTART.md)** — local dev quick start
+- **[DOCKER.md](./Lovecraft/docs/DOCKER.md)** — Docker setup
+- **[ARCHITECTURE.md](./Lovecraft/docs/ARCHITECTURE.md)** — system architecture
+- **[IMPLEMENTATION_SUMMARY.md](./Lovecraft/docs/IMPLEMENTATION_SUMMARY.md)** — implementation log
+- **[AUTHENTICATION.md](./Lovecraft/docs/AUTHENTICATION.md)** — full auth surface (local + Google + Telegram)
+- **[TELEGRAM_AUTH.md](./Lovecraft/docs/TELEGRAM_AUTH.md)** — Telegram Login Widget + Mini App + Bot worker
+- **[GOOGLE_OAUTH_SETUP.md](./Lovecraft/docs/GOOGLE_OAUTH_SETUP.md)** — Google Cloud Console setup
+- **[AZURE_STORAGE.md](./Lovecraft/docs/AZURE_STORAGE.md)** — 23-table schema + blob containers
+- **[CHAT_ARCHITECTURE.md](./Lovecraft/docs/CHAT_ARCHITECTURE.md)** — REST + SignalR chat design
+- **[EVENTS.md](./Lovecraft/docs/EVENTS.md)** — event visibility, registration, forum-topic access
+- **[INVITES.md](./Lovecraft/docs/INVITES.md)** — event + campaign invite codes
+- **[API_TESTING.md](./Lovecraft/docs/API_TESTING.md)** — curl reference
 
 ---
 
@@ -107,43 +120,29 @@ dotnet run
 ### Environment Variables
 
 ```bash
-# Azure Storage (or use mock data)
-AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...
+# Storage mode
+USE_AZURE_STORAGE=true|false              # false → in-memory mock
+AZURE_STORAGE_CONNECTION_STRING=...
+AZURE_TABLE_PREFIX=                        # optional: isolate dev/test datasets
 
-# JWT Authentication
-JWT_SECRET=your-super-secret-key-change-in-production
-JWT_ISSUER=https://api.aloevera-meet.com
-JWT_AUDIENCE=https://aloevera-meet.com
+# JWT
+JWT_SECRET_KEY=<32+ random bytes>          # required
 
-# CORS (allowed origins)
-ALLOWED_ORIGINS=http://localhost:8080,https://aloevera-meet.com
+# Email (optional — falls back to NullEmailService console logging)
+SENDGRID_API_KEY=<sendgrid api key>
+FROM_EMAIL=noreply@aloeband.ru
+FRONTEND_BASE_URL=https://aloeve.club
 
-# Mock Data (for development)
-USE_MOCK_DATA=true
+# Google sign-in (optional)
+GOOGLE_OAUTH_CLIENT_ID=<web client id>.apps.googleusercontent.com
+
+# Telegram (optional)
+TELEGRAM_BOT_TOKEN=<from BotFather>
+TELEGRAM_BOT_USERNAME=<bot username without @>
+# Also bindable via Telegram__BotToken / Telegram__BotUsername / Google__ClientId
 ```
 
-Registration is **not** controlled by a global `INVITE_CODE` environment variable. The frontend reads `GET /api/v1/auth/registration-config` (`requireEventInvite`), which mirrors the **appconfig** row `registration` / `require_event_invite`. Per-event invite codes are issued via the admin API and validated at registration. See [DOCKER.md](./Lovecraft/docs/DOCKER.md#registration-policy-appconfig).
-
-### appsettings.json
-
-```json
-{
-  "AzureStorage": {
-    "ConnectionString": "UseDevelopmentStorage=true",
-    "TablePrefix": "lovecraft"
-  },
-  "Jwt": {
-    "Secret": "your-secret-key-here",
-    "Issuer": "https://localhost:5000",
-    "Audience": "https://localhost:8080",
-    "AccessTokenExpirationMinutes": 15,
-    "RefreshTokenExpirationDays": 7
-  },
-  "Cors": {
-    "AllowedOrigins": ["http://localhost:8080"]
-  }
-}
-```
+Registration gating is **not** an env var. It's the `appconfig` row `registration` / `require_event_invite`. `GET /api/v1/auth/registration-config` exposes it as `{ requireEventInvite: bool }` to the frontend. Invite codes are issued via the admin API and validated at registration. See [DOCKER.md](./Lovecraft/docs/DOCKER.md) and [INVITES.md](./Lovecraft/docs/INVITES.md).
 
 ---
 
@@ -221,34 +220,38 @@ git push origin feature/add-user-search
 
 ## 🏗️ Implementation Status
 
-### ✅ Completed
-- Project structure: `Lovecraft.Common`, `Lovecraft.Backend`, `Lovecraft.UnitTests`, `Lovecraft.Tools.Seeder`
-- All REST API controllers: Auth, Users, Events, Matching, Store, Blog, Forum
-- **JWT Authentication**: register, login, logout, token refresh, email verification, password reset, change password
-- Password hashing (PBKDF2 + salt)
-- **Azure Table Storage integration**: 7 Azure service implementations, 14 entity classes, 15 table constants; mode switch via `USE_AZURE_STORAGE` env var
-- **`Lovecraft.Tools.Seeder`**: CLI tool that seeds all 15 Azure tables from mock data (users with hashed passwords, events, store, blog, forum)
-- `[Authorize]` enforced on all content controllers (Events, Store, Blog, Forum, Users, Matching)
-- **Enum serialization**: all C# enums serialize as camelCase strings (e.g., `"concert"`, `"male"`, `"nonBinary"`)
-- Forum topics & replies: 12 topics and 25 replies; full topic detail and reply CRUD endpoints
-- CORS configured for frontend (localhost:8080, localhost:5173)
+### ✅ Shipped
+- **REST API**: Admin, Auth, Blog, Chats, Events, Forum, Images, Matching, Store, Users
+- **JWT auth**: register, login, logout, refresh, verify-email, forgot/reset/change-password (PBKDF2 + 16-byte salt + 100k iterations); access 15 min / refresh 7 d rotating
+- **Google sign-in** (Google Identity Services ID token verification + pending-ticket flow)
+- **Telegram Login Widget** + **Telegram Mini App** (HMAC verifiers, pending-ticket flow, attach-email for Telegram-only accounts)
+- **Telegram Bot worker** (`Lovecraft.TelegramBot`) as separate hosted-service container
+- **Account linking** across providers; smart email-based auto-linking for Google
+- **Azure Table Storage** integration (23 tables, 11 Azure service implementations)
+- **Azure Blob Storage** for `profile-images` + `content-images` (1200px resize, JPEG Q85)
+- **External profile photo download** from Google/Telegram CDN to Azure Blob
+- **`Lovecraft.Tools.Seeder`**: CLI to seed all 23 tables; respects `AZURE_TABLE_PREFIX`
+- **SignalR `/hubs/chat`** for real-time chat + forum-reply notifications
+- **Email delivery** via SendGrid; falls back to `NullEmailService` console logging
+- **Rate limiting** (sliding window, 20 req/min/IP, shared bucket across auth endpoints; 429 + `Retry-After`)
+- **HTTPS** in production via Cloudflare + Origin Certificate on nginx (deployed at https://aloeve.club)
+- **HtmlGuard** input sanitization on user-facing fields (returns 400 `HTML_NOT_ALLOWED`)
+- **Roles & ACL**: `appconfig`-backed rank thresholds + permissions; `[RequireStaffRole]` (sync) + `[RequirePermission]` (async); `staffRole` embedded as JWT claim
+- **Event invites + campaign invites** in `eventinvites` table; admin API for create/rotate/revoke
+- **Per-topic event forum visibility** (`public`/`attendeesOnly`/`specificUsers`)
+- All C# enums serialize as camelCase strings
 - Swagger UI at `/swagger`; health check at `/health`
-- **Docker + nginx proxy**: frontend container proxies `/api/` to backend; only port 8080 needs to be exposed; deployed on Azure VM
-- **Token refresh endpoint** (`POST /api/v1/auth/refresh`): accepts refresh token in request body (localStorage flow) or HttpOnly cookie (HTTPS flow); issues new rotated access + refresh token pair; `Secure` cookie flag is conditional on `Request.IsHttps` so it works over HTTP too
-- **35 unit tests** (16 auth + 6 service + 13 refresh-token tests) — all passing
-- Frontend API service layer fully implemented for all domains; all pages wired to backend
-- **Silent token refresh in frontend**: `apiClient` retries any 401 response after refreshing; concurrent 401s are deduplicated; `ProtectedRoute` proactively refreshes tokens near expiry (<5 min)
+- CORS for localhost dev + production origin
+- xUnit tests (~25 test classes); integration tests via `WebApplicationFactory<Program>`
 
-### 📋 Planned
-- Azure Blob Storage (image uploads — images currently Unsplash URLs)
-- Email service (SMTP/SendGrid — tokens currently logged to console)
-- OAuth integration (Google, Facebook, VK)
-- Telegram bot authentication
-- Real-time messaging (SignalR)
-- Chat and songs endpoints (frontend currently uses mock data for these)
-- Rate limiting and account lockout
-
-See [BACKEND_PLAN.md](../aloevera-harmony-meet/docs/BACKEND_PLAN.md) for detailed roadmap.
+### 📋 Open
+- Songs backend endpoint (frontend `songsApi.ts` still returns mock)
+- Azure Blob SAS tokens (containers currently public-read)
+- Account lockout after failed logins
+- Online presence / typing indicators / notifications
+- Application Insights / structured logging
+- Admin moderation queue, user blocking, content removal
+- Telegram Mini App polish (deep-link start params, command menu)
 
 ---
 
