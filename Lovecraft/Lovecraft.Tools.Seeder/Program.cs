@@ -128,7 +128,9 @@ foreach (var u in MockDataStore.Users)
         matchCount: matchCount,
         staffRole: staffRole,
         country: u.Country,
-        region: u.Region);
+        region: u.Region,
+        secondaryCountry: u.SecondaryCountry,
+        secondaryRegion: u.SecondaryRegion);
 
     seededUsers.Add((u.Id, email, SeedPassword));
 }
@@ -543,7 +545,9 @@ static async Task SeedUserAsync(
     int matchCount = 0,
     string staffRole = "none",
     string country = "",
-    string region = "")
+    string region = "",
+    string secondaryCountry = "",
+    string secondaryRegion = "")
 {
     var now = DateTime.UtcNow;
     var userEntity = new UserEntity
@@ -555,8 +559,10 @@ static async Task SeedUserAsync(
         Name          = name,
         Age           = age,
         Location      = location,
-        Country       = country,
-        Region        = region,
+        Country          = country,
+        Region           = region,
+        SecondaryCountry = secondaryCountry,
+        SecondaryRegion  = secondaryRegion,
         Gender        = gender.ToString(),
         Bio           = bio,
         EmailVerified = emailVerified,
