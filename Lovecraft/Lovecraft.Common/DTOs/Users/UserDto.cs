@@ -10,6 +10,8 @@ public class UserDto
     public int Age { get; set; }
     public string Bio { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
+    public string Region { get; set; } = string.Empty;
     public Gender Gender { get; set; }
     public string ProfileImage { get; set; } = string.Empty;
     public List<string> Images { get; set; } = new();

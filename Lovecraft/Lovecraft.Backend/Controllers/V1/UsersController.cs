@@ -38,11 +38,15 @@ public class UsersController : ControllerBase
     /// Get list of users (for search/matching)
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<List<UserDto>>>> GetUsers([FromQuery] int skip = 0, [FromQuery] int take = 10)
+    public async Task<ActionResult<ApiResponse<List<UserDto>>>> GetUsers(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = 10,
+        [FromQuery] string? country = null,
+        [FromQuery] string? region = null)
     {
         try
         {
-            var users = await _userService.GetUsersAsync(skip, take);
+            var users = await _userService.GetUsersAsync(skip, take, country, region);
             await Task.WhenAll(users.Select(async u =>
             {
                 var attended = await _eventService.GetEventsAttendedByUserAsync(u.Id);
@@ -94,6 +98,14 @@ public class UsersController : ControllerBase
             return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in location"));
         if (HtmlGuard.ContainsHtml(user.Bio))
             return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in bio"));
+        if (!string.IsNullOrEmpty(user.Country) && user.Country.Length > 56)
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("COUNTRY_TOO_LONG", "Country must be 56 characters or less"));
+        if (!string.IsNullOrEmpty(user.Region) && user.Region.Length > 80)
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("REGION_TOO_LONG", "Region must be 80 characters or less"));
+        if (HtmlGuard.ContainsHtml(user.Country))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in country"));
+        if (HtmlGuard.ContainsHtml(user.Region))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in region"));
 
         if (user.Prompts is { } prompts)
         {

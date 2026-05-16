@@ -15,10 +15,17 @@ public class MockUserService : IUserService
         _appConfig = appConfig;
     }
 
-    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
+    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
     {
         var config = await _appConfig.GetConfigAsync();
-        var all = MockDataStore.Users.ToList();
+        var query = MockDataStore.Users.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(country))
+            query = query.Where(u => string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(region))
+            query = query.Where(u => string.Equals(u.Region, region, StringComparison.OrdinalIgnoreCase));
+
+        var all = query.ToList();
         for (int i = all.Count - 1; i > 0; i--)
         {
             int j = Random.Shared.Next(i + 1);
@@ -43,7 +50,8 @@ public class MockUserService : IUserService
         existing.Name = user.Name;
         existing.Age = user.Age;
         existing.Bio = user.Bio;
-        existing.Location = user.Location;
+        existing.Country = user.Country ?? string.Empty;
+        existing.Region = user.Region ?? string.Empty;
         existing.Gender = user.Gender;
         existing.ProfileImage = user.ProfileImage;
         existing.Images = user.Images;

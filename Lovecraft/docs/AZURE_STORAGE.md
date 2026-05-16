@@ -30,6 +30,7 @@ Stores the full user profile. See [AUTHENTICATION.md](./AUTHENTICATION.md#-stora
 
 - `AuthMethodsJson` — list of `"local"`, `"google"`, `"telegram"` (any combination)
 - `TelegramUserId`, `GoogleUserId` — non-empty when those providers are linked
+- `Country`, `Region` — structured location (ISO 3166-1 alpha-2 country code + region string); `Location` retained as legacy free-text field
 - `InstagramHandle` — optional public handle
 - `EmailVerified`, `IsOnline`, `LastSeen`
 - `StaffRole` (`"none"|"moderator"|"admin"`), `RankOverride` (admin-set; otherwise null and rank is computed)

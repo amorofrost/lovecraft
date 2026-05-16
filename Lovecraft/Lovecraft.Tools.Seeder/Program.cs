@@ -86,7 +86,9 @@ await SeedUserAsync(
     password: TestPassword,
     age: 25, location: "Москва", gender: Gender.PreferNotToSay, bio: "Test account",
     emailVerified: true,
-    staffRole: "admin");
+    staffRole: "admin",
+    country: "RU",
+    region: "Москва");
 seededUsers.Add(("test-user-001", "test@example.com", TestPassword));
 
 // Mock users from MockDataStore
@@ -124,7 +126,9 @@ foreach (var u in MockDataStore.Users)
         likesReceived: likesReceived,
         eventsAttended: eventsAttended,
         matchCount: matchCount,
-        staffRole: staffRole);
+        staffRole: staffRole,
+        country: u.Country,
+        region: u.Region);
 
     seededUsers.Add((u.Id, email, SeedPassword));
 }
@@ -537,7 +541,9 @@ static async Task SeedUserAsync(
     int likesReceived = 0,
     int eventsAttended = 0,
     int matchCount = 0,
-    string staffRole = "none")
+    string staffRole = "none",
+    string country = "",
+    string region = "")
 {
     var now = DateTime.UtcNow;
     var userEntity = new UserEntity
@@ -549,6 +555,8 @@ static async Task SeedUserAsync(
         Name          = name,
         Age           = age,
         Location      = location,
+        Country       = country,
+        Region        = region,
         Gender        = gender.ToString(),
         Bio           = bio,
         EmailVerified = emailVerified,

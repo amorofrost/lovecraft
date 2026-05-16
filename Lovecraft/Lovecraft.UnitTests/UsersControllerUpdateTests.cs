@@ -172,4 +172,64 @@ public class UsersControllerUpdateTests : IClassFixture<AclTests.TestAppFactory>
         var resp = await _client.PutAsJsonAsync($"/api/v1/users/{UserId}", dto);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
+
+    // ── Country / Region tests ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateUser_AcceptsCountryAndRegion()
+    {
+        var dto = BaseValidDto();
+        dto.Country = "RU";
+        dto.Region = "Москва";
+        var resp = await _client.PutAsJsonAsync($"/api/v1/users/{UserId}", dto);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<UserDto>>(JsonOpts);
+        Assert.True(body!.Success);
+        Assert.Equal("RU", body.Data!.Country);
+        Assert.Equal("Москва", body.Data.Region);
+    }
+
+    [Fact]
+    public async Task UpdateUser_RejectsCountryWithHtml()
+    {
+        var dto = BaseValidDto();
+        dto.Country = "<b>RU</b>";
+        var resp = await _client.PutAsJsonAsync($"/api/v1/users/{UserId}", dto);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<UserDto>>();
+        Assert.Equal("HTML_NOT_ALLOWED", body!.Error?.Code);
+    }
+
+    [Fact]
+    public async Task UpdateUser_RejectsRegionWithHtml()
+    {
+        var dto = BaseValidDto();
+        dto.Region = "<i>Moscow</i>";
+        var resp = await _client.PutAsJsonAsync($"/api/v1/users/{UserId}", dto);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<UserDto>>();
+        Assert.Equal("HTML_NOT_ALLOWED", body!.Error?.Code);
+    }
+
+    [Fact]
+    public async Task UpdateUser_RejectsCountryTooLong()
+    {
+        var dto = BaseValidDto();
+        dto.Country = new string('a', 57);
+        var resp = await _client.PutAsJsonAsync($"/api/v1/users/{UserId}", dto);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<UserDto>>();
+        Assert.Equal("COUNTRY_TOO_LONG", body!.Error?.Code);
+    }
+
+    [Fact]
+    public async Task UpdateUser_RejectsRegionTooLong()
+    {
+        var dto = BaseValidDto();
+        dto.Region = new string('a', 81);
+        var resp = await _client.PutAsJsonAsync($"/api/v1/users/{UserId}", dto);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<UserDto>>();
+        Assert.Equal("REGION_TOO_LONG", body!.Error?.Code);
+    }
 }

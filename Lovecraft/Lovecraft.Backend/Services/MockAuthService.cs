@@ -107,7 +107,8 @@ public class MockAuthService : IAuthService
             AuthMethods = new List<string> { "local" },
             CreatedAt = DateTime.UtcNow,
             Age = request.Age ?? 0,
-            Location = request.Location,
+            Country = request.Country ?? string.Empty,
+            Region = request.Region ?? string.Empty,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio
         };
@@ -240,7 +241,8 @@ public class MockAuthService : IAuthService
             AuthMethods = new List<string> { "telegram" },
             CreatedAt = DateTime.UtcNow,
             Age = request.Age > 0 ? request.Age : 18,
-            Location = string.IsNullOrWhiteSpace(request.Location) ? "Telegram" : request.Location,
+            Country = request.Country ?? string.Empty,
+            Region = request.Region ?? string.Empty,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             TelegramUserId = tgKey,
@@ -332,6 +334,8 @@ public class MockAuthService : IAuthService
             Name = request.Name,
             Age = request.Age,
             Location = request.Location,
+            Country = request.Country,
+            Region = request.Region,
             Gender = request.Gender,
             Bio = request.Bio,
             InviteCode = request.InviteCode,
@@ -445,7 +449,8 @@ public class MockAuthService : IAuthService
             AuthMethods = new List<string> { "google" },
             CreatedAt = now,
             Age = request.Age > 0 ? request.Age : 18,
-            Location = string.IsNullOrWhiteSpace(request.Location) ? "—" : request.Location,
+            Country = request.Country ?? string.Empty,
+            Region = request.Region ?? string.Empty,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             GoogleUserId = gInfo.Sub,
@@ -889,6 +894,8 @@ public class MockAuthService : IAuthService
         public DateTime? LastLoginAt { get; set; }
         public int Age { get; set; }
         public string Location { get; set; } = string.Empty;
+        public string Country { get; set; } = string.Empty;
+        public string Region { get; set; } = string.Empty;
         public string Gender { get; set; } = string.Empty;
         public string Bio { get; set; } = string.Empty;
         public string? TelegramUserId { get; set; }
