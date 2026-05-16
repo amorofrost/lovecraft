@@ -18,6 +18,8 @@ public class RegisterRequestDto
     public string Location { get; set; } = string.Empty;
     public string? Country { get; set; }
     public string? Region { get; set; }
+    public string? SecondaryCountry { get; set; }
+    public string? SecondaryRegion { get; set; }
     public string Gender { get; set; } = string.Empty;
     public string Bio { get; set; } = string.Empty;
     public string? InviteCode { get; set; }
@@ -133,6 +135,8 @@ public class TelegramRegisterRequestDto
     public string Location { get; set; } = string.Empty;
     public string? Country { get; set; }
     public string? Region { get; set; }
+    public string? SecondaryCountry { get; set; }
+    public string? SecondaryRegion { get; set; }
     public string Gender { get; set; } = string.Empty;
     public string Bio { get; set; } = string.Empty;
     public string? InviteCode { get; set; }
@@ -197,6 +201,8 @@ public class TelegramMiniAppRegisterRequestDto
     public string Location { get; set; } = string.Empty;
     public string? Country { get; set; }
     public string? Region { get; set; }
+    public string? SecondaryCountry { get; set; }
+    public string? SecondaryRegion { get; set; }
     public string Gender { get; set; } = string.Empty;
     public string Bio { get; set; } = string.Empty;
     public string? InviteCode { get; set; }
@@ -261,6 +267,8 @@ public class GoogleRegisterRequestDto
     [Required, MinLength(1), MaxLength(200)] public string Location { get; set; } = string.Empty;
     public string? Country { get; set; }
     public string? Region { get; set; }
+    public string? SecondaryCountry { get; set; }
+    public string? SecondaryRegion { get; set; }
     [Required, MinLength(1)] public string Gender { get; set; } = string.Empty;
     [MaxLength(500)] public string Bio { get; set; } = string.Empty;
     public string? InviteCode { get; set; }

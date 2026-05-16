@@ -109,6 +109,8 @@ public class MockAuthService : IAuthService
             Age = request.Age ?? 0,
             Country = request.Country ?? string.Empty,
             Region = request.Region ?? string.Empty,
+            SecondaryCountry = request.SecondaryCountry ?? string.Empty,
+            SecondaryRegion = request.SecondaryRegion ?? string.Empty,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio
         };
@@ -243,6 +245,8 @@ public class MockAuthService : IAuthService
             Age = request.Age > 0 ? request.Age : 18,
             Country = request.Country ?? string.Empty,
             Region = request.Region ?? string.Empty,
+            SecondaryCountry = request.SecondaryCountry ?? string.Empty,
+            SecondaryRegion = request.SecondaryRegion ?? string.Empty,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             TelegramUserId = tgKey,
@@ -336,6 +340,8 @@ public class MockAuthService : IAuthService
             Location = request.Location,
             Country = request.Country,
             Region = request.Region,
+            SecondaryCountry = request.SecondaryCountry,
+            SecondaryRegion = request.SecondaryRegion,
             Gender = request.Gender,
             Bio = request.Bio,
             InviteCode = request.InviteCode,
@@ -451,6 +457,8 @@ public class MockAuthService : IAuthService
             Age = request.Age > 0 ? request.Age : 18,
             Country = request.Country ?? string.Empty,
             Region = request.Region ?? string.Empty,
+            SecondaryCountry = request.SecondaryCountry ?? string.Empty,
+            SecondaryRegion = request.SecondaryRegion ?? string.Empty,
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             GoogleUserId = gInfo.Sub,
@@ -896,6 +904,8 @@ public class MockAuthService : IAuthService
         public string Location { get; set; } = string.Empty;
         public string Country { get; set; } = string.Empty;
         public string Region { get; set; } = string.Empty;
+        public string SecondaryCountry { get; set; } = string.Empty;
+        public string SecondaryRegion { get; set; } = string.Empty;
         public string Gender { get; set; } = string.Empty;
         public string Bio { get; set; } = string.Empty;
         public string? TelegramUserId { get; set; }
