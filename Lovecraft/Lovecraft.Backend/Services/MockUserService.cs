@@ -20,10 +20,23 @@ public class MockUserService : IUserService
         var config = await _appConfig.GetConfigAsync();
         var query = MockDataStore.Users.AsEnumerable();
 
-        if (!string.IsNullOrWhiteSpace(country))
-            query = query.Where(u => string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(region))
-            query = query.Where(u => string.Equals(u.Region, region, StringComparison.OrdinalIgnoreCase));
+        var hasCountry = !string.IsNullOrWhiteSpace(country);
+        var hasRegion  = !string.IsNullOrWhiteSpace(region);
+
+        if (hasCountry && hasRegion)
+            query = query.Where(u =>
+                (string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(u.Region,  region,  StringComparison.OrdinalIgnoreCase)) ||
+                (string.Equals(u.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(u.SecondaryRegion,  region,  StringComparison.OrdinalIgnoreCase)));
+        else if (hasCountry)
+            query = query.Where(u =>
+                string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(u.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase));
+        else if (hasRegion)
+            query = query.Where(u =>
+                string.Equals(u.Region, region, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(u.SecondaryRegion, region, StringComparison.OrdinalIgnoreCase));
 
         var all = query.ToList();
         for (int i = all.Count - 1; i > 0; i--)
@@ -52,6 +65,8 @@ public class MockUserService : IUserService
         existing.Bio = user.Bio;
         existing.Country = user.Country ?? string.Empty;
         existing.Region = user.Region ?? string.Empty;
+        existing.SecondaryCountry = user.SecondaryCountry ?? string.Empty;
+        existing.SecondaryRegion = user.SecondaryRegion ?? string.Empty;
         existing.Gender = user.Gender;
         existing.ProfileImage = user.ProfileImage;
         existing.Images = user.Images;

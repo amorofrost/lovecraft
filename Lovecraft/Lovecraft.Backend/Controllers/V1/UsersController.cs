@@ -106,6 +106,14 @@ public class UsersController : ControllerBase
             return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in country"));
         if (HtmlGuard.ContainsHtml(user.Region))
             return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in region"));
+        if (!string.IsNullOrEmpty(user.SecondaryCountry) && user.SecondaryCountry.Length > 56)
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("SECONDARY_COUNTRY_TOO_LONG", "Secondary country must be 56 characters or less"));
+        if (!string.IsNullOrEmpty(user.SecondaryRegion) && user.SecondaryRegion.Length > 80)
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("SECONDARY_REGION_TOO_LONG", "Secondary region must be 80 characters or less"));
+        if (HtmlGuard.ContainsHtml(user.SecondaryCountry))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in secondary country"));
+        if (HtmlGuard.ContainsHtml(user.SecondaryRegion))
+            return BadRequest(ApiResponse<UserDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in secondary region"));
 
         if (user.Prompts is { } prompts)
         {

@@ -19,6 +19,8 @@ public class UserEntity : ITableEntity
     public string Location { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
     public string Region { get; set; } = string.Empty;
+    public string SecondaryCountry { get; set; } = string.Empty;
+    public string SecondaryRegion { get; set; } = string.Empty;
     public string Gender { get; set; } = string.Empty;
     public string ProfileImage { get; set; } = string.Empty;
     public string ImagesJson { get; set; } = "[]";

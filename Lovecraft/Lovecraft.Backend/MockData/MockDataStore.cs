@@ -174,6 +174,8 @@ public static class MockDataStore
             Location = "Москва",
             Country = "RU",
             Region = "Москва",
+            SecondaryCountry = "TH",
+            SecondaryRegion = "Пхукет",
             Gender = Gender.Female,
             ProfileImage = "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=600&fit=crop&crop=face",
             Images = new List<string>(),
