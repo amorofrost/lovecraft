@@ -18,7 +18,14 @@ public class MockUserService : IUserService
     public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
     {
         var config = await _appConfig.GetConfigAsync();
-        var all = MockDataStore.Users.ToList();
+        var query = MockDataStore.Users.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(country))
+            query = query.Where(u => string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(region))
+            query = query.Where(u => string.Equals(u.Region, region, StringComparison.OrdinalIgnoreCase));
+
+        var all = query.ToList();
         for (int i = all.Count - 1; i > 0; i--)
         {
             int j = Random.Shared.Next(i + 1);

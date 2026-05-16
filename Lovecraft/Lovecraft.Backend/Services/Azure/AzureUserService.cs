@@ -34,6 +34,16 @@ public class AzureUserService : IUserService
     {
         var config = await _appConfig.GetConfigAsync();
         var all = _cache.GetAll();
+
+        if (!string.IsNullOrWhiteSpace(country))
+        {
+            all = all.Where(e => string.Equals(e.Country, country, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        if (!string.IsNullOrWhiteSpace(region))
+        {
+            all = all.Where(e => string.Equals(e.Region, region, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
         // Fisher-Yates shuffle so the swipe deck ordering is random per request
         for (int i = all.Count - 1; i > 0; i--)
         {
