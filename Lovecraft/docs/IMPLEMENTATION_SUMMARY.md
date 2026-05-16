@@ -285,6 +285,7 @@ dotnet test
 - ✅ Event invites + campaign invites (`eventinvites` table, admin API)
 - ✅ HTTPS via Cloudflare + Origin Certificate (deployed at https://aloeve.club)
 - ✅ User-visible error handling, form validation, profile image upload, BB code, image attachments, SEO metadata
+- ✅ Structured `Country`/`Region` on user profiles + search filtering by country and region
 
 ### Still open
 1. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
