@@ -35,13 +35,31 @@ public class AzureUserService : IUserService
         var config = await _appConfig.GetConfigAsync();
         var all = _cache.GetAll();
 
-        if (!string.IsNullOrWhiteSpace(country))
+        var hasCountry = !string.IsNullOrWhiteSpace(country);
+        var hasRegion  = !string.IsNullOrWhiteSpace(region);
+
+        if (hasCountry && hasRegion)
         {
-            all = all.Where(e => string.Equals(e.Country, country, StringComparison.OrdinalIgnoreCase)).ToList();
+            all = all.Where(e =>
+                (string.Equals(e.Country, country, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(e.Region,  region,  StringComparison.OrdinalIgnoreCase)) ||
+                (string.Equals(e.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(e.SecondaryRegion,  region,  StringComparison.OrdinalIgnoreCase))
+            ).ToList();
         }
-        if (!string.IsNullOrWhiteSpace(region))
+        else if (hasCountry)
         {
-            all = all.Where(e => string.Equals(e.Region, region, StringComparison.OrdinalIgnoreCase)).ToList();
+            all = all.Where(e =>
+                string.Equals(e.Country, country, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(e.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+        }
+        else if (hasRegion)
+        {
+            all = all.Where(e =>
+                string.Equals(e.Region, region, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(e.SecondaryRegion, region, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
         }
 
         // Fisher-Yates shuffle so the swipe deck ordering is random per request

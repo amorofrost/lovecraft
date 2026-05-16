@@ -18,13 +18,17 @@ namespace Lovecraft.UnitTests;
 /// </summary>
 public class AzureUserServiceFilterTests
 {
-    private static UserEntity MakeUser(string id, string country, string region) => new()
+    private static UserEntity MakeUser(
+        string id, string country, string region,
+        string secondaryCountry = "", string secondaryRegion = "") => new()
     {
         PartitionKey = UserEntity.GetPartitionKey(id),
         RowKey = id,
         Name = id,
         Country = country,
         Region = region,
+        SecondaryCountry = secondaryCountry,
+        SecondaryRegion = secondaryRegion,
         StaffRole = "none",
         PreferencesJson = "{}",
         SettingsJson = "{}",
@@ -101,5 +105,42 @@ public class AzureUserServiceFilterTests
         var all = await svc.GetUsersAsync(0, 100);
 
         Assert.Equal(2, all.Count);
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_MatchesUserViaSecondaryCountry()
+    {
+        var (svc, cache) = BuildService();
+        cache.Set(MakeUser("u1", "US", "California", "RU", "Москва"));
+        cache.Set(MakeUser("u2", "DE", "Berlin"));
+
+        var ru = await svc.GetUsersAsync(0, 100, country: "RU");
+        Assert.Single(ru);
+        Assert.Equal("u1", ru[0].Id);
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_MatchesUserViaSecondaryCountryAndRegion()
+    {
+        var (svc, cache) = BuildService();
+        cache.Set(MakeUser("u1", "US", "California", "RU", "Москва"));
+        cache.Set(MakeUser("u2", "RU", "Санкт-Петербург"));
+        cache.Set(MakeUser("u3", "DE", "Berlin"));
+
+        var moscow = await svc.GetUsersAsync(0, 100, country: "RU", region: "Москва");
+        Assert.Single(moscow);
+        Assert.Equal("u1", moscow[0].Id);
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_DoesNotCrossSlotMix()
+    {
+        // primary RU + secondary US/Москва. Filter for RU/Москва should NOT match
+        // because RU is in slot A but Москва is in slot B.
+        var (svc, cache) = BuildService();
+        cache.Set(MakeUser("u1", "RU", "Санкт-Петербург", "US", "Москва"));
+
+        var moscow = await svc.GetUsersAsync(0, 100, country: "RU", region: "Москва");
+        Assert.Empty(moscow);
     }
 }
