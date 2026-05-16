@@ -90,6 +90,8 @@ public class AzureUserService : IUserService
             entity.Bio = dto.Bio;
             entity.Country = dto.Country ?? string.Empty;
             entity.Region = dto.Region ?? string.Empty;
+            entity.SecondaryCountry = dto.SecondaryCountry ?? string.Empty;
+            entity.SecondaryRegion = dto.SecondaryRegion ?? string.Empty;
             // Note: entity.Location is intentionally not written from this path anymore.
             // Existing rows keep their legacy Location for the LocationDisplay fallback.
             entity.Gender = dto.Gender.ToString();
@@ -237,6 +239,8 @@ public class AzureUserService : IUserService
             Location = entity.Location,
             Country = entity.Country,
             Region = entity.Region,
+            SecondaryCountry = entity.SecondaryCountry,
+            SecondaryRegion = entity.SecondaryRegion,
             Gender = gender,
             ProfileImage = entity.ProfileImage,
             Images = images,

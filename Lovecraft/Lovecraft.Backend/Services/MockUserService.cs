@@ -52,6 +52,8 @@ public class MockUserService : IUserService
         existing.Bio = user.Bio;
         existing.Country = user.Country ?? string.Empty;
         existing.Region = user.Region ?? string.Empty;
+        existing.SecondaryCountry = user.SecondaryCountry ?? string.Empty;
+        existing.SecondaryRegion = user.SecondaryRegion ?? string.Empty;
         existing.Gender = user.Gender;
         existing.ProfileImage = user.ProfileImage;
         existing.Images = user.Images;
