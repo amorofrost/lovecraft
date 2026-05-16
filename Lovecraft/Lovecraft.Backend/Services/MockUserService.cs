@@ -15,7 +15,7 @@ public class MockUserService : IUserService
         _appConfig = appConfig;
     }
 
-    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
+    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
     {
         var config = await _appConfig.GetConfigAsync();
         var all = MockDataStore.Users.ToList();
@@ -43,7 +43,8 @@ public class MockUserService : IUserService
         existing.Name = user.Name;
         existing.Age = user.Age;
         existing.Bio = user.Bio;
-        existing.Location = user.Location;
+        existing.Country = user.Country ?? string.Empty;
+        existing.Region = user.Region ?? string.Empty;
         existing.Gender = user.Gender;
         existing.ProfileImage = user.ProfileImage;
         existing.Images = user.Images;

@@ -30,7 +30,7 @@ public class AzureUserService : IUserService
         _usersTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
 
-    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10)
+    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
     {
         var config = await _appConfig.GetConfigAsync();
         var all = _cache.GetAll();
@@ -78,7 +78,10 @@ public class AzureUserService : IUserService
             entity.Name = dto.Name;
             entity.Age = dto.Age;
             entity.Bio = dto.Bio;
-            entity.Location = dto.Location;
+            entity.Country = dto.Country ?? string.Empty;
+            entity.Region = dto.Region ?? string.Empty;
+            // Note: entity.Location is intentionally not written from this path anymore.
+            // Existing rows keep their legacy Location for the LocationDisplay fallback.
             entity.Gender = dto.Gender.ToString();
             entity.ProfileImage = dto.ProfileImage;
             entity.InstagramHandle = dto.InstagramHandle ?? string.Empty;
@@ -222,6 +225,8 @@ public class AzureUserService : IUserService
             Age = entity.Age,
             Bio = entity.Bio,
             Location = entity.Location,
+            Country = entity.Country,
+            Region = entity.Region,
             Gender = gender,
             ProfileImage = entity.ProfileImage,
             Images = images,
