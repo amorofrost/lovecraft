@@ -1,6 +1,12 @@
+using Azure;
+using Azure.Data.Tables;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Azure;
+using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.Enums;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -97,5 +103,54 @@ public class MockNotificationServiceTests
         var hits = await svc.RecentForDedupAsync("u1", NotificationType.MessageReceived, "actor", "msg-2", 60);
 
         Assert.Empty(hits);
+    }
+}
+
+public class AzureNotificationServiceTests
+{
+    private static Mock<TableClient> EmptyTable() => new();
+
+    [Fact]
+    public async Task Create_writes_row_with_inverted_ticks_rowkey()
+    {
+        var notifs = EmptyTable();
+        var outbox = EmptyTable();
+        NotificationEntity? written = null;
+        notifs.Setup(t => t.AddEntityAsync(It.IsAny<NotificationEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<NotificationEntity, CancellationToken>((e, _) => written = e)
+            .ReturnsAsync(new Mock<Response>().Object);
+
+        var svc = new AzureNotificationService(notifs.Object, outbox.Object,
+            NullLogger<AzureNotificationService>.Instance);
+
+        var n = await svc.CreateAsync("u1", NotificationType.LikeReceived, "actor", "{}", "src-1");
+
+        Assert.NotNull(written);
+        Assert.Equal("u1", written!.PartitionKey);
+        Assert.StartsWith(string.Empty, written.RowKey); // 19-digit inverted ticks + "_" + id
+        Assert.Equal(20 + n.Id.Length, written.RowKey.Length);
+        Assert.Equal("src-1", written.SourceEventId);
+    }
+
+    [Fact]
+    public async Task EnqueueOutbox_writes_to_pending_partition()
+    {
+        var notifs = EmptyTable();
+        var outbox = EmptyTable();
+        NotificationOutboxEntity? written = null;
+        outbox.Setup(t => t.AddEntityAsync(It.IsAny<NotificationOutboxEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<NotificationOutboxEntity, CancellationToken>((e, _) => written = e)
+            .ReturnsAsync(new Mock<Response>().Object);
+
+        var svc = new AzureNotificationService(notifs.Object, outbox.Object,
+            NullLogger<AzureNotificationService>.Instance);
+
+        await svc.EnqueueOutboxAsync("u1", "nid-1",
+            NotificationChannel.Telegram, NotificationFrequency.Immediate, DateTime.UtcNow);
+
+        Assert.NotNull(written);
+        Assert.Equal("OUTBOX_Telegram_PENDING", written!.PartitionKey);
+        Assert.Equal("u1", written.UserId);
+        Assert.Equal("nid-1", written.NotificationId);
     }
 }
