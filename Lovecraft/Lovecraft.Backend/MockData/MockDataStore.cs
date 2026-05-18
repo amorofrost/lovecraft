@@ -456,4 +456,9 @@ public static class MockDataStore
 
     // Current user ID for mock authentication
     public const string CurrentUserId = "current-user";
+
+    // ---- Notifications ----
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lovecraft.Common.DTOs.Notifications.NotificationPreferencesDto> NotificationPreferences = new();
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> Notifications = new();
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<(string UserId, string DeviceId), Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionDto> PushSubscriptions = new();
 }

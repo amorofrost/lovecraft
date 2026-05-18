@@ -6,6 +6,7 @@ using Lovecraft.Common.DTOs.Store;
 using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Chats;
+using Lovecraft.Common.DTOs.Notifications;
 using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services;
@@ -139,4 +140,10 @@ public interface IImageService
     /// <summary>Downloads an external image URL, resizes it, and stores it in the profile blob container.
     /// Returns the blob URL on success, or an empty string on failure (best-effort).</summary>
     Task<string> DownloadAndUploadExternalImageAsync(string userId, string externalUrl);
+}
+
+public interface INotificationPreferenceService
+{
+    Task<NotificationPreferencesDto> GetPreferencesAsync(string userId);
+    Task<NotificationPreferencesDto> UpdatePreferencesAsync(string userId, NotificationPreferencesDto prefs);
 }
