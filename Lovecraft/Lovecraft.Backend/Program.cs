@@ -225,6 +225,9 @@ if (useAzure)
             sp.GetRequiredService<ILogger<AzureForumService>>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IChatService, AzureChatService>();
+    // Notification services — Mock-only for now (Task 17 will wire Azure implementations)
+    builder.Services.AddSingleton<INotificationService, MockNotificationService>();
+    builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
 }
 else
 {
@@ -246,6 +249,8 @@ else
             sp.GetRequiredService<IEventService>()));
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
+    builder.Services.AddSingleton<INotificationService, MockNotificationService>();
+    builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
 }
 
 var app = builder.Build();
