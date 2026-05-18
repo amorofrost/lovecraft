@@ -127,6 +127,7 @@ public interface IForumService
 public interface IChatService
 {
     Task<List<ChatDto>> GetChatsAsync(string userId);
+    Task<ChatDto?> GetChatAsync(string chatId);
     Task<ChatDto> GetOrCreateChatAsync(string userId, string targetUserId);
     // TODO(Task 14): remove fully-qualified name once Matching.MessageDto ambiguity is resolved
     Task<List<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50);

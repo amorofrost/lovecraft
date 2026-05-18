@@ -1,7 +1,15 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Notifications;
+using Lovecraft.Common.Enums;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -188,5 +196,115 @@ public class ChatTests
         var history = await svc.GetMessagesAsync("chat-1", "current-user");
         var persisted = history.First(m => m.Id == msg.Id);
         Assert.Equal(imageUrls, persisted.ImageUrls);
+    }
+}
+
+[Collection("ChatNotificationTests")]
+public class ChatNotificationTests : IClassFixture<AclTests.TestAppFactory>
+{
+    private readonly AclTests.TestAppFactory _factory;
+
+    public ChatNotificationTests(AclTests.TestAppFactory factory)
+    {
+        _factory = factory;
+    }
+
+    private HttpClient CreateClientAsUser(WebApplicationFactory<Program> factory, string userId)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User", userId);
+        client.DefaultRequestHeaders.Add("X-Test-StaffRole", "none");
+        return client;
+    }
+
+    [Fact]
+    public async Task SendMessage_fires_producer_for_each_other_participant()
+    {
+        var producer = new Mock<INotificationProducer>();
+        producer.Setup(p => p.ProduceAsync(
+                It.IsAny<string>(), It.IsAny<NotificationType>(), It.IsAny<string?>(),
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync((Lovecraft.Common.DTOs.Notifications.NotificationDto?)null);
+
+        var factory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+            s.AddSingleton<INotificationProducer>(producer.Object)));
+        using var client = CreateClientAsUser(factory, "u-sender");
+
+        // Create chat between u-sender and u-other
+        var chatResp = await client.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-other" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatJson = await chatResp.Content.ReadFromJsonAsync<JsonElement>();
+        var chatId = chatJson.GetProperty("data").GetProperty("id").GetString();
+
+        producer.Invocations.Clear();
+        var sendResp = await client.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages",
+            new { content = "hello there" });
+        sendResp.EnsureSuccessStatusCode();
+
+        producer.Verify(p => p.ProduceAsync(
+            "u-other",
+            NotificationType.MessageReceived,
+            "u-sender",
+            It.Is<string>(s => s.Contains("\"chatId\"") && s.Contains("\"preview\":\"hello there\"")),
+            It.IsAny<string?>(),
+            It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendMessage_does_not_fire_for_sender()
+    {
+        var producer = new Mock<INotificationProducer>();
+        producer.Setup(p => p.ProduceAsync(
+                It.IsAny<string>(), It.IsAny<NotificationType>(), It.IsAny<string?>(),
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync((Lovecraft.Common.DTOs.Notifications.NotificationDto?)null);
+
+        var factory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+            s.AddSingleton<INotificationProducer>(producer.Object)));
+        using var client = CreateClientAsUser(factory, "u-sender");
+
+        var chatResp = await client.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-other" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatJson = await chatResp.Content.ReadFromJsonAsync<JsonElement>();
+        var chatId = chatJson.GetProperty("data").GetProperty("id").GetString();
+
+        producer.Invocations.Clear();
+        await client.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages", new { content = "hi" });
+
+        producer.Verify(p => p.ProduceAsync(
+            "u-sender", It.IsAny<NotificationType>(), It.IsAny<string?>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SendMessage_preview_truncated_to_80_chars()
+    {
+        var producer = new Mock<INotificationProducer>();
+        producer.Setup(p => p.ProduceAsync(
+                It.IsAny<string>(), It.IsAny<NotificationType>(), It.IsAny<string?>(),
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+            .ReturnsAsync((Lovecraft.Common.DTOs.Notifications.NotificationDto?)null);
+
+        var factory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+            s.AddSingleton<INotificationProducer>(producer.Object)));
+        using var client = CreateClientAsUser(factory, "u-sender");
+
+        var chatResp = await client.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-other" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatJson = await chatResp.Content.ReadFromJsonAsync<JsonElement>();
+        var chatId = chatJson.GetProperty("data").GetProperty("id").GetString();
+
+        var longContent = new string('x', 200);
+        await client.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages", new { content = longContent });
+
+        var eightyXs = new string('x', 80);
+        producer.Verify(p => p.ProduceAsync(
+            "u-other", NotificationType.MessageReceived, It.IsAny<string?>(),
+            It.Is<string>(s =>
+                s.Contains("\"preview\":\"" + eightyXs + "\"") ||
+                s.Contains("\"preview\":\"" + eightyXs + "…\"") ||
+                s.Contains("\"preview\":\"" + eightyXs + "\\u2026\"")),
+            It.IsAny<string?>(),
+            It.IsAny<string?>()), Times.Once);
     }
 }

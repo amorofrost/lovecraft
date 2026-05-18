@@ -56,6 +56,26 @@ public class AzureChatService : IChatService
         return result.OrderByDescending(c => c.LastMessage?.Timestamp ?? c.CreatedAt).ToList();
     }
 
+    public async Task<ChatDto?> GetChatAsync(string chatId)
+    {
+        try
+        {
+            var row = await _chatsTable.GetEntityAsync<ChatEntity>("CHAT", chatId);
+            var participants = row.Value.ParticipantIds.Split(',').ToList();
+            return new ChatDto
+            {
+                Id = chatId,
+                Type = ChatType.Private,
+                Participants = participants,
+                CreatedAt = row.Value.CreatedAt
+            };
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
     public async Task<ChatDto> GetOrCreateChatAsync(string userId, string targetUserId)
     {
         // Check if index entry exists for userId

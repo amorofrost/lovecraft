@@ -29,6 +29,12 @@ public class MockChatService : IChatService
         return Task.FromResult(chats);
     }
 
+    public Task<ChatDto?> GetChatAsync(string chatId)
+    {
+        var chat = MockDataStore.Chats.FirstOrDefault(c => c.Id == chatId);
+        return Task.FromResult(chat);
+    }
+
     public Task<ChatDto> GetOrCreateChatAsync(string userId, string targetUserId)
     {
         var existing = MockDataStore.Chats.FirstOrDefault(c =>

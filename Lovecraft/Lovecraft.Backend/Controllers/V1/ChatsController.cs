@@ -1,12 +1,15 @@
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Hubs;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Chats;
+using Lovecraft.Common.Enums;
 using Lovecraft.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -17,11 +20,13 @@ public class ChatsController : ControllerBase
 {
     private readonly IChatService _chatService;
     private readonly IHubContext<ChatHub> _hubContext;
+    private readonly INotificationProducer _producer;
 
-    public ChatsController(IChatService chatService, IHubContext<ChatHub> hubContext)
+    public ChatsController(IChatService chatService, IHubContext<ChatHub> hubContext, INotificationProducer producer)
     {
         _chatService = chatService;
         _hubContext = hubContext;
+        _producer = producer;
     }
 
     private string CurrentUserId =>
@@ -74,6 +79,34 @@ public class ChatsController : ControllerBase
         // Push to all connected members of this chat group in real time.
         // The sender receives it too; the frontend deduplicates by message ID.
         await _hubContext.Clients.Group($"chat-{id}").SendAsync("MessageReceived", message);
+
+        // Fire in-app notifications for each non-sender participant.
+        // The producer's DerivePresenceGroup extracts "chat-{id}" for in-chat suppression.
+        var chat = await _chatService.GetChatAsync(id);
+        if (chat is not null)
+        {
+            var senderId = CurrentUserId;
+            var preview = request.Content.Length > 80
+                ? request.Content.Substring(0, 80) + "…"
+                : request.Content;
+            var payloadJson = JsonSerializer.Serialize(new
+            {
+                chatId = id,
+                messageId = message.Id,
+                preview,
+            });
+
+            foreach (var participantId in chat.Participants)
+            {
+                if (participantId == senderId) continue;
+                await _producer.ProduceAsync(
+                    recipientUserId: participantId,
+                    type: NotificationType.MessageReceived,
+                    actorId: senderId,
+                    payloadJson: payloadJson,
+                    sourceEventId: message.Id);
+            }
+        }
 
         return Ok(ApiResponse<MessageDto>.SuccessResponse(message));
     }
