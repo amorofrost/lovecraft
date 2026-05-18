@@ -33,6 +33,40 @@ outbox for Telegram and email; in-app and Web Push are dispatched directly from 
 
 See [`aloevera-harmony-meet/docs/superpowers/specs/2026-05-17-notifications-design.md`](../../../aloevera-harmony-meet/docs/superpowers/specs/2026-05-17-notifications-design.md).
 
+---
+
+## Phase B scope (shipped 2026-05-18)
+
+**Backend**
+
+- 4 producer call sites wired to `INotificationProducer`:
+  - `MatchingService.CreateLikeAsync` → `LikeReceived`
+  - `MatchingService.GetMatchesAsync` (mutual like detection) → `MatchCreated`
+  - `ChatsController.SendMessage` → `MessageReceived`
+  - `ForumService.CreateReplyAsync` → `ForumReplyToThread` (broadcasts to all previous reply authors + thread creator)
+- New endpoint: `GET /api/v1/notifications/availability` → `{ telegramLinked: bool, emailVerified: bool, webPushSubscribed: bool }` (reads current user's `TelegramUserId`, `EmailVerified`, and subscription count)
+- **Known limitation** (not yet handled): Anonymous likes (MCF.8) are not tracked as notifications; only non-anonymous likes trigger `LikeReceived`
+
+**Frontend**
+
+- `notificationsApi.ts` — wraps `GET /api/v1/notifications/availability`
+- `useNotificationSignalR` hook — pipes `NotificationReceived` events from the hub into the store
+- `useNotificationStore` (Zustand) — in-memory notification state with actions: `addNotification`, `markRead`, `markAllRead`, `dismiss`
+- `<NotificationBell>` component — header bell icon with unread count bubble
+- `<NotificationDropdown>` — popover showing recent notifications with action buttons
+- `/notifications` page — full notification list with filtering (read/unread/type)
+- Notification preferences UI in `SettingsPage` — per-type frequency (immediate/daily) + channel toggles (read-only for in-app; future: Telegram/email/Web Push)
+- Conservative defaults: in-app only, immediate frequency (Telegram/email/Web Push pending)
+- **What is NOT shipped**: Backend worker (Phase C), Telegram delivery (Phase D), Web Push delivery (Phase E), email digests (Phase F)
+
+---
+
+## Still not wired
+
+- `EventPublished`, `EventInviteReceived`, `CommunityBroadcast` (Phase G)
+- `EventReminder` (worker, Phase G)
+- `RankUp` (Phase H)
+
 ## API endpoints (Phase A)
 
 | Method | Path | Description |
