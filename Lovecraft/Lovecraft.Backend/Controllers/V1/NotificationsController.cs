@@ -16,15 +16,18 @@ public class NotificationsController : ControllerBase
     private readonly INotificationService _notificationService;
     private readonly IPushSubscriptionService _pushSubscriptionService;
     private readonly INotificationPreferenceService _preferenceService;
+    private readonly IUserService _userService;
 
     public NotificationsController(
         INotificationService notificationService,
         IPushSubscriptionService pushSubscriptionService,
-        INotificationPreferenceService preferenceService)
+        INotificationPreferenceService preferenceService,
+        IUserService userService)
     {
         _notificationService = notificationService;
         _pushSubscriptionService = pushSubscriptionService;
         _preferenceService = preferenceService;
+        _userService = userService;
     }
 
     private string CurrentUserId =>
@@ -58,6 +61,20 @@ public class NotificationsController : ControllerBase
         var count = await _notificationService.UnreadCountAsync(CurrentUserId);
         return Ok(ApiResponse<UnreadCountResponseDto>.SuccessResponse(
             new UnreadCountResponseDto { Count = count }));
+    }
+
+    /// <summary>GET /api/v1/notifications/availability — channel availability for the current user.</summary>
+    [HttpGet("notifications/availability")]
+    public async Task<ActionResult<ApiResponse<NotificationAvailabilityDto>>> GetAvailability()
+    {
+        var status = await _userService.GetNotificationContactStatusAsync(CurrentUserId);
+        var subCount = await _pushSubscriptionService.CountAsync(CurrentUserId);
+        return Ok(ApiResponse<NotificationAvailabilityDto>.SuccessResponse(new NotificationAvailabilityDto
+        {
+            TelegramLinked = status.TelegramLinked,
+            EmailVerified = status.EmailVerified,
+            WebPushSubscribed = subCount > 0,
+        }));
     }
 
     /// <summary>POST /api/v1/notifications/{id}/read — mark one notification read.</summary>
