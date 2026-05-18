@@ -274,7 +274,8 @@ dotnet test
 
 ### Done since the original plan
 - ✅ JWT authentication
-- ✅ Azure Table Storage (23 tables, 11 Azure services, `Lovecraft.Tools.Seeder`)
+- ✅ Azure Table Storage (27 tables, 11 Azure services, `Lovecraft.Tools.Seeder`)
+- ✅ Notifications Phase A: 4 Azure Tables, DTOs/enums, services (notifications, preferences, push subscriptions), helpers (NotificationPolicy, NotificationDeduper, IPresenceTracker), InAppDispatcher, NotificationProducer facade, NotificationsController endpoints. No producer call sites wired yet — Phase B.
 - ✅ Chat endpoints (REST + SignalR `/hubs/chat`)
 - ✅ Azure Blob Storage (`profile-images`, `content-images`, 1200px resize + JPEG 85%)
 - ✅ Email delivery (SendGrid + `NullEmailService` fallback)
@@ -289,11 +290,11 @@ dotnet test
 - ✅ Optional secondary `Country`/`Region` slot on user profiles; OR-match in `GetUsersAsync`
 
 ### Still open
-1. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
-2. Azure Blob SAS tokens for private blobs (currently public-read; profile blobs use `{userId}/{guid}.jpg` to avoid enumeration)
-3. Account lockout after failed logins
-4. SignalR enhancements: online presence, typing indicators, unread push updates
-5. Notifications (in-app + push)
+1. Notifications Phase B onwards (producer call-site wiring, frontend UI, worker, delivery channels)
+2. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
+3. Azure Blob SAS tokens for private blobs (currently public-read; profile blobs use `{userId}/{guid}.jpg` to avoid enumeration)
+4. Account lockout after failed logins
+5. SignalR enhancements: online presence, typing indicators, unread push updates
 6. Pagination on list views (server-side `PagedResult<T>` exists; client-side wiring pending)
 7. Application Insights / structured logging
 8. Admin panel content removal / moderation queue / user blocking

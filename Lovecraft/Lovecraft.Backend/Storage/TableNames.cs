@@ -32,4 +32,8 @@ public static class TableNames
     public static string EventInvites    => Prefix + "eventinvites";
     public static string UserTelegramIndex => Prefix + "usertelegramindex";
     public static string UserGoogleIndex   => Prefix + "usergoogleindex";
+    public static string Notifications          => Prefix + "notifications";
+    public static string NotificationsOutbox    => Prefix + "notificationsoutbox";
+    public static string NotificationPreferences => Prefix + "notificationpreferences";
+    public static string WebPushSubscriptions   => Prefix + "webpushsubscriptions";
 }

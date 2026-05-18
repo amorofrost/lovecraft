@@ -6,6 +6,7 @@ using Lovecraft.Common.DTOs.Store;
 using Lovecraft.Common.DTOs.Blog;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Chats;
+using Lovecraft.Common.DTOs.Notifications;
 using Lovecraft.Common.Enums;
 
 namespace Lovecraft.Backend.Services;
@@ -26,6 +27,7 @@ public interface IUserService
     Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1);
     Task SetStaffRoleAsync(string userId, StaffRole role);
     Task SetRankOverrideAsync(string userId, UserRank? rank);
+    Task<(bool TelegramLinked, bool EmailVerified)> GetNotificationContactStatusAsync(string userId);
 }
 
 public interface IEventService
@@ -139,4 +141,37 @@ public interface IImageService
     /// <summary>Downloads an external image URL, resizes it, and stores it in the profile blob container.
     /// Returns the blob URL on success, or an empty string on failure (best-effort).</summary>
     Task<string> DownloadAndUploadExternalImageAsync(string userId, string externalUrl);
+}
+
+public interface INotificationPreferenceService
+{
+    Task<NotificationPreferencesDto> GetPreferencesAsync(string userId);
+    Task<NotificationPreferencesDto> UpdatePreferencesAsync(string userId, NotificationPreferencesDto prefs);
+}
+
+public interface INotificationService
+{
+    Task<Lovecraft.Common.DTOs.Notifications.NotificationDto> CreateAsync(
+        string userId, Lovecraft.Common.Enums.NotificationType type,
+        string? actorId, string payloadJson, string? sourceEventId);
+    Task EnqueueOutboxAsync(
+        string userId, string notificationId, Lovecraft.Common.Enums.NotificationChannel channel,
+        Lovecraft.Common.Enums.NotificationFrequency frequency, DateTime scheduledForUtc);
+    Task<List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> ListAsync(string userId, int limit, string? cursor);
+    Task<int> UnreadCountAsync(string userId);
+    Task<bool> MarkReadAsync(string userId, string notificationId);
+    Task<int> MarkAllReadAsync(string userId);
+    Task<bool> DismissAsync(string userId, string notificationId);
+    /// <summary>Returns rows for this user created in the last `withinSeconds` that match the given (type, actor, sourceEventId).</summary>
+    Task<List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> RecentForDedupAsync(
+        string userId, Lovecraft.Common.Enums.NotificationType type, string? actorId, string? sourceEventId, int withinSeconds);
+}
+
+public interface IPushSubscriptionService
+{
+    Task<Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionDto> SubscribeAsync(
+        string userId, Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionRequestDto request);
+    Task<List<Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionDto>> ListAsync(string userId);
+    Task<int> CountAsync(string userId);
+    Task<bool> UnsubscribeAsync(string userId, string deviceId);
 }

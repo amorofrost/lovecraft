@@ -112,6 +112,17 @@ public class MockUserService : IUserService
         return Task.CompletedTask;
     }
 
+    public Task<(bool TelegramLinked, bool EmailVerified)> GetNotificationContactStatusAsync(string userId)
+    {
+        var user = MockDataStore.Users.FirstOrDefault(u => u.Id == userId);
+        if (user is null) return Task.FromResult((false, false));
+
+        var telegramLinked = MockDataStore.AuthMethodsByUserId.TryGetValue(userId, out var methods)
+                            && methods.Contains("telegram");
+        var emailVerified = MockDataStore.EmailVerifiedUserIds.ContainsKey(userId);
+        return Task.FromResult((telegramLinked, emailVerified));
+    }
+
     private UserDto AugmentWithRank(UserDto dto, RankThresholds t)
     {
         var activity = MockDataStore.UserActivity.TryGetValue(dto.Id, out var a)

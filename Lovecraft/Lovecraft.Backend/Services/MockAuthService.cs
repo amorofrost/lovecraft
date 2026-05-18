@@ -73,6 +73,7 @@ public class MockAuthService : IAuthService
                 CreatedAt = DateTime.UtcNow
             };
             _users[testUser.Email.ToLower()] = testUser;
+            SyncAuthContactState(testUser);
         }
     }
 
@@ -116,6 +117,7 @@ public class MockAuthService : IAuthService
         };
 
         _users[user.Email.ToLower()] = user;
+        SyncAuthContactState(user);
 
         if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
             await _events.RegisterForEventAsync(userId, sourceEventId);
@@ -255,6 +257,7 @@ public class MockAuthService : IAuthService
 
         _users[key] = user;
         _telegramToUserKey[tgKey] = key;
+        SyncAuthContactState(user);
 
         if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
             await _events.RegisterForEventAsync(userId, sourceEventId);
@@ -467,6 +470,7 @@ public class MockAuthService : IAuthService
 
         _users[emailKey] = user;
         _googleSubToUserKey[gInfo.Sub] = emailKey;
+        SyncAuthContactState(user);
 
         if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
             await _events.RegisterForEventAsync(userId, sourceEventId);
@@ -488,6 +492,7 @@ public class MockAuthService : IAuthService
         _googleSubToUserKey[gInfo.Sub] = user.Email.ToLower();
         if (!user.AuthMethods.Contains("google", StringComparer.OrdinalIgnoreCase)) user.AuthMethods.Add("google");
         user.GoogleUserId = gInfo.Sub;
+        SyncAuthContactState(user);
         return true;
     }
 
@@ -546,6 +551,7 @@ public class MockAuthService : IAuthService
             user.AuthMethods.Add("telegram");
         user.TelegramUserId = tgKey;
         _telegramToUserKey[tgKey] = user.Email.ToLower();
+        SyncAuthContactState(user);
         return true;
     }
 
@@ -697,6 +703,7 @@ public class MockAuthService : IAuthService
             if (user == null) return false;
             user.EmailVerified = true;
             _verificationTokens.Remove(token);
+            SyncAuthContactState(user);
             _logger.LogInformation("Email verified for user {UserId}", userId);
             return true;
         }
@@ -731,6 +738,7 @@ public class MockAuthService : IAuthService
             if (!string.IsNullOrEmpty(user.TelegramUserId))
                 _telegramToUserKey[user.TelegramUserId] = user.Email.ToLower();
 
+            SyncAuthContactState(user);
             _attachTokens.Remove(token);
             _logger.LogInformation("Attach-email confirmed for user {UserId} → {Email}", user.Id, user.Email);
             return true;
@@ -924,6 +932,20 @@ public class MockAuthService : IAuthService
         if (Enum.TryParse<Gender>(gender, ignoreCase: true, out var g))
             return g.ToString();
         return Gender.PreferNotToSay.ToString();
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="MockUser.EmailVerified"/> and <see cref="MockUser.AuthMethods"/>
+    /// into <see cref="MockDataStore"/> so that <see cref="MockUserService"/> can read
+    /// notification contact status without reaching into the private <c>_users</c> dict.
+    /// </summary>
+    private static void SyncAuthContactState(MockUser user)
+    {
+        MockDataStore.AuthMethodsByUserId[user.Id] = new HashSet<string>(user.AuthMethods, StringComparer.OrdinalIgnoreCase);
+        if (user.EmailVerified)
+            MockDataStore.EmailVerifiedUserIds.TryAdd(user.Id, 0);
+        else
+            MockDataStore.EmailVerifiedUserIds.TryRemove(user.Id, out _);
     }
 
     private class AttachPending

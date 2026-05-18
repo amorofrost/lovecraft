@@ -136,22 +136,26 @@ Lovecraft/
 │   │                                          AppRuntime
 │   ├── Hubs/ChatHub.cs                     # SignalR hub (JoinChat, JoinTopic, SendMessage)
 │   ├── Services/                           # IServices.cs + Mock implementations
-│   │   ├── Azure/                          # 11 Azure-backed services (Auth, User, Event,
+│   │   ├── Azure/                          # 14 Azure-backed services (Auth, User, Event,
 │   │   │                                      Matching, Store, Blog, Forum, Chat, Image,
-│   │   │                                      AppConfig, EventInvite)
+│   │   │                                      AppConfig, EventInvite, Notification,
+│   │   │                                      NotificationPreference, PushSubscription)
 │   │   ├── Caching/                        # UserCache (ConcurrentDictionary singleton,
 │   │   │                                      LoadAsync on startup) + IMemoryCache wrappers
 │   │   │                                      (CachingEventService, CachingStoreService,
 │   │   │                                      CachingBlogService, CachingForumService)
 │   │   ├── Email/                          # IEmailService, SendGridEmailService,
 │   │   │                                      NullEmailService (chosen by SENDGRID_API_KEY presence)
+│   │   ├── Notifications/                  # INotificationService, INotificationProducer,
+│   │   │                                      NotificationPolicy, NotificationDeduper,
+│   │   │                                      IPresenceTracker, IInAppDispatcher
 │   │   ├── AppConfig.cs                    # RankThresholds.Defaults, PermissionConfig.Defaults
 │   │   ├── EventInviteHelpers.cs           # Code generation
 │   │   ├── EventInviteNormalizer.cs        # Trim + uppercase normalisation
 │   │   ├── InvalidInviteCodeException.cs   # Maps to INVALID_INVITE_CODE
 │   │   └── InviteRequiredException.cs      # Maps to INVITE_REQUIRED
 │   ├── Storage/
-│   │   ├── TableNames.cs                   # 23 table names + AZURE_TABLE_PREFIX support
+│   │   ├── TableNames.cs                   # 27 table names + AZURE_TABLE_PREFIX support
 │   │   └── Entities/                       # 22 entity classes (see AZURE_STORAGE.md)
 │   ├── MockData/MockDataStore.cs           # Static in-memory seed when USE_AZURE_STORAGE=false
 │   ├── Program.cs                          # DI mode switch, JWT, SignalR, rate limiting, CORS
