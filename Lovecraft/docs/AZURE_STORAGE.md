@@ -10,7 +10,7 @@
 
 ## Overview
 
-23 tables under `TableNames.Prefix + name`. The optional `AZURE_TABLE_PREFIX` env var (e.g. `dev_`, `test_`) lets staging and integration tests share an Azure Storage account without colliding. Both the backend and the `Lovecraft.Tools.Seeder` CLI respect the prefix.
+27 tables under `TableNames.Prefix + name`. The optional `AZURE_TABLE_PREFIX` env var (e.g. `dev_`, `test_`) lets staging and integration tests share an Azure Storage account without colliding. Both the backend and the `Lovecraft.Tools.Seeder` CLI respect the prefix.
 
 Design principles:
 - **Denormalisation over joins** — Table Storage has no JOIN; reverse-lookup indexes are separate tables
@@ -19,7 +19,7 @@ Design principles:
 
 ---
 
-## Tables (23)
+## Tables (27)
 
 ### Identity & auth
 
@@ -165,6 +165,27 @@ PK is one of:
 - `registration` (`require_event_invite` → `true|false`)
 
 RK is the config key, `Value` is the string-encoded value. Served by `AzureAppConfigService` with a 1-hour `IMemoryCache`. Fallback to `RankThresholds.Defaults` / `PermissionConfig.Defaults` on missing or invalid rows. Seeded by `Lovecraft.Tools.Seeder`.
+
+### Notifications
+
+#### `notifications`
+PK `userId` (recipient) · RK `{invertedTicks}_{notificationId}`
+
+Canonical record. Fields: `Type`, `ActorId?`, `PayloadJson`, `CreatedAtUtc`, `ReadAtUtc?`,
+`DismissedAtUtc?`, `DigestGroupId?`, `SourceEventId?` (used by `NotificationDeduper`).
+
+#### `notificationsoutbox`
+PK partition naming: `OUTBOX_{channel}_PENDING` while pending; `OUTBOX_{channel}_DONE_{yyyy-MM-dd}`
+after success; `OUTBOX_{channel}_DEAD_{yyyy-MM-dd}` after 5 failed attempts.
+RK `{scheduledForUtc:yyyy-MM-ddTHH:mm:ss}_{notificationId}` (lex = chronological).
+
+#### `notificationpreferences`
+PK `userId` · RK `INDEX`. Fields: `MatrixJson`, `FrequencyJson`, `DailyDigestHourUtc`,
+`Mute`, `MutedUntilUtc?`. Defaults loaded by `MockNotificationPreferenceService.BuildDefaults`.
+
+#### `webpushsubscriptions`
+PK `userId` · RK `deviceId`. Fields: `Endpoint`, `P256dh`, `Auth`, `UserAgent`,
+`CreatedAtUtc`, `LastSeenAtUtc`. No consumer wired until Phase E.
 
 ---
 
