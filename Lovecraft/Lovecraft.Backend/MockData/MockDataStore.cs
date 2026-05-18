@@ -461,4 +461,10 @@ public static class MockDataStore
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lovecraft.Common.DTOs.Notifications.NotificationPreferencesDto> NotificationPreferences = new();
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> Notifications = new();
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<(string UserId, string DeviceId), Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionDto> PushSubscriptions = new();
+
+    // ---- Auth contact state (maintained by MockAuthService; read by MockUserService) ----
+    /// <summary>Maps userId → set of auth methods ("local", "telegram", "google").</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, HashSet<string>> AuthMethodsByUserId = new();
+    /// <summary>Thread-safe set of userIds whose email is verified (value byte is unused).</summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> EmailVerifiedUserIds = new();
 }

@@ -190,6 +190,16 @@ public class AzureUserService : IUserService
         }
     }
 
+    public Task<(bool TelegramLinked, bool EmailVerified)> GetNotificationContactStatusAsync(string userId)
+    {
+        var entity = _cache.Get(userId);
+        if (entity is null) return Task.FromResult((false, false));
+        return Task.FromResult((
+            TelegramLinked: !string.IsNullOrEmpty(entity.TelegramUserId),
+            EmailVerified: entity.EmailVerified
+        ));
+    }
+
     public async Task SetRankOverrideAsync(string userId, UserRank? rank)
     {
         try

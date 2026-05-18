@@ -27,6 +27,7 @@ public interface IUserService
     Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1);
     Task SetStaffRoleAsync(string userId, StaffRole role);
     Task SetRankOverrideAsync(string userId, UserRank? rank);
+    Task<(bool TelegramLinked, bool EmailVerified)> GetNotificationContactStatusAsync(string userId);
 }
 
 public interface IEventService
