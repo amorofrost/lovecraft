@@ -1,5 +1,6 @@
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Notifications;
+using Lovecraft.Common.Enums;
 using Lovecraft.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,13 +15,16 @@ public class NotificationsController : ControllerBase
 {
     private readonly INotificationService _notificationService;
     private readonly IPushSubscriptionService _pushSubscriptionService;
+    private readonly INotificationPreferenceService _preferenceService;
 
     public NotificationsController(
         INotificationService notificationService,
-        IPushSubscriptionService pushSubscriptionService)
+        IPushSubscriptionService pushSubscriptionService,
+        INotificationPreferenceService preferenceService)
     {
         _notificationService = notificationService;
         _pushSubscriptionService = pushSubscriptionService;
+        _preferenceService = preferenceService;
     }
 
     private string CurrentUserId =>
@@ -107,5 +111,58 @@ public class NotificationsController : ControllerBase
         if (!found)
             return NotFound(ApiResponse<object>.ErrorResponse("NOT_FOUND", "Subscription not found"));
         return Ok(ApiResponse<object>.SuccessResponse(new { }));
+    }
+
+    // ── Notification preferences ─────────────────────────────────────────────
+
+    /// <summary>GET /api/v1/notifications/preferences — returns current prefs (or defaults).</summary>
+    [HttpGet("notifications/preferences")]
+    public async Task<ActionResult<ApiResponse<NotificationPreferencesDto>>> GetPrefs()
+    {
+        var prefs = await _preferenceService.GetPreferencesAsync(CurrentUserId);
+        return Ok(ApiResponse<NotificationPreferencesDto>.SuccessResponse(prefs));
+    }
+
+    /// <summary>PUT /api/v1/notifications/preferences — replace prefs with validation.</summary>
+    [HttpPut("notifications/preferences")]
+    public async Task<ActionResult<ApiResponse<NotificationPreferencesDto>>> UpdatePrefs(
+        [FromBody] NotificationPreferencesDto prefs)
+    {
+        var error = ValidateAndNormalize(prefs);
+        if (error is not null)
+            return BadRequest(ApiResponse<NotificationPreferencesDto>.ErrorResponse("INVALID_PREFERENCES", error));
+        var saved = await _preferenceService.UpdatePreferencesAsync(CurrentUserId, prefs);
+        return Ok(ApiResponse<NotificationPreferencesDto>.SuccessResponse(saved));
+    }
+
+    private static string? ValidateAndNormalize(NotificationPreferencesDto prefs)
+    {
+        if (prefs.DailyDigestHourUtc is < 0 or > 23)
+            return "dailyDigestHourUtc must be 0-23";
+        if (prefs.MutedUntilUtc.HasValue && prefs.MutedUntilUtc.Value <= DateTime.UtcNow)
+            return "mutedUntilUtc must be in the future";
+
+        foreach (var typeName in Enum.GetNames<NotificationType>())
+        {
+            var key = char.ToLowerInvariant(typeName[0]) + typeName[1..];
+            if (!prefs.Matrix.TryGetValue(key, out var row))
+            {
+                row = new Dictionary<string, bool>();
+                prefs.Matrix[key] = row;
+            }
+            row["inApp"]    = true;                              // forced
+            if (!row.ContainsKey("telegram")) row["telegram"] = false;
+            if (!row.ContainsKey("webPush"))  row["webPush"]  = false;
+            if (!row.ContainsKey("email"))    row["email"]    = false;
+        }
+
+        prefs.Frequency["inApp"]   = NotificationFrequency.Immediate;
+        prefs.Frequency["webPush"] = NotificationFrequency.Immediate;
+        if (!prefs.Frequency.ContainsKey("telegram"))
+            prefs.Frequency["telegram"] = NotificationFrequency.Immediate;
+        if (!prefs.Frequency.ContainsKey("email"))
+            prefs.Frequency["email"] = NotificationFrequency.Daily;
+
+        return null;
     }
 }

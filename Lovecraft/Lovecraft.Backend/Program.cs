@@ -227,6 +227,7 @@ if (useAzure)
     builder.Services.AddSingleton<IChatService, AzureChatService>();
     // Notification services — Mock-only for now (Task 17 will wire Azure implementations)
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();
+    builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
     builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
 }
 else
@@ -250,6 +251,7 @@ else
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();
+    builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
     builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
 }
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Lovecraft.Common.DTOs.Notifications;
 using Lovecraft.Common.Models;
@@ -99,5 +100,68 @@ public class NotificationsControllerTests : IClassFixture<AclTests.TestAppFactor
 
         var resp = await client.GetAsync("/api/v1/notifications");
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GET_preferences_returns_defaults_for_new_user()
+    {
+        using var client = _factory.CreateClientAsUser("notif-prefs-new-user");
+        var resp = await client.GetAsync("/api/v1/notifications/preferences");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var matrix = body.GetProperty("data").GetProperty("matrix");
+        Assert.True(matrix.GetProperty("likeReceived").GetProperty("inApp").GetBoolean());
+        Assert.False(matrix.GetProperty("likeReceived").GetProperty("telegram").GetBoolean());
+        Assert.Equal(9, body.GetProperty("data").GetProperty("dailyDigestHourUtc").GetInt32());
+    }
+
+    [Fact]
+    public async Task PUT_preferences_round_trips()
+    {
+        using var client = _factory.CreateClientAsUser("notif-prefs-roundtrip-user");
+
+        var get = await client.GetAsync("/api/v1/notifications/preferences");
+        var prefs = await get.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var payload = JsonNode.Parse(prefs.GetProperty("data").GetRawText())!.AsObject();
+        payload["dailyDigestHourUtc"] = 18;
+
+        var put = await client.PutAsJsonAsync("/api/v1/notifications/preferences", payload, JsonOpts);
+        put.EnsureSuccessStatusCode();
+
+        var get2 = await client.GetAsync("/api/v1/notifications/preferences");
+        var body = await get2.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.Equal(18, body.GetProperty("data").GetProperty("dailyDigestHourUtc").GetInt32());
+    }
+
+    [Fact]
+    public async Task PUT_preferences_rejects_invalid_hour()
+    {
+        using var client = _factory.CreateClientAsUser("notif-prefs-invalid-hour-user");
+        var get = await client.GetAsync("/api/v1/notifications/preferences");
+        var prefs = await get.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var payload = JsonNode.Parse(prefs.GetProperty("data").GetRawText())!.AsObject();
+        payload["dailyDigestHourUtc"] = 99;
+
+        var put = await client.PutAsJsonAsync("/api/v1/notifications/preferences", payload, JsonOpts);
+        Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
+    }
+
+    [Fact]
+    public async Task PUT_preferences_forces_in_app_true_and_immediate()
+    {
+        using var client = _factory.CreateClientAsUser("notif-prefs-force-inapp-user");
+        var get = await client.GetAsync("/api/v1/notifications/preferences");
+        var prefs = await get.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        var payload = JsonNode.Parse(prefs.GetProperty("data").GetRawText())!.AsObject();
+        // user tries to turn off inApp for a type — should be normalized back to true
+        payload["matrix"]!["likeReceived"]!["inApp"] = false;
+
+        var put = await client.PutAsJsonAsync("/api/v1/notifications/preferences", payload, JsonOpts);
+        put.EnsureSuccessStatusCode();
+
+        var get2 = await client.GetAsync("/api/v1/notifications/preferences");
+        var body = await get2.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
+        Assert.True(body.GetProperty("data").GetProperty("matrix")
+            .GetProperty("likeReceived").GetProperty("inApp").GetBoolean());
     }
 }
