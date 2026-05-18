@@ -1,7 +1,9 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.Enums;
+using Moq;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -245,5 +247,100 @@ public class MatchingTests : IDisposable
         Assert.Equal(1, MockDataStore.UserActivity["1"].MatchCount);
         Assert.Equal(1, MockDataStore.UserActivity["2"].MatchCount);
         MockDataStore.UserActivity.Clear();
+    }
+}
+
+[Collection("MatchingTests")]
+public class MatchingNotificationTests
+{
+    public MatchingNotificationTests()
+    {
+        MockDataStore.Likes = new List<LikeDto>();
+        MockDataStore.Matches = new List<MatchDto>();
+        MockDataStore.UserActivity.Clear();
+        // Reset AnonymousLikes on first user (may be mutated by anonymous test)
+        var first = MockDataStore.Users.FirstOrDefault();
+        if (first?.Settings != null)
+            first.Settings.AnonymousLikes = false;
+    }
+
+    private static MockMatchingService BuildService(Mock<INotificationProducer> producer)
+    {
+        var chatService = new MockChatService();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        return new MockMatchingService(chatService, userSvc, producer.Object);
+    }
+
+    [Fact]
+    public async Task Non_mutual_like_fires_LikeReceived_to_recipient()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+
+        await svc.CreateLikeAsync("u-from", "u-to");
+
+        producer.Verify(p => p.ProduceAsync(
+            "u-to", NotificationType.LikeReceived,
+            "u-from", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Mutual_like_fires_MatchCreated_to_both_users()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+        await svc.CreateLikeAsync("u-a", "u-b");        // first like — fires LikeReceived to u-b
+        producer.Invocations.Clear();
+
+        await svc.CreateLikeAsync("u-b", "u-a");        // mutual — should fire MatchCreated to both
+
+        producer.Verify(p => p.ProduceAsync(
+            "u-a", NotificationType.MatchCreated, "u-b",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+        producer.Verify(p => p.ProduceAsync(
+            "u-b", NotificationType.MatchCreated, "u-a",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Anonymous_like_uses_null_actorId_and_anonymous_true_in_payload()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+
+        // Seed sender with AnonymousLikes=true via mock user data
+        var sender = MockDataStore.Users.First();
+        sender.Settings.AnonymousLikes = true;
+        await svc.CreateLikeAsync(sender.Id, "u-target");
+
+        producer.Verify(p => p.ProduceAsync(
+            "u-target",
+            NotificationType.LikeReceived,
+            (string?)null,                                       // actorId omitted
+            It.Is<string>(s => s.Contains("\"anonymous\":true")),
+            It.IsAny<string>(),
+            It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Self_action_not_attempted_at_producer_layer()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+
+        // Self-like: the matching service may already reject this at controller; if it goes through,
+        // the producer's self-action skip handles it. Either way: producer should never write a row
+        // for self-action. We verify the producer is either not called, or called with same recipient/actor
+        // (which the producer will internally suppress — verified in NotificationProducerTests).
+        // For this test, we assert producer.ProduceAsync is NOT called with (recipient == actor).
+        await svc.CreateLikeAsync("u-self", "u-self");
+
+        producer.Verify(p => p.ProduceAsync(
+            It.Is<string>(rid => rid == "u-self"),
+            It.IsAny<NotificationType>(),
+            It.Is<string?>(aid => aid == "u-self"),
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<string?>()), Times.Never);
     }
 }
