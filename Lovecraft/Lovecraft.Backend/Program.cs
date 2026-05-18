@@ -2,6 +2,8 @@ using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Services.Caching;
+using Lovecraft.Backend.Services.Notifications;
+using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Auth;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -188,7 +190,8 @@ if (useAzure)
 {
     var connectionString = builder.Configuration["AZURE_STORAGE_CONNECTION_STRING"]
         ?? throw new InvalidOperationException("AZURE_STORAGE_CONNECTION_STRING not set");
-    builder.Services.AddSingleton(new TableServiceClient(connectionString));
+    var serviceClient = new TableServiceClient(connectionString);
+    builder.Services.AddSingleton(serviceClient);
     builder.Services.AddSingleton(new BlobServiceClient(connectionString));
     builder.Services.AddSingleton<UserCache>();
     builder.Services.AddSingleton<IAppConfigService, AzureAppConfigService>();
@@ -225,10 +228,26 @@ if (useAzure)
             sp.GetRequiredService<ILogger<AzureForumService>>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IChatService, AzureChatService>();
-    // Notification services — Mock-only for now (Task 17 will wire Azure implementations)
-    builder.Services.AddSingleton<INotificationService, MockNotificationService>();
-    builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
-    builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
+
+    // Notification services — Azure implementations
+    var notificationsTable = serviceClient.GetTableClient(TableNames.Notifications);
+    notificationsTable.CreateIfNotExists();
+    var outboxTable = serviceClient.GetTableClient(TableNames.NotificationsOutbox);
+    outboxTable.CreateIfNotExists();
+    var prefsTable = serviceClient.GetTableClient(TableNames.NotificationPreferences);
+    prefsTable.CreateIfNotExists();
+    var pushTable = serviceClient.GetTableClient(TableNames.WebPushSubscriptions);
+    pushTable.CreateIfNotExists();
+
+    builder.Services.AddSingleton<INotificationService>(sp =>
+        new AzureNotificationService(notificationsTable, outboxTable,
+            sp.GetRequiredService<ILogger<AzureNotificationService>>()));
+    builder.Services.AddSingleton<INotificationPreferenceService>(sp =>
+        new AzureNotificationPreferenceService(prefsTable,
+            sp.GetRequiredService<ILogger<AzureNotificationPreferenceService>>()));
+    builder.Services.AddSingleton<IPushSubscriptionService>(sp =>
+        new AzurePushSubscriptionService(pushTable,
+            sp.GetRequiredService<ILogger<AzurePushSubscriptionService>>()));
 }
 else
 {
@@ -254,6 +273,12 @@ else
     builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
     builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
 }
+
+// Mode-agnostic notification infrastructure
+builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
+builder.Services.AddSingleton<IInAppDispatcher, InAppDispatcher>();
+builder.Services.AddSingleton<NotificationDeduper>();
+builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
 
 var app = builder.Build();
 
