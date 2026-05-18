@@ -1,7 +1,9 @@
 using Azure;
 using Azure.Data.Tables;
+using System.Text.Json;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.Enums;
 
@@ -14,16 +16,19 @@ public class AzureMatchingService : IMatchingService
     private readonly IChatService _chatService;
     private readonly IUserService _userService;
     private readonly ILogger<AzureMatchingService> _logger;
+    private readonly INotificationProducer? _producer;
 
     public AzureMatchingService(
         TableServiceClient tableServiceClient,
         IChatService chatService,
         IUserService userService,
-        ILogger<AzureMatchingService> logger)
+        ILogger<AzureMatchingService> logger,
+        INotificationProducer? producer = null)
     {
         _chatService = chatService;
         _userService = userService;
         _logger = logger;
+        _producer = producer;
         _likesTable = tableServiceClient.GetTableClient(TableNames.Likes);
         _likesReceivedTable = tableServiceClient.GetTableClient(TableNames.LikesReceived);
 
@@ -149,6 +154,63 @@ public class AzureMatchingService : IMatchingService
             }
 
             _logger.LogInformation("Match created between {From} and {To}", fromUserId, toUserId);
+
+            // Fire MatchCreated notifications to both users
+            if (_producer is not null)
+            {
+                var lex = string.CompareOrdinal(fromUserId, toUserId) < 0
+                    ? (fromUserId, toUserId)
+                    : (toUserId, fromUserId);
+                var matchSourceId = $"match-{lex.Item1}-{lex.Item2}";
+                var matchPayload = JsonSerializer.Serialize(new { matchId = matchSourceId });
+
+                try
+                {
+                    await _producer.ProduceAsync(toUserId, NotificationType.MatchCreated, fromUserId, matchPayload, matchSourceId);
+                    await _producer.ProduceAsync(fromUserId, NotificationType.MatchCreated, toUserId, matchPayload, matchSourceId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to fire MatchCreated notifications for {From} and {To}", fromUserId, toUserId);
+                }
+            }
+        }
+        else
+        {
+            // Non-mutual like: fire LikeReceived notification to recipient
+            if (_producer is not null)
+            {
+                // Look up sender's AnonymousLikes setting to decide whether to reveal the actor.
+                bool isAnonymous = false;
+                try
+                {
+                    var sender = await _userService.GetUserByIdAsync(fromUserId);
+                    isAnonymous = sender?.Settings.AnonymousLikes ?? false;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to fetch sender settings for anonymous-like check for {Sender}", fromUserId);
+                }
+
+                var payloadJson = JsonSerializer.Serialize(new
+                {
+                    likeId,
+                    anonymous = isAnonymous,
+                });
+                try
+                {
+                    await _producer.ProduceAsync(
+                        recipientUserId: toUserId,
+                        type: NotificationType.LikeReceived,
+                        actorId: isAnonymous ? null : fromUserId,
+                        payloadJson: payloadJson,
+                        sourceEventId: likeId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to fire LikeReceived notification for {Recipient}", toUserId);
+                }
+            }
         }
 
         return new LikeResponseDto

@@ -1,7 +1,9 @@
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.Enums;
+using Moq;
 using System.Collections.Generic;
 using Xunit;
 
@@ -238,5 +240,96 @@ public class ForumTests : IDisposable
         // With only 1 reply and no other activity, user is still novice (threshold 5)
         Assert.Equal(UserRank.Novice, user!.Rank);
         MockDataStore.UserActivity.Clear();
+    }
+}
+
+[Collection("ForumTests")]
+public class ForumNotificationTests : IDisposable
+{
+    public ForumNotificationTests()
+    {
+        MockDataStore.ForumTopics.Clear();
+        MockDataStore.ForumSections.Clear();
+        MockDataStore.ForumReplies.Clear();
+        MockDataStore.ForumSections.Add(new ForumSectionDto
+        {
+            Id = "general", Name = "General", Description = "", TopicCount = 0
+        });
+    }
+
+    public void Dispose()
+    {
+        MockDataStore.ForumTopics.Clear();
+        MockDataStore.ForumSections.Clear();
+        MockDataStore.ForumReplies.Clear();
+    }
+
+    private static MockForumService BuildService(Mock<INotificationProducer> producer)
+    {
+        var userSvc = new MockUserService(new MockAppConfigService());
+        return new MockForumService(userSvc, new MockEventService(userSvc), producer.Object);
+    }
+
+    [Fact]
+    public async Task Reply_fires_ForumReplyToThread_to_topic_author()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+
+        var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "Title", "Body", noviceVisible: true, noviceCanReply: true);
+
+        await svc.CreateReplyAsync(topic.Id, "u-replier", "Replier", "Reply content", null);
+
+        producer.Verify(p => p.ProduceAsync(
+            "u-author", NotificationType.ForumReplyToThread, "u-replier",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Reply_fans_out_to_all_prior_participants_except_self()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+
+        var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
+        await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "first reply", null);
+        await svc.CreateReplyAsync(topic.Id, "u-p2", "P2", "second reply", null);
+        producer.Invocations.Clear();
+
+        await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "third reply by p1", null);
+
+        // p1 is the new replier — should not get notified of own reply
+        // u-author, u-p2 should each get one
+        producer.Verify(p => p.ProduceAsync(
+            "u-author", NotificationType.ForumReplyToThread, "u-p1",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+        producer.Verify(p => p.ProduceAsync(
+            "u-p2", NotificationType.ForumReplyToThread, "u-p1",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+        producer.Verify(p => p.ProduceAsync(
+            "u-p1", It.IsAny<NotificationType>(), It.IsAny<string?>(),
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Reply_dedups_repeat_participants()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var svc = BuildService(producer);
+
+        var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
+        await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "first", null);
+        await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "second", null);   // p1 replies twice
+        producer.Invocations.Clear();
+
+        await svc.CreateReplyAsync(topic.Id, "u-other", "Other", "from other", null);
+
+        // u-author + u-p1 each get exactly one notification — not two for p1's pair of prior replies
+        producer.Verify(p => p.ProduceAsync(
+            "u-author", NotificationType.ForumReplyToThread, "u-other",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+        producer.Verify(p => p.ProduceAsync(
+            "u-p1", NotificationType.ForumReplyToThread, "u-other",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
     }
 }

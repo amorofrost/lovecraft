@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Events;
@@ -23,16 +24,19 @@ public class AzureForumService : IForumService
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
     private readonly ILogger<AzureForumService> _logger;
+    private readonly INotificationProducer? _producer;
 
     public AzureForumService(
         TableServiceClient tableServiceClient,
         IUserService userService,
         IEventService eventService,
-        ILogger<AzureForumService> logger)
+        ILogger<AzureForumService> logger,
+        INotificationProducer? producer = null)
     {
         _userService = userService;
         _eventService = eventService;
         _logger = logger;
+        _producer = producer;
         _sectionsTable = tableServiceClient.GetTableClient(TableNames.ForumSections);
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
         _topicIndexTable = tableServiceClient.GetTableClient(TableNames.ForumTopicIndex);
@@ -292,6 +296,35 @@ public class AzureForumService : IForumService
         {
             _logger.LogWarning(ex, "Failed to increment {Counter} for user {UserId}",
                 UserCounter.ReplyCount, authorId);
+        }
+
+        if (_producer is not null && topicDto is not null)
+        {
+            try
+            {
+                var participants = new HashSet<string>();
+                participants.Add(topicDto.AuthorId);
+                var priorReplies = await GetRepliesAsync(topicId);
+                foreach (var r in priorReplies)
+                    if (!string.IsNullOrEmpty(r.AuthorId) && r.Id != replyId)
+                        participants.Add(r.AuthorId);
+                participants.Remove(authorId);
+
+                var payloadJson = JsonSerializer.Serialize(new { topicId, replyId });
+                foreach (var participantId in participants)
+                {
+                    await _producer.ProduceAsync(
+                        recipientUserId: participantId,
+                        type: NotificationType.ForumReplyToThread,
+                        actorId: authorId,
+                        payloadJson: payloadJson,
+                        sourceEventId: replyId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fire ForumReplyToThread notifications for topic {TopicId}", topicId);
+            }
         }
 
         var author = await _userService.GetUserByIdAsync(authorId);
