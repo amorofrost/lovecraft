@@ -165,3 +165,12 @@ public interface INotificationService
     Task<List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> RecentForDedupAsync(
         string userId, Lovecraft.Common.Enums.NotificationType type, string? actorId, string? sourceEventId, int withinSeconds);
 }
+
+public interface IPushSubscriptionService
+{
+    Task<Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionDto> SubscribeAsync(
+        string userId, Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionRequestDto request);
+    Task<List<Lovecraft.Common.DTOs.Notifications.WebPushSubscriptionDto>> ListAsync(string userId);
+    Task<int> CountAsync(string userId);
+    Task<bool> UnsubscribeAsync(string userId, string deviceId);
+}
