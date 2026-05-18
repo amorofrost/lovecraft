@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
 using Lovecraft.Common.DTOs.Users;
@@ -12,11 +14,13 @@ public class MockForumService : IForumService
     private const string EventSectionId = "events";
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
+    private readonly INotificationProducer? _producer;
 
-    public MockForumService(IUserService userService, IEventService eventService)
+    public MockForumService(IUserService userService, IEventService eventService, INotificationProducer? producer = null)
     {
         _userService = userService;
         _eventService = eventService;
+        _producer = producer;
     }
 
     public Task<List<ForumSectionDto>> GetSectionsAsync()
@@ -169,6 +173,31 @@ public class MockForumService : IForumService
         }
 
         await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
+
+        if (_producer is not null)
+        {
+            var topicForNotify = MockDataStore.ForumTopics.FirstOrDefault(t => t.Id == topicId);
+            if (topicForNotify is not null)
+            {
+                var participants = new HashSet<string>();
+                participants.Add(topicForNotify.AuthorId);
+                foreach (var r in MockDataStore.ForumReplies.Where(r => r.TopicId == topicId))
+                    if (!string.IsNullOrEmpty(r.AuthorId))
+                        participants.Add(r.AuthorId);
+                participants.Remove(authorId);
+
+                var payloadJson = JsonSerializer.Serialize(new { topicId, replyId = reply.Id });
+                foreach (var participantId in participants)
+                {
+                    await _producer.ProduceAsync(
+                        recipientUserId: participantId,
+                        type: NotificationType.ForumReplyToThread,
+                        actorId: authorId,
+                        payloadJson: payloadJson,
+                        sourceEventId: reply.Id);
+                }
+            }
+        }
 
         var author = await _userService.GetUserByIdAsync(authorId);
         var (badgeUrls, badgeTotal) = await _eventService.GetUserEventBadgePreviewAsync(authorId);
