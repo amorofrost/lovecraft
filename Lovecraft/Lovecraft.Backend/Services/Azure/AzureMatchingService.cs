@@ -180,20 +180,29 @@ public class AzureMatchingService : IMatchingService
             // Non-mutual like: fire LikeReceived notification to recipient
             if (_producer is not null)
             {
-                // AzureMatchingService does not have user settings in-memory; default anonymous=false.
-                // Settings.AnonymousLikes requires a user lookup — deferred to a future pass when
-                // IUserService gains a synchronous settings accessor. Like ID used as stable sourceEventId.
+                // Look up sender's AnonymousLikes setting to decide whether to reveal the actor.
+                bool isAnonymous = false;
+                try
+                {
+                    var sender = await _userService.GetUserByIdAsync(fromUserId);
+                    isAnonymous = sender?.Settings.AnonymousLikes ?? false;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to fetch sender settings for anonymous-like check for {Sender}", fromUserId);
+                }
+
                 var payloadJson = JsonSerializer.Serialize(new
                 {
                     likeId,
-                    anonymous = false,
+                    anonymous = isAnonymous,
                 });
                 try
                 {
                     await _producer.ProduceAsync(
                         recipientUserId: toUserId,
                         type: NotificationType.LikeReceived,
-                        actorId: fromUserId,
+                        actorId: isAnonymous ? null : fromUserId,
                         payloadJson: payloadJson,
                         sourceEventId: likeId);
                 }

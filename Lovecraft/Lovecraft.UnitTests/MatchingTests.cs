@@ -1,8 +1,16 @@
+using Azure;
+using Azure.Data.Tables;
+using Azure.Data.Tables.Models;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Services.Notifications;
+using Lovecraft.Backend.Storage;
+using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Matching;
+using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -342,5 +350,89 @@ public class MatchingNotificationTests
             It.IsAny<string>(),
             It.IsAny<string>(),
             It.IsAny<string?>()), Times.Never);
+    }
+}
+
+[Collection("MatchingTests")]
+public class AzureMatchingNotificationTests
+{
+    /// <summary>
+    /// Builds a minimal AzureMatchingService with all Azure table clients mocked.
+    /// The likes table always returns 404 for GetEntityAsync (no prior like, no mutual),
+    /// and accepts AddEntityAsync + UpsertEntityAsync without hitting real Azure.
+    /// </summary>
+    private static AzureMatchingService BuildAzureService(
+        Mock<IUserService> userService,
+        Mock<INotificationProducer> producer)
+    {
+        var likesTable = new Mock<TableClient>();
+        var likesReceivedTable = new Mock<TableClient>();
+
+        // CreateIfNotExistsAsync called in constructor — must succeed
+        likesTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue<TableItem>(null!, Mock.Of<Response>()));
+        likesReceivedTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue<TableItem>(null!, Mock.Of<Response>()));
+
+        // No reverse like exists → 404 so isMutual = false
+        likesTable.Setup(t => t.GetEntityAsync<LikeEntity>(
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new RequestFailedException(404, "Not Found"));
+
+        // AddEntityAsync succeeds on first call (new like)
+        likesTable.Setup(t => t.AddEntityAsync(
+                It.IsAny<LikeEntity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Mock.Of<Response>());
+
+        // Mirror row upsert — must not throw
+        likesReceivedTable.Setup(t => t.UpsertEntityAsync(
+                It.IsAny<LikeEntity>(), It.IsAny<TableUpdateMode>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Mock.Of<Response>());
+
+        var tsc = new Mock<TableServiceClient>();
+        tsc.Setup(x => x.GetTableClient(TableNames.Likes)).Returns(likesTable.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.LikesReceived)).Returns(likesReceivedTable.Object);
+
+        // IncrementCounterAsync is called but we don't need its result — let it throw so
+        // the service swallows it via its own try/catch and continues.
+        userService.Setup(u => u.IncrementCounterAsync(It.IsAny<string>(), It.IsAny<UserCounter>()))
+            .ThrowsAsync(new InvalidOperationException("counter not needed in this test"));
+
+        return new AzureMatchingService(
+            tsc.Object,
+            Mock.Of<IChatService>(),
+            userService.Object,
+            NullLogger<AzureMatchingService>.Instance,
+            producer.Object);
+    }
+
+    [Fact]
+    public async Task Azure_anonymous_like_uses_null_actorId_and_anonymous_true_in_payload()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var userService = new Mock<IUserService>();
+
+        var senderDto = new UserDto
+        {
+            Id = "sender-id",
+            Name = "Sender",
+            Settings = new UserSettingsDto { AnonymousLikes = true },
+        };
+
+        userService.Setup(u => u.GetUserByIdAsync("sender-id"))
+            .ReturnsAsync(senderDto);
+
+        var svc = BuildAzureService(userService, producer);
+
+        await svc.CreateLikeAsync("sender-id", "recipient-id");
+
+        producer.Verify(p => p.ProduceAsync(
+            "recipient-id",
+            NotificationType.LikeReceived,
+            (string?)null,                                        // actorId must be null when anonymous
+            It.Is<string>(s => s.Contains("\"anonymous\":true")),
+            It.IsAny<string?>(),
+            It.IsAny<string?>()), Times.Once);
     }
 }
