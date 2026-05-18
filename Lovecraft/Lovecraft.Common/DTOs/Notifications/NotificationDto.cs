@@ -18,6 +18,9 @@ public class NotificationDto
     public DateTime? DismissedAtUtc { get; set; }
     /// <summary>Set when this row was rolled into a digest send so the worker doesn't redeliver.</summary>
     public string? DigestGroupId { get; set; }
+    /// <summary>Opaque pagination cursor (Azure RowKey). Null in mock mode. Not serialized to clients.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? Cursor { get; set; }
 }
 
 public class NotificationListResponseDto

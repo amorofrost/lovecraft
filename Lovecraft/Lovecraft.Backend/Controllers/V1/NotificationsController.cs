@@ -46,7 +46,7 @@ public class NotificationsController : ControllerBase
         var result = new NotificationListResponseDto
         {
             Items = items,
-            NextCursor = items.Count == limit ? items.Last().Id : null,
+            NextCursor = items.Count == limit ? (items[^1].Cursor ?? items[^1].Id) : null,
         };
         return Ok(ApiResponse<NotificationListResponseDto>.SuccessResponse(result));
     }

@@ -22,6 +22,10 @@ public class NotificationEntity : ITableEntity
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? ReadAtUtc { get; set; }
     public DateTime? DismissedAtUtc { get; set; }
+    /// <summary>Denormalized boolean for cheap OData filtering (Azure Table Storage does not support eq null on DateTime? columns).</summary>
+    public bool IsRead { get; set; } = false;
+    /// <summary>Denormalized boolean for cheap OData filtering (Azure Table Storage does not support eq null on DateTime? columns).</summary>
+    public bool IsDismissed { get; set; } = false;
     public string? DigestGroupId { get; set; }
     /// <summary>Natural key of the underlying event (messageId / replyId / likeId) used by NotificationDeduper.</summary>
     public string? SourceEventId { get; set; }

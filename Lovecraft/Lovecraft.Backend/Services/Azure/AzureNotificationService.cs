@@ -36,6 +36,8 @@ public class AzureNotificationService : INotificationService
             PayloadJson = payloadJson ?? "{}",
             CreatedAtUtc = now,
             SourceEventId = sourceEventId,
+            IsRead = false,
+            IsDismissed = false,
         };
         await _notifications.AddEntityAsync(entity);
         return ToDto(entity);
@@ -60,7 +62,7 @@ public class AzureNotificationService : INotificationService
 
     public async Task<List<NotificationDto>> ListAsync(string userId, int limit, string? cursor)
     {
-        var filter = $"PartitionKey eq '{userId}' and (DismissedAtUtc eq null or DismissedAtUtc eq '')";
+        var filter = $"PartitionKey eq '{userId}' and IsDismissed eq false";
         if (!string.IsNullOrEmpty(cursor))
             filter += $" and RowKey gt '{cursor.Replace("'", "''")}'";
 
@@ -75,7 +77,7 @@ public class AzureNotificationService : INotificationService
 
     public async Task<int> UnreadCountAsync(string userId)
     {
-        var filter = $"PartitionKey eq '{userId}' and ReadAtUtc eq null and (DismissedAtUtc eq null or DismissedAtUtc eq '')";
+        var filter = $"PartitionKey eq '{userId}' and IsRead eq false and IsDismissed eq false";
         var count = 0;
         await foreach (var _ in _notifications.QueryAsync<NotificationEntity>(filter, select: new[] { "RowKey" }))
             count++;
@@ -88,18 +90,20 @@ public class AzureNotificationService : INotificationService
         if (entity is null) return false;
         if (entity.ReadAtUtc.HasValue) return true;
         entity.ReadAtUtc = DateTime.UtcNow;
+        entity.IsRead = true;
         await _notifications.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
         return true;
     }
 
     public async Task<int> MarkAllReadAsync(string userId)
     {
-        var filter = $"PartitionKey eq '{userId}' and ReadAtUtc eq null and (DismissedAtUtc eq null or DismissedAtUtc eq '')";
+        var filter = $"PartitionKey eq '{userId}' and IsRead eq false and IsDismissed eq false";
         var updated = 0;
         var now = DateTime.UtcNow;
         await foreach (var entity in _notifications.QueryAsync<NotificationEntity>(filter))
         {
             entity.ReadAtUtc = now;
+            entity.IsRead = true;
             try
             {
                 await _notifications.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
@@ -119,6 +123,7 @@ public class AzureNotificationService : INotificationService
         if (entity is null) return false;
         if (entity.DismissedAtUtc.HasValue) return true;
         entity.DismissedAtUtc = DateTime.UtcNow;
+        entity.IsDismissed = true;
         await _notifications.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
         return true;
     }
@@ -158,5 +163,6 @@ public class AzureNotificationService : INotificationService
         ReadAtUtc = e.ReadAtUtc,
         DismissedAtUtc = e.DismissedAtUtc,
         DigestGroupId = e.DigestGroupId,
+        Cursor = e.RowKey,
     };
 }

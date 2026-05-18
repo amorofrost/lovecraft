@@ -153,4 +153,48 @@ public class AzureNotificationServiceTests
         Assert.Equal("u1", written.UserId);
         Assert.Equal("nid-1", written.NotificationId);
     }
+
+    [Fact]
+    public async Task Create_sets_IsRead_false_and_IsDismissed_false()
+    {
+        var notifs = EmptyTable();
+        var outbox = EmptyTable();
+        NotificationEntity? written = null;
+        notifs.Setup(t => t.AddEntityAsync(It.IsAny<NotificationEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<NotificationEntity, CancellationToken>((e, _) => written = e)
+            .ReturnsAsync(new Mock<Response>().Object);
+
+        var svc = new AzureNotificationService(notifs.Object, outbox.Object,
+            NullLogger<AzureNotificationService>.Instance);
+
+        await svc.CreateAsync("u1", NotificationType.LikeReceived, "actor", "{}", "src-1");
+
+        Assert.NotNull(written);
+        Assert.False(written!.IsRead);
+        Assert.False(written.IsDismissed);
+    }
+
+    [Fact]
+    public async Task ListAsync_with_cursor_includes_RowKey_gt_in_filter()
+    {
+        var notifs = EmptyTable();
+        var outbox = EmptyTable();
+        var emptyCursor = "12345678901234567890_abc";
+        string? capturedFilter = null;
+
+        var emptyPage = Azure.Page<NotificationEntity>.FromValues(
+            new List<NotificationEntity>(), null, Mock.Of<Response>());
+        notifs.Setup(t => t.QueryAsync<NotificationEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, int?, IEnumerable<string>?, CancellationToken>((f, _, _, _) => capturedFilter = f)
+            .Returns(Azure.AsyncPageable<NotificationEntity>.FromPages(new[] { emptyPage }));
+
+        var svc = new AzureNotificationService(notifs.Object, outbox.Object,
+            NullLogger<AzureNotificationService>.Instance);
+
+        await svc.ListAsync("u1", 20, emptyCursor);
+
+        Assert.NotNull(capturedFilter);
+        Assert.Contains($"RowKey gt '{emptyCursor}'", capturedFilter);
+    }
 }
