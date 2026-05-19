@@ -17,7 +17,14 @@ public class OutboxProcessor : IOutboxProcessor
         TimeSpan.FromHours(6),
     };
 
-    private const int MaxAttempts = 5;
+    // Attempts: 0 (initial)
+    // After attempt 0 fails → Attempts=1, reschedule with Backoff[0]=30s
+    // After attempt 1 fails → Attempts=2, reschedule with Backoff[1]=2m
+    // After attempt 2 fails → Attempts=3, reschedule with Backoff[2]=10m
+    // After attempt 3 fails → Attempts=4, reschedule with Backoff[3]=1h
+    // After attempt 4 fails → Attempts=5, reschedule with Backoff[4]=6h
+    // After attempt 5 fails → DEAD
+    private const int MaxAttempts = 6;   // initial attempt + 5 retries with backoff before dead-letter
 
     private readonly TableClient _outbox;
     private readonly TableClient _notifications;

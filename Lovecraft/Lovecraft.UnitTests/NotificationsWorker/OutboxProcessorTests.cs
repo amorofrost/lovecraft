@@ -123,13 +123,13 @@ public class OutboxProcessorTests
     }
 
     [Fact]
-    public async Task After_5_retryable_failures_row_moves_to_DEAD()
+    public async Task After_6_retryable_failures_row_moves_to_DEAD()
     {
         var now = DateTime.UtcNow;
         var (processor, outbox, _, _) = Build(DispatchResult.RetryableError);
         outbox.Setup(t => t.QueryAsync<NotificationOutboxEntity>(
                 It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-            .Returns(new[] { MakeRow("Telegram", now.AddMinutes(-1), attempts: 4) }.ToAsyncPageable());
+            .Returns(new[] { MakeRow("Telegram", now.AddMinutes(-1), attempts: 5) }.ToAsyncPageable());
 
         NotificationOutboxEntity? written = null;
         outbox.Setup(t => t.AddEntityAsync(It.IsAny<NotificationOutboxEntity>(), It.IsAny<CancellationToken>()))
@@ -142,7 +142,42 @@ public class OutboxProcessorTests
 
         Assert.NotNull(written);
         Assert.StartsWith("OUTBOX_Telegram_DEAD_", written!.PartitionKey);
-        Assert.Equal(5, written.Attempts);
+        Assert.Equal(6, written.Attempts);
+    }
+
+    [Fact]
+    public async Task Missing_notification_row_moves_to_DEAD()
+    {
+        var now = DateTime.UtcNow;
+        var outbox = new Mock<TableClient>();
+        var notifs = new Mock<TableClient>();
+
+        // Outbox has a row but the notifications table returns nothing
+        outbox.Setup(t => t.QueryAsync<NotificationOutboxEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(new[] { MakeRow("Telegram", now.AddMinutes(-1), attempts: 0) }.ToAsyncPageable());
+
+        notifs.Setup(t => t.QueryAsync<NotificationEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(Array.Empty<NotificationEntity>().ToAsyncPageable());
+
+        NotificationOutboxEntity? written = null;
+        outbox.Setup(t => t.AddEntityAsync(It.IsAny<NotificationOutboxEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<NotificationOutboxEntity, CancellationToken>((e, _) => written = e)
+            .ReturnsAsync(new Mock<Response>().Object);
+        outbox.Setup(t => t.DeleteEntityAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ETag>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Mock<Response>().Object);
+
+        var processor = new OutboxProcessor(
+            outbox.Object, notifs.Object,
+            Mock.Of<ITelegramDispatcher>(), Mock.Of<IEmailDispatcher>(),
+            NullLogger<OutboxProcessor>.Instance);
+
+        await processor.ProcessChannelAsync("Telegram", CancellationToken.None);
+
+        Assert.NotNull(written);
+        Assert.StartsWith("OUTBOX_Telegram_DEAD_", written!.PartitionKey);
+        Assert.Contains("not found", written.LastErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -173,4 +173,56 @@ public class DigestProcessorTests
 
         telegram.Verify(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task Future_scheduled_Hourly_row_is_not_dispatched()
+    {
+        // A row scheduled 2 hours in the future must NOT be picked up because its RowKey
+        // sorts above the ceiling filter `RowKey le '{now}_~'`.
+        var now = new DateTime(2026, 5, 18, 14, 0, 0, DateTimeKind.Utc);
+
+        var outbox = new Mock<TableClient>();
+        var notifs = new Mock<TableClient>();
+        var prefs = new Mock<TableClient>();
+        var telegram = new Mock<ITelegramDispatcher>();
+
+        // The future row has a RowKey of now+2h — it would be included without the ceiling filter.
+        var futureRow = new NotificationOutboxEntity
+        {
+            PartitionKey = NotificationOutboxEntity.PendingPartition("Telegram"),
+            RowKey = NotificationOutboxEntity.GetRowKey(now.AddHours(2), "n1"),
+            NotificationId = "n1",
+            UserId = "u1",
+            Channel = "Telegram",
+            Frequency = "Hourly",
+            ScheduledForUtc = now.AddHours(2),
+            ETag = new ETag("e"),
+        };
+
+        // The mock table client returns the future row regardless of filter; the ceiling filter
+        // must be included in the OData query string passed to QueryAsync.
+        outbox.Setup(t => t.QueryAsync<NotificationOutboxEntity>(
+                It.Is<string>(f => f.Contains("RowKey le") || f.Contains("RowKey lt")),
+                It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(Array.Empty<NotificationOutboxEntity>().ToAsyncPageable());
+
+        // If filter is missing (no RowKey clause), return the future row to catch the regression.
+        outbox.Setup(t => t.QueryAsync<NotificationOutboxEntity>(
+                It.Is<string>(f => !f.Contains("RowKey le") && !f.Contains("RowKey lt")),
+                It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(new[] { futureRow }.ToAsyncPageable());
+
+        var processor = new DigestProcessor(outbox.Object, notifs.Object, prefs.Object,
+            telegram.Object, Mock.Of<IEmailDispatcher>(), NullLogger<DigestProcessor>.Instance);
+
+        await processor.ProcessAsync(now, CancellationToken.None);
+
+        // Verify the RowKey ceiling filter was actually applied in the query
+        outbox.Verify(t => t.QueryAsync<NotificationOutboxEntity>(
+            It.Is<string>(f => f.Contains("RowKey le") || f.Contains("RowKey lt")),
+            It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+
+        telegram.Verify(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

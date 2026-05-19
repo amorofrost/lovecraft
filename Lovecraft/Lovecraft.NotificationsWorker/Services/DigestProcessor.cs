@@ -39,7 +39,8 @@ public class DigestProcessor : IDigestProcessor
         foreach (var channel in DigestChannels)
         {
             var pendingPartition = NotificationOutboxEntity.PendingPartition(channel);
-            var filter = $"PartitionKey eq '{pendingPartition}'";
+            var rowKeyCeiling = $"{now:yyyy-MM-ddTHH:mm:ss}_~";    // "~" sorts after all digit/hex chars
+            var filter = $"PartitionKey eq '{pendingPartition}' and RowKey le '{rowKeyCeiling}'";
 
             // Group rows by userId
             var byUser = new Dictionary<string, List<NotificationOutboxEntity>>();
@@ -81,7 +82,9 @@ public class DigestProcessor : IDigestProcessor
 
                 if (members.Count == 0) continue;
 
-                var digest = new DigestModel(userId, members);
+                // Build digest model — Phase C stub dispatchers ignore it (use only first member);
+                // Phase F adds real DispatchDigestAsync(DigestModel) for full multi-row rendering.
+                _ = new DigestModel(userId, members);
 
                 // Dispatch (stub in Phase C — logs, returns Delivered)
                 var first = members[0];
