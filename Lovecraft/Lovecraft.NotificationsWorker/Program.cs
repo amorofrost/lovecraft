@@ -1,11 +1,13 @@
 using Azure.Data.Tables;
 using Lovecraft.NotificationsWorker;
 using Lovecraft.NotificationsWorker.Dispatchers;
+using Lovecraft.NotificationsWorker.Renderers;
 using Lovecraft.NotificationsWorker.Services;
 using Lovecraft.NotificationsWorker.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Telegram.Bot;
 
 // Explicit class avoids an implicit public `Program` type that conflicts with
 // Lovecraft.Backend's `public partial class Program` when both are referenced from UnitTests.
@@ -47,7 +49,32 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddSingleton(notificationsTable);
         // outbox + preferences are accessed via the processors that take them explicitly:
 
-        builder.Services.AddSingleton<ITelegramDispatcher, StubTelegramDispatcher>();
+        var telegramBotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
+        if (string.IsNullOrEmpty(telegramBotToken))
+        {
+            var startupLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<NotificationsWorkerEntryPoint>>();
+            startupLogger.LogWarning("TELEGRAM_BOT_TOKEN is not set; using StubTelegramDispatcher. Telegram notifications will be silently dropped.");
+            builder.Services.AddSingleton<ITelegramDispatcher, StubTelegramDispatcher>();
+        }
+        else
+        {
+            var usersTable = serviceClient.GetTableClient(TableNames.Users);
+            // Do NOT call CreateIfNotExists — the backend owns the users table.
+
+            builder.Services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramBotToken));
+            builder.Services.AddSingleton(usersTable);
+            builder.Services.AddSingleton<ITelegramRateLimiter, TelegramRateLimiter>();
+            builder.Services.AddSingleton<ITelegramMessageRenderer, TelegramMessageRenderer>();
+            builder.Services.AddSingleton<ITelegramSendClient, TelegramSendClient>();
+            builder.Services.AddSingleton<ITelegramDispatcher>(sp =>
+                new TelegramDispatcher(
+                    sp.GetRequiredService<ITelegramSendClient>(),
+                    sp.GetRequiredService<TableClient>(),
+                    sp.GetRequiredService<ITelegramMessageRenderer>(),
+                    sp.GetRequiredService<ITelegramRateLimiter>(),
+                    sp.GetRequiredService<ILogger<TelegramDispatcher>>()));
+        }
+
         builder.Services.AddSingleton<IEmailDispatcher, StubEmailDispatcher>();
 
         builder.Services.AddSingleton<IOutboxProcessor>(sp =>
