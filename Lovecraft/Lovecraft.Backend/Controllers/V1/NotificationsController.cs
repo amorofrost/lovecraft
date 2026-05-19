@@ -105,6 +105,17 @@ public class NotificationsController : ControllerBase
         return Ok(ApiResponse<object>.SuccessResponse(new { }));
     }
 
+    // ── Web Push VAPID ──────────────────────────────────────────────────────
+
+    /// <summary>GET /api/v1/push/vapid-public-key — returns the VAPID public key for client-side subscription. No auth required.</summary>
+    [AllowAnonymous]
+    [HttpGet("push/vapid-public-key")]
+    public ActionResult<ApiResponse<VapidPublicKeyDto>> GetVapidPublicKey()
+    {
+        var key = Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY") ?? string.Empty;
+        return Ok(ApiResponse<VapidPublicKeyDto>.SuccessResponse(new VapidPublicKeyDto { PublicKey = key }));
+    }
+
     // ── Web Push subscriptions ───────────────────────────────────────────────
 
     /// <summary>POST /api/v1/push/subscribe — register a Web Push subscription.</summary>
