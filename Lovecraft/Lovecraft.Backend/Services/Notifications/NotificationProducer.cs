@@ -75,8 +75,15 @@ public class NotificationProducer : INotificationProducer
             }
             if (channel == NotificationChannel.WebPush)
             {
-                try { await _webPush.DispatchAsync(recipientUserId, dto); }
-                catch (Exception ex) { _logger.LogWarning(ex, "WebPush dispatch failed for {NotificationId}", dto.Id); }
+                // Fire-and-forget: canonical notification row is already written; push delivery
+                // is best-effort and must not block the API request thread.
+                var capturedDto = dto;
+                var capturedUserId = recipientUserId;
+                _ = Task.Run(async () =>
+                {
+                    try { await _webPush.DispatchAsync(capturedUserId, capturedDto); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "WebPush dispatch failed for {NotificationId}", capturedDto.Id); }
+                });
                 continue;
             }
             // Telegram + Email: enqueue outbox for worker dispatch

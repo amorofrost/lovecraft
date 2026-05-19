@@ -198,6 +198,9 @@ public class NotificationProducerTests
         var n = await producer.ProduceAsync("u-recipient", NotificationType.LikeReceived,
             "actor", "{}", "like-webpush");
 
+        // WebPush is fire-and-forget (Task.Run); give the background task a moment to flush.
+        await Task.Delay(100);
+
         // Assert: WebPush dispatched in-process, no outbox enqueue for any channel
         Assert.NotNull(n);
         webPush.Verify(d => d.DispatchAsync("u-recipient",
