@@ -186,3 +186,39 @@ Generate via `dotnet run --project Lovecraft.Tools.VapidKeygen`.
 **Known follow-ups:**
 - English-only payload text (no `Settings.Language` lookup yet — same trade-off as Phase D Telegram).
 - `AppBaseUrl` hardcoded `/` paths in the renderer (no scheme/host — the URL is the path-only string; frontend's service worker prepends origin). Sufficient because notifications are origin-scoped to the user's subscribed app.
+
+---
+
+## Phase F scope (shipped 2026-05-18)
+
+**Real email digests via SendGrid.** Architecture: producer writes outbox rows for `Email` channel (async handled by worker, not in-process like Web Push). Worker's `DigestWorker` aggregates daily digest rows per user at the scheduled hour. Real `EmailDispatcher` and `EmailDigestRenderer` dispatch via SendGrid.
+
+**Setup:**
+- `SendGridEmailService` was already integrated in Phase B (backend public endpoints). Phase F adds the digest rendering + worker dispatch path.
+- Set `SENDGRID_API_KEY` in `.env`. If absent, `NullEmailService` logs the email to console.
+- `FROM_EMAIL` env var specifies the sender address (e.g. `noreply@aloeband.ru`).
+
+**Pipeline:**
+- `EmailDispatcher` in `Lovecraft.NotificationsWorker` reads user's email from the `users` table.
+- `EmailDigestRenderer` maps `DigestModel` (list of `NotificationModel` grouped by type) → HTML email body. Subject: `"AloeVera News Digest — {date}"` (English; no i18n yet). Includes a signed unsubscribe link.
+- Unsubscribe flow: `UnsubscribeToken` helper generates HMAC-SHA256 signed `{userId}_{timestamp}_{digest}` tokens. Frontend or email click routes to `POST /api/v1/notifications/unsubscribe` (public, no auth) with token + channel. Token validity is 7 days; signature validated in-process.
+- Errors: 4xx → PermanentError (dead-letter); network/timeout → RetryableError (retry backoff).
+
+**`DigestProcessor` path change (Phase F):**
+- Producer was calling `DigestProcessor.CreateDigestAsync(userId, channel, notificationIds)` which returned a list of `NotificationModel`.
+- Phase F changes this: producer now passes the full `DigestModel` (pre-aggregated by type) directly to the dispatcher. `IEmailDispatcher.DispatchAsync(user, digest)` signature.
+- Summary rendering logic moves into `EmailDigestRenderer.RenderAsync(digest) → html`.
+
+**Required env vars (Phase F additions):**
+```
+SENDGRID_API_KEY=...              # SendGrid API key for email delivery
+FROM_EMAIL=noreply@aloeband.ru    # Sender email address
+FRONTEND_BASE_URL=https://aloeve.club  # Used in unsubscribe links
+JWT_SECRET_KEY=...                # HMAC key for unsubscribe token signing
+```
+
+**Follow-ups:**
+- Localization: render digest title and section headers in user's `Settings.Language` (currently English-only).
+- Unsubscribe token expiry: 7 days is hardcoded; consider making it configurable.
+- Digest template: currently plain HTML; consider styled HTML templates or Handlebars.
+- Test email delivery: `dotnet test Lovecraft.UnitTests` includes `EmailServiceTests` and digest rendering tests.
