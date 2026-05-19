@@ -62,6 +62,7 @@ public class AzureUserServiceIncrementCounterTests
 
         var tsc = new Mock<TableServiceClient>();
         tsc.Setup(x => x.GetTableClient(TableNames.Users)).Returns(tc.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.UserTelegramIndex)).Returns(tc.Object);
 
         var svc = new AzureUserService(
             tsc.Object,
@@ -137,6 +138,7 @@ public class AzureUserServiceIncrementCounterTests
 
         var tsc = new Mock<TableServiceClient>();
         tsc.Setup(x => x.GetTableClient(TableNames.Users)).Returns(tc.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.UserTelegramIndex)).Returns(tc.Object);
 
         var svc = new AzureUserService(
             tsc.Object, NullLogger<AzureUserService>.Instance, new MockAppConfigService(), new UserCache());
@@ -194,6 +196,7 @@ public class AzureUserServiceUpdateTests
 
         var tsc = new Mock<TableServiceClient>();
         tsc.Setup(x => x.GetTableClient(TableNames.Users)).Returns(tc.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.UserTelegramIndex)).Returns(tc.Object);
 
         var svc = new AzureUserService(
             tsc.Object,

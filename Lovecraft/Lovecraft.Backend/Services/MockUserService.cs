@@ -123,6 +123,12 @@ public class MockUserService : IUserService
         return Task.FromResult((telegramLinked, emailVerified));
     }
 
+    public Task<string?> GetUserIdByTelegramIdAsync(string telegramUserId)
+    {
+        MockDataStore.UserTelegramIndex.TryGetValue(telegramUserId, out var userId);
+        return Task.FromResult(userId);
+    }
+
     private UserDto AugmentWithRank(UserDto dto, RankThresholds t)
     {
         var activity = MockDataStore.UserActivity.TryGetValue(dto.Id, out var a)

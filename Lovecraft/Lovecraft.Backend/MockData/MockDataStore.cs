@@ -467,4 +467,6 @@ public static class MockDataStore
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, HashSet<string>> AuthMethodsByUserId = new();
     /// <summary>Thread-safe set of userIds whose email is verified (value byte is unused).</summary>
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> EmailVerifiedUserIds = new();
+    /// <summary>Telegram user id (string) → app user id. Used by InternalController to resolve telegram → user.</summary>
+    public static System.Collections.Concurrent.ConcurrentDictionary<string, string> UserTelegramIndex { get; } = new();
 }

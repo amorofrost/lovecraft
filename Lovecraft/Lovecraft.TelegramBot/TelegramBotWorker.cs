@@ -13,10 +13,12 @@ namespace Lovecraft.TelegramBot;
 public class TelegramBotWorker : BackgroundService
 {
     private readonly ILogger<TelegramBotWorker> _logger;
+    private readonly NotificationCallbackHandler? _callbackHandler;
 
-    public TelegramBotWorker(ILogger<TelegramBotWorker> logger)
+    public TelegramBotWorker(ILogger<TelegramBotWorker> logger, NotificationCallbackHandler? callbackHandler = null)
     {
         _logger = logger;
+        _callbackHandler = callbackHandler;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,6 +40,20 @@ public class TelegramBotWorker : BackgroundService
 
     private async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
     {
+        // Callback queries (mute buttons etc.)
+        if (update.CallbackQuery is { } cb)
+        {
+            var fromId = cb.From.Id;
+            var handled = _callbackHandler is not null
+                ? await _callbackHandler.HandleMuteCallbackAsync(fromId, cb.Data ?? string.Empty, ct)
+                : false;
+            if (handled)
+            {
+                await bot.AnswerCallbackQuery(cb.Id, "Notifications muted", cancellationToken: ct);
+            }
+            return;
+        }
+
         if (update.Message is not { } message)
             return;
 

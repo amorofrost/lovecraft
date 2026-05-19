@@ -219,6 +219,22 @@ Use `IOptions<TelegramAuthOptions>` (same binding as backend) instead of reading
 
 ---
 
+## Notification callbacks (Phase D)
+
+The bot listens for `mute:{notificationType}` callback_data from inline keyboards sent by `Lovecraft.NotificationsWorker.TelegramDispatcher`. On callback:
+
+1. Bot resolves the calling Telegram user id from `CallbackQuery.From.Id`
+2. Bot POSTs `{ telegramUserId, type }` to backend `\api\v1\internal\notifications\mute-type` with `X-Service-Token: $INTERNAL_SERVICE_TOKEN`
+3. Backend's `[RequireServiceToken]` attribute validates the header in constant time
+4. `InternalController.MuteType` resolves the app user id via `usertelegramindex` and flips `prefs.matrix[type].telegram = false` via `INotificationPreferenceService.SetChannelDisabledForTypeAsync`
+5. Bot answers the callback with `"Notifications muted"` toast
+
+The mute action affects only the **Telegram channel** for the **specific notification type**. User can re-enable in `/settings`.
+
+**Auth model:** Service-token auth gates a single internal endpoint. Bot must possess `INTERNAL_SERVICE_TOKEN` (shared via `env_file`). Bot's HTTP base URL defaults to `http://backend:8080` (Docker internal network).
+
+---
+
 ## 8. Testing
 
 Already present: `TelegramLoginVerifierTests` (round-trip, wrong hash, known vector).

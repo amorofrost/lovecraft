@@ -28,6 +28,8 @@ public interface IUserService
     Task SetStaffRoleAsync(string userId, StaffRole role);
     Task SetRankOverrideAsync(string userId, UserRank? rank);
     Task<(bool TelegramLinked, bool EmailVerified)> GetNotificationContactStatusAsync(string userId);
+    /// <summary>Resolves a Telegram user id (string) to the app user id. Returns null if no user is linked.</summary>
+    Task<string?> GetUserIdByTelegramIdAsync(string telegramUserId);
 }
 
 public interface IEventService
@@ -148,6 +150,8 @@ public interface INotificationPreferenceService
 {
     Task<NotificationPreferencesDto> GetPreferencesAsync(string userId);
     Task<NotificationPreferencesDto> UpdatePreferencesAsync(string userId, NotificationPreferencesDto prefs);
+    /// <summary>Flip prefs.matrix[type].channel to false. Used by the mute-type internal endpoint.</summary>
+    Task SetChannelDisabledForTypeAsync(string userId, string typeKey, string channelKey);
 }
 
 public interface INotificationService

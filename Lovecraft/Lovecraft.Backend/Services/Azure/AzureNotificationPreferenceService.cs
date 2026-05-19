@@ -53,6 +53,16 @@ public class AzureNotificationPreferenceService : INotificationPreferenceService
         return prefs;
     }
 
+    public async Task SetChannelDisabledForTypeAsync(string userId, string typeKey, string channelKey)
+    {
+        var prefs = await GetPreferencesAsync(userId);
+        if (prefs.Matrix.TryGetValue(typeKey, out var row))
+        {
+            row[channelKey] = false;
+        }
+        await UpdatePreferencesAsync(userId, prefs);
+    }
+
     private static NotificationPreferencesDto FromEntity(NotificationPreferencesEntity e)
     {
         var dto = MockNotificationPreferenceService.BuildDefaults();
