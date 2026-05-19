@@ -12,6 +12,7 @@ public class NotificationProducer : INotificationProducer
     private readonly IPushSubscriptionService _push;
     private readonly IUserService _users;
     private readonly IInAppDispatcher _inApp;
+    private readonly IWebPushDispatcher _webPush;
     private readonly IPresenceTracker _presence;
     private readonly NotificationDeduper _deduper;
     private readonly ILogger<NotificationProducer> _logger;
@@ -22,6 +23,7 @@ public class NotificationProducer : INotificationProducer
         IPushSubscriptionService push,
         IUserService users,
         IInAppDispatcher inApp,
+        IWebPushDispatcher webPush,
         IPresenceTracker presence,
         NotificationDeduper deduper,
         ILogger<NotificationProducer> logger)
@@ -31,6 +33,7 @@ public class NotificationProducer : INotificationProducer
         _push = push;
         _users = users;
         _inApp = inApp;
+        _webPush = webPush;
         _presence = presence;
         _deduper = deduper;
         _logger = logger;
@@ -60,31 +63,28 @@ public class NotificationProducer : INotificationProducer
         // 5. Write canonical row (always, even if no channels — bell is the inbox)
         var dto = await _notifications.CreateAsync(recipientUserId, type, actorId, payloadJson, sourceEventId);
 
-        // 6. Enqueue outbox per channel and dispatch in-process channels
+        // 6. Dispatch in-process channels or enqueue outbox for worker-dispatched channels
         var now = DateTime.UtcNow;
         foreach (var channel in channels)
         {
-            var frequencyKey = char.ToLowerInvariant(channel.ToString()[0]) + channel.ToString()[1..];
-            var frequency = prefs.Frequency.TryGetValue(frequencyKey, out var f) ? f : NotificationFrequency.Immediate;
-            var scheduledFor = ScheduleFor(now, frequency, prefs.DailyDigestHourUtc);
-
-            try
-            {
-                await _notifications.EnqueueOutboxAsync(recipientUserId, dto.Id, channel, frequency, scheduledFor);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to enqueue outbox row for {Channel}/{NotificationId}",
-                    channel, dto.Id);
-                // continue — canonical row is the durable record
-            }
-
             if (channel == NotificationChannel.InApp)
             {
                 try { await _inApp.DispatchAsync(recipientUserId, dto); }
                 catch (Exception ex) { _logger.LogWarning(ex, "InApp dispatch failed for {NotificationId}", dto.Id); }
+                continue;  // no outbox enqueue for in-process channels
             }
-            // Other channels are dispatched by the worker (Phase C+).
+            if (channel == NotificationChannel.WebPush)
+            {
+                try { await _webPush.DispatchAsync(recipientUserId, dto); }
+                catch (Exception ex) { _logger.LogWarning(ex, "WebPush dispatch failed for {NotificationId}", dto.Id); }
+                continue;
+            }
+            // Telegram + Email: enqueue outbox for worker dispatch
+            var frequencyKey = char.ToLowerInvariant(channel.ToString()[0]) + channel.ToString()[1..];
+            var frequency = prefs.Frequency.TryGetValue(frequencyKey, out var f) ? f : NotificationFrequency.Immediate;
+            var scheduledFor = ScheduleFor(now, frequency, prefs.DailyDigestHourUtc);
+            try { await _notifications.EnqueueOutboxAsync(recipientUserId, dto.Id, channel, frequency, scheduledFor); }
+            catch (Exception ex) { _logger.LogError(ex, "Failed to enqueue outbox row for {Channel}/{NotificationId}", channel, dto.Id); }
         }
 
         return dto;
