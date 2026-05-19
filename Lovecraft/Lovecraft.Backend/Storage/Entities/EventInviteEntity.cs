@@ -30,4 +30,11 @@ public class EventInviteEntity : ITableEntity
 
     public int RegistrationCount { get; set; }
     public int EventAttendanceClaimCount { get; set; }
+
+    /// <summary>
+    /// Optional user this invite was personally issued to. When set, creation fires an
+    /// <c>EventInviteReceived</c> notification to this user. Redemption does not check this
+    /// field — the code still works for anyone who knows it.
+    /// </summary>
+    public string? TargetUserId { get; set; }
 }

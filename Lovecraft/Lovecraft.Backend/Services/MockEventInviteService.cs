@@ -1,5 +1,9 @@
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Admin;
+using Lovecraft.Common.Enums;
+using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace Lovecraft.Backend.Services;
 
@@ -8,6 +12,20 @@ public class MockEventInviteService : IEventInviteService
 {
     private static readonly object Gate = new();
     private static readonly Dictionary<string, MockRow> ByNormalizedKey = new(StringComparer.Ordinal);
+
+    private readonly INotificationProducer? _producer;
+    private readonly IEventService? _events;
+    private readonly ILogger<MockEventInviteService>? _logger;
+
+    public MockEventInviteService(
+        INotificationProducer? producer = null,
+        IEventService? events = null,
+        ILogger<MockEventInviteService>? logger = null)
+    {
+        _producer = producer;
+        _events = events;
+        _logger = logger;
+    }
 
     private sealed class MockRow
     {
@@ -19,6 +37,7 @@ public class MockEventInviteService : IEventInviteService
         public required DateTime CreatedAtUtc { get; set; }
         public int RegistrationCount { get; set; }
         public int EventAttendanceClaimCount { get; set; }
+        public string? TargetUserId { get; set; }
     }
 
     public Task<EventInviteValidationResult?> ValidatePlainCodeAsync(string plainCode, CancellationToken cancellationToken = default)
@@ -92,6 +111,89 @@ public class MockEventInviteService : IEventInviteService
             };
             return Task.FromResult((autoPlain, expiresAtUtc));
         }
+    }
+
+    public async Task<(string PlainCode, DateTime? ExpiresAtUtc)> IssuePersonalInviteAsync(
+        string eventId,
+        string targetUserId,
+        DateTime? expiresAtUtc,
+        string issuedByUserId,
+        string? plainCodeOverride = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(eventId))
+            throw new ArgumentException("EventId required.", nameof(eventId));
+        if (string.IsNullOrWhiteSpace(targetUserId))
+            throw new ArgumentException("TargetUserId required.", nameof(targetUserId));
+        if (EventInviteHelpers.IsCampaignEventId(eventId))
+            throw new ArgumentException("Personal invites cannot use campaign (negative) ids.", nameof(eventId));
+
+        string plain;
+        string key;
+        lock (Gate)
+        {
+            if (!string.IsNullOrWhiteSpace(plainCodeOverride))
+            {
+                plain = plainCodeOverride.Trim();
+                key = EventInviteNormalizer.Normalize(plain);
+                if (string.IsNullOrEmpty(key))
+                    throw new ArgumentException("PlainCode cannot be empty.", nameof(plainCodeOverride));
+                if (ByNormalizedKey.ContainsKey(key))
+                    throw new InvalidOperationException($"Invite code '{key}' already exists.");
+            }
+            else
+            {
+                plain = GenerateUniquePlainCodeLocked();
+                key = EventInviteNormalizer.Normalize(plain);
+            }
+
+            ByNormalizedKey[key] = new MockRow
+            {
+                PlainDisplay = plain,
+                EventId = eventId,
+                ExpiresAtUtc = expiresAtUtc ?? DateTime.MaxValue,
+                Revoked = false,
+                CreatedAtUtc = DateTime.UtcNow,
+                RegistrationCount = 0,
+                EventAttendanceClaimCount = 0,
+                TargetUserId = targetUserId,
+            };
+        }
+
+        if (_producer is not null)
+        {
+            try
+            {
+                var eventTitle = "Event";
+                if (_events is not null)
+                {
+                    var ev = await _events.GetEventByIdAdminAsync(eventId).ConfigureAwait(false);
+                    if (ev is not null && !string.IsNullOrEmpty(ev.Title))
+                        eventTitle = ev.Title;
+                }
+
+                var payload = JsonSerializer.Serialize(new
+                {
+                    eventId,
+                    eventTitle,
+                    inviteCode = plain,
+                });
+
+                await _producer.ProduceAsync(
+                    targetUserId,
+                    NotificationType.EventInviteReceived,
+                    actorId: issuedByUserId,
+                    payloadJson: payload,
+                    sourceEventId: $"event-invite-{eventId}-{targetUserId}",
+                    presenceGroup: null).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "EventInviteReceived producer failed for {UserId} on event {EventId}", targetUserId, eventId);
+            }
+        }
+
+        return (plain, expiresAtUtc);
     }
 
     public Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateCampaignInviteAsync(

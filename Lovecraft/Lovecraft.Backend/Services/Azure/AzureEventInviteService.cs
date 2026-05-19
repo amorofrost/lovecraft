@@ -1,9 +1,12 @@
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Admin;
+using Lovecraft.Common.Enums;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace Lovecraft.Backend.Services.Azure;
 
@@ -11,10 +14,18 @@ public class AzureEventInviteService : IEventInviteService
 {
     private readonly TableClient _table;
     private readonly ILogger<AzureEventInviteService> _logger;
+    private readonly INotificationProducer? _producer;
+    private readonly IEventService? _events;
 
-    public AzureEventInviteService(TableServiceClient tableServiceClient, ILogger<AzureEventInviteService> logger)
+    public AzureEventInviteService(
+        TableServiceClient tableServiceClient,
+        ILogger<AzureEventInviteService> logger,
+        INotificationProducer? producer = null,
+        IEventService? events = null)
     {
         _logger = logger;
+        _producer = producer;
+        _events = events;
         _table = tableServiceClient.GetTableClient(TableNames.EventInvites);
         _table.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
@@ -84,6 +95,99 @@ public class AzureEventInviteService : IEventInviteService
 
         await _table.AddEntityAsync(row, cancellationToken).ConfigureAwait(false);
         return (autoPlain, expiresAtUtc);
+    }
+
+    public async Task<(string PlainCode, DateTime? ExpiresAtUtc)> IssuePersonalInviteAsync(
+        string eventId,
+        string targetUserId,
+        DateTime? expiresAtUtc,
+        string issuedByUserId,
+        string? plainCodeOverride = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(eventId))
+            throw new ArgumentException("EventId required.", nameof(eventId));
+        if (string.IsNullOrWhiteSpace(targetUserId))
+            throw new ArgumentException("TargetUserId required.", nameof(targetUserId));
+        if (EventInviteHelpers.IsCampaignEventId(eventId))
+            throw new ArgumentException("Personal invites cannot use campaign (negative) ids.", nameof(eventId));
+
+        string plain;
+        string key;
+        if (!string.IsNullOrWhiteSpace(plainCodeOverride))
+        {
+            plain = plainCodeOverride.Trim();
+            key = EventInviteNormalizer.Normalize(plain);
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException("PlainCode cannot be empty.", nameof(plainCodeOverride));
+            try
+            {
+                await _table.GetEntityAsync<EventInviteEntity>(EventInviteEntity.PartitionValue, key, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                throw new InvalidOperationException($"Invite code '{key}' already exists.");
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // free to use
+            }
+        }
+        else
+        {
+            plain = await GenerateUniquePlainCodeAsync(cancellationToken).ConfigureAwait(false);
+            key = EventInviteNormalizer.Normalize(plain);
+        }
+
+        var row = new EventInviteEntity
+        {
+            PartitionKey = EventInviteEntity.PartitionValue,
+            RowKey = key,
+            PlainCode = key,
+            EventId = eventId,
+            CampaignLabel = string.Empty,
+            ExpiresAtUtc = expiresAtUtc ?? DateTime.MaxValue,
+            Revoked = false,
+            CreatedAtUtc = DateTime.UtcNow,
+            RegistrationCount = 0,
+            EventAttendanceClaimCount = 0,
+            TargetUserId = targetUserId,
+        };
+
+        await _table.AddEntityAsync(row, cancellationToken).ConfigureAwait(false);
+
+        if (_producer is not null)
+        {
+            try
+            {
+                var eventTitle = "Event";
+                if (_events is not null)
+                {
+                    var ev = await _events.GetEventByIdAdminAsync(eventId).ConfigureAwait(false);
+                    if (ev is not null && !string.IsNullOrEmpty(ev.Title))
+                        eventTitle = ev.Title;
+                }
+
+                var payload = JsonSerializer.Serialize(new
+                {
+                    eventId,
+                    eventTitle,
+                    inviteCode = plain,
+                });
+
+                await _producer.ProduceAsync(
+                    targetUserId,
+                    NotificationType.EventInviteReceived,
+                    actorId: issuedByUserId,
+                    payloadJson: payload,
+                    sourceEventId: $"event-invite-{eventId}-{targetUserId}",
+                    presenceGroup: null).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "EventInviteReceived producer failed for {UserId} on event {EventId}", targetUserId, eventId);
+            }
+        }
+
+        return (plain, expiresAtUtc);
     }
 
     /// <summary>After revoke for this event: insert new row or reactivate an existing row for <paramref name="key"/>.</summary>
