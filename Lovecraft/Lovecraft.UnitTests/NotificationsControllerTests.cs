@@ -3,9 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Notifications;
 using Lovecraft.Common.Models;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Lovecraft.UnitTests;
 
@@ -186,5 +188,50 @@ public class NotificationsControllerTests : IClassFixture<AclTests.TestAppFactor
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         Assert.Equal("", body.GetProperty("data").GetProperty("publicKey").GetString());
+    }
+
+    [Fact]
+    public async Task GET_unsubscribe_with_valid_token_flips_all_email_cells()
+    {
+        Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-jwt-secret-32-chars-or-more!");
+        var userId = "test-user-1";
+
+        // Seed prefs with at least one email cell enabled
+        var prefSvc = (INotificationPreferenceService)_factory.Services.GetRequiredService(typeof(INotificationPreferenceService));
+        var prefs = await prefSvc.GetPreferencesAsync(userId);
+        foreach (var (_, row) in prefs.Matrix) row["email"] = true;
+        await prefSvc.UpdatePreferencesAsync(userId, prefs);
+
+        var token = Lovecraft.Common.UnsubscribeToken.Generate(userId,
+            "test-jwt-secret-32-chars-or-more!", DateTime.UtcNow.AddHours(1));
+
+        var client = _factory.CreateClient();
+        var resp = await client.GetAsync($"/api/v1/notifications/unsubscribe?token={Uri.EscapeDataString(token)}");
+        resp.EnsureSuccessStatusCode();
+
+        var after = await prefSvc.GetPreferencesAsync(userId);
+        foreach (var (_, row) in after.Matrix)
+            Assert.False(row["email"], $"Email cell should be false after unsubscribe; type unknown but matrix iterated");
+    }
+
+    [Fact]
+    public async Task GET_unsubscribe_with_invalid_token_returns_400()
+    {
+        Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-jwt-secret-32-chars-or-more!");
+        var client = _factory.CreateClient();
+        var resp = await client.GetAsync("/api/v1/notifications/unsubscribe?token=garbage");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GET_unsubscribe_with_expired_token_returns_400()
+    {
+        Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-jwt-secret-32-chars-or-more!");
+        var token = Lovecraft.Common.UnsubscribeToken.Generate("user-x",
+            "test-jwt-secret-32-chars-or-more!", DateTime.UtcNow.AddHours(-1));
+
+        var client = _factory.CreateClient();
+        var resp = await client.GetAsync($"/api/v1/notifications/unsubscribe?token={Uri.EscapeDataString(token)}");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
     }
 }
