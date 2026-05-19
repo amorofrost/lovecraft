@@ -20,6 +20,16 @@ public class MockNotificationPreferenceService : INotificationPreferenceService
         return Task.FromResult(Clone(prefs));
     }
 
+    public async Task SetChannelDisabledForTypeAsync(string userId, string typeKey, string channelKey)
+    {
+        var prefs = await GetPreferencesAsync(userId);
+        if (prefs.Matrix.TryGetValue(typeKey, out var row))
+        {
+            row[channelKey] = false;
+        }
+        await UpdatePreferencesAsync(userId, prefs);
+    }
+
     public static NotificationPreferencesDto BuildDefaults()
     {
         var prefs = new NotificationPreferencesDto { DailyDigestHourUtc = 9 };

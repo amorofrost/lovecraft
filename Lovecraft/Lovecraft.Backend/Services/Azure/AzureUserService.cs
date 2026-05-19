@@ -13,6 +13,7 @@ namespace Lovecraft.Backend.Services.Azure;
 public class AzureUserService : IUserService
 {
     private readonly TableClient _usersTable;
+    private readonly TableClient _telegramIndexTable;
     private readonly ILogger<AzureUserService> _logger;
     private readonly IAppConfigService _appConfig;
     private readonly UserCache _cache;
@@ -28,6 +29,8 @@ public class AzureUserService : IUserService
         _cache = cache;
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _usersTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
+        _telegramIndexTable = tableServiceClient.GetTableClient(TableNames.UserTelegramIndex);
+        _telegramIndexTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
 
     public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
@@ -198,6 +201,19 @@ public class AzureUserService : IUserService
             TelegramLinked: !string.IsNullOrEmpty(entity.TelegramUserId),
             EmailVerified: entity.EmailVerified
         ));
+    }
+
+    public async Task<string?> GetUserIdByTelegramIdAsync(string telegramUserId)
+    {
+        try
+        {
+            var tgIdx = await _telegramIndexTable.GetEntityAsync<UserTelegramIndexEntity>(telegramUserId, "INDEX");
+            return tgIdx.Value.UserId;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
     }
 
     public async Task SetRankOverrideAsync(string userId, UserRank? rank)

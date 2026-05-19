@@ -43,6 +43,7 @@ public class AzureUserServiceFilterTests
 
         var tsc = new Mock<TableServiceClient>();
         tsc.Setup(x => x.GetTableClient(TableNames.Users)).Returns(tc.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.UserTelegramIndex)).Returns(tc.Object);
 
         var cache = new UserCache();
         var svc = new AzureUserService(
