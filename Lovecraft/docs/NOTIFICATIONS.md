@@ -1,7 +1,7 @@
 # Notifications (backend)
 
-**Last updated:** 2026-05-17
-**Phase:** A (Foundations) shipped. Phases B–H pending — see spec.
+**Last updated:** 2026-05-19
+**Phase:** A–G shipped. Phase H (rank-up) pending — see spec.
 
 ## Architecture
 
@@ -217,3 +217,55 @@ JWT_SECRET_KEY=...                # HMAC key for unsubscribe token signing
 - Unsubscribe token expiry: 30 days is hardcoded; consider making it configurable.
 - Digest template: currently plain HTML; consider styled HTML templates or Handlebars.
 - Test email delivery: `dotnet test Lovecraft.UnitTests` includes `EmailServiceTests` and digest rendering tests.
+
+---
+
+## Phase G scope (shipped 2026-05-19)
+
+**Admin community broadcast + 24h event reminders + 3 remaining producers wired.** Resolves spec phase G.
+
+### Admin broadcast
+
+- New `broadcasts` Azure Table (24th table). PartitionKey=`"BROADCAST"`, RowKey=`{invertedTicks}_{id}` (newest first when listed).
+- `BroadcastEntity` columns: `Id`, `Title`, `Body`, `Link?`, `AudienceJson`, `IssuedByUserId`, `IssuedAtUtc`, `EstimatedRecipients`, `DispatchedCount`, `Status` (`pending`|`completed`), `CompletedAtUtc?`.
+- `IBroadcastService` (Mock + Azure) — `CreateAsync` / `GetByIdAsync` / `ListAsync` / `SetEstimatedRecipientsAsync` / `SetCompletedAsync`.
+- `BroadcastAudienceResolver` (`IBroadcastAudienceResolver`) expands audience → list of user IDs. Audience types:
+  - `all` — every user (paginated via `IUserService.GetUsersAsync(skip, take, ...)` with `take=10_000`; concern documented inline for scale beyond ~10k active users)
+  - `attendingEvent` — `IEventService.GetEventAttendeesAsync(eventId)`
+  - `minRank` — users with `EffectiveLevel >= LevelOf(audience.Value)` (uses backend's `EffectiveLevel` helper; matches existing semantics combining `Rank` + `StaffRole`)
+  - `staffRole` — users with `StaffRole == audience.Value` (case-insensitive)
+  - unknown type → empty
+- New controller `AdminNotificationsController` at `/api/v1/admin/notifications`:
+  - `POST /broadcast` — admin-only via `[RequireStaffRole("admin")]`. Body `{ title (≤100), body (≤1000), link?, audience }`. Computes recipients, writes broadcast row, returns `{ broadcastId, estimatedRecipients }` synchronously. Async fan-out runs in `_ = Task.Run(...)` — calls `INotificationProducer.ProduceAsync` once per recipient with `NotificationType.CommunityBroadcast`, payload `{ title, body, link }`, `sourceEventId = "broadcast-{id}"`. On completion: `SetCompletedAsync` with dispatched count. Producer errors logged at warning, never re-thrown.
+  - `GET /broadcasts?limit=50` — list (newest first).
+  - `GET /broadcasts/{broadcastId}` — single broadcast (404 if not found).
+- New appconfig permission key `send_broadcast` (defaults `"admin"`). Allows future threshold reduction without code change while the controller attribute stays at admin.
+
+### Event reminders
+
+- New `EventReminderWorker` in `Lovecraft.NotificationsWorker`. Tick interval `NOTIFICATIONS_WORKER_REMINDER_SCAN_INTERVAL_MINUTES` (default 5).
+- Each tick queries `events` for rows whose `Date` is in `[now+23h, now+25h]`. (Implementation reads the single-partition `EVENTS` partition and date-filters client-side to avoid Azure Tables DateTime OData fragility.)
+- For each event, iterates `eventattendees` (PK=eventId, RK=userId) and writes notifications directly:
+  - Dedup: scans recipient's `notifications` partition for an existing row with `SourceEventId == "event-reminder-{eventId}"`; if found, skips.
+  - Writes a `NotificationEntity` row with `Type = "EventReminder"`, payload `{ eventId, eventTitle, eventDateUtc }`.
+  - Reads recipient's `NotificationPreferencesEntity`. If null OR `Mute == true` OR `MutedUntilUtc > now` → canonical row written but no outbox.
+  - Otherwise, for each enabled channel in Telegram + Email (the worker-handled channels): writes `NotificationOutboxEntity` to `OUTBOX_{channel}_PENDING`. InApp + WebPush are in-process channels handled by the API (matches Phase E pattern) — worker does not write outbox rows for them.
+- Worker is isolated from `Lovecraft.Backend`. `EventEntity` and `EventAttendeeEntity` are duplicated as partial entities in the worker project. A code comment in `EventReminderProcessor.RunAsync` documents the deliberate duplication.
+
+### 3 producers wired
+
+- `EventPublished` — `AzureEventService.CreateEventAsync` and `MockEventService.CreateEventAsync`. Fires only when `dto.Visibility == EventVisibility.Public`. Fans out to all users via `IUserService.GetUsersAsync(skip: 0, take: 10_000)`. Payload `{ eventId, eventTitle, eventDateUtc }`. `sourceEventId = "event-published-{id}"`. Per-user preference filtering happens inside `NotificationPolicy.ResolveChannels` — defaults have `EventPublished` in-app=true, other channels=false, so most users receive only the bell update.
+- `EventInviteReceived` — new `IssuePersonalInviteAsync(eventId, targetUserId, expiresAtUtc?, issuedByUserId, plainCodeOverride?)` on `IEventInviteService` (Mock + Azure). Extends `EventInviteEntity` with nullable `TargetUserId` column. Existing `CreateOrRotateInviteAsync` is unchanged (event-level invites still don't notify anyone). `AdminController.CreateEventInvite` routes to the new method when `request.TargetUserId` is present, otherwise to the existing one. Payload `{ eventId, eventTitle, inviteCode }`. `sourceEventId = "event-invite-{eventId}-{targetUserId}"`. **Note:** `TargetUserId` is purely metadata for the notification — invite codes still work for anyone who knows them. Redemption flow is unchanged.
+- `CommunityBroadcast` — wired by the admin broadcast endpoint above.
+
+### Required env vars (Phase G additions)
+```
+NOTIFICATIONS_WORKER_REMINDER_SCAN_INTERVAL_MINUTES=5   # default 5
+```
+
+### Follow-ups
+- Audience fan-out (`all`/`minRank`/`staffRole`) is bounded by `take=10_000`. Above that scale, paginate the user list and chunk the fan-out (semaphore + batched producer calls).
+- Reminder window is hardcoded `[+23h, +25h]`. A configurable per-event reminder offset could be added to `EventEntity`.
+- Personal invite codes are shareable. If strict per-user restriction is needed later, the validator at redemption time can check `TargetUserId` against the redeemer's user id.
+- `EventReminderProcessor` mute-vs-canonical-row behavior: muted users still get a canonical notification (for the bell on next visit) but no outbox rows. Snoozed users behave the same way.
+- Worker entity duplication carries drift risk if backend schema changes. Integration tests against shared Azure tables guard against this in production deploys.
