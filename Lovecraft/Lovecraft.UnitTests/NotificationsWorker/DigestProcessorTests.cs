@@ -76,7 +76,7 @@ public class DigestProcessorTests
         var notifs = new Mock<TableClient>();
         var prefs = new Mock<TableClient>();
         var email = new Mock<IEmailDispatcher>();
-        email.Setup(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()))
+        email.Setup(d => d.DispatchDigestAsync(It.IsAny<DigestModel>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(DispatchResult.Delivered);
 
         outbox.Setup(t => t.QueryAsync<NotificationOutboxEntity>(
@@ -96,7 +96,7 @@ public class DigestProcessorTests
 
         // At 8 UTC → no dispatch
         await processor.ProcessAsync(new DateTime(2026, 5, 18, 8, 0, 0, DateTimeKind.Utc), CancellationToken.None);
-        email.Verify(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()), Times.Never);
+        email.Verify(d => d.DispatchDigestAsync(It.IsAny<DigestModel>(), It.IsAny<CancellationToken>()), Times.Never);
 
         outbox.Setup(t => t.AddEntityAsync(It.IsAny<NotificationOutboxEntity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Mock<Response>().Object);
@@ -105,7 +105,7 @@ public class DigestProcessorTests
 
         // At 9 UTC → dispatch
         await processor.ProcessAsync(new DateTime(2026, 5, 18, 9, 0, 0, DateTimeKind.Utc), CancellationToken.None);
-        email.Verify(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()), Times.Once);
+        email.Verify(d => d.DispatchDigestAsync(It.IsAny<DigestModel>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
