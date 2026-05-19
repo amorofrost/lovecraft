@@ -125,3 +125,30 @@ AZURE_STORAGE_CONNECTION_STRING=...
 AZURE_TABLE_PREFIX=                  # optional; mirrors backend's prefix
 ```
 (No JWT, no SendGrid, no Telegram bot token in Phase C — stubs require nothing. Phases D and F add their respective configs.)
+
+---
+
+## Phase D scope (shipped 2026-05-18)
+
+**Real Telegram dispatcher** lands in `Lovecraft.NotificationsWorker`:
+- `TelegramDispatcher` reads user's `TelegramUserId` from the `users` Azure Table via a minimal `UserTelegramContactEntity` (worker now consumes 4 tables: notifications, notificationsoutbox, notificationpreferences, users)
+- `TelegramMessageRenderer` produces per-type HTML body + inline keyboard
+- `TelegramRateLimiter` enforces global concurrency cap (25) + per-chat 1-second cooldown
+- Inline keyboard: `[Open in app]` (https://aloeve.club deep link) + `[Mute these]` (callback_data `mute:{typeCamelCase}`)
+- Errors: 403 (bot blocked) → PermanentError dead-letter (no auto-disable of prefs in Phase D — see follow-up); other 4xx → PermanentError; network/timeout → RetryableError
+
+**Mute callback flow** in `Lovecraft.TelegramBot`:
+- `NotificationCallbackHandler` receives `mute:{type}` callbacks, POSTs to backend `/api/v1/internal/notifications/mute-type` with `X-Service-Token` header
+- Backend `[RequireServiceToken]` action filter validates the token in constant-time; new `InternalController` resolves Telegram id → app user id via `usertelegramindex` table, calls `INotificationPreferenceService.SetChannelDisabledForTypeAsync` to flip the matrix cell
+
+**Required env vars (Phase D additions):**
+```
+TELEGRAM_BOT_TOKEN=...                 # already used by Lovecraft.TelegramBot
+INTERNAL_SERVICE_TOKEN=...             # shared secret backend ↔ bot ↔ (future) worker
+BACKEND_INTERNAL_URL=http://backend:8080   # optional; defaults shown
+```
+
+**Known limitations:**
+- English-only message text (no `Settings.Language` lookup yet)
+- Actor names not resolved — notifications render with `Someone` or fall back to payload fields. Producer-side denormalization of actor display name into `NotificationModel.ActorName` is a follow-up.
+- Bot-blocked (403) does not auto-clear `prefs.matrix.*.telegram = false` — would need a worker→backend back-channel call. Currently just dead-letters; user keeps receiving failed-dispatch attempts on subsequent notifications until they manually toggle off.
