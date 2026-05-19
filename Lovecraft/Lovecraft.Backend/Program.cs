@@ -300,6 +300,7 @@ builder.Services.AddSingleton<IWebPushDispatcher>(sp =>
 });
 builder.Services.AddSingleton<NotificationDeduper>();
 builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
+builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver>();
 
 var app = builder.Build();
 
