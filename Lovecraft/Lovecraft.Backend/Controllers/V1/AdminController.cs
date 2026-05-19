@@ -497,13 +497,34 @@ public class AdminController : ControllerBase
             new CreateEventInviteResponseDto(plain, exp)));
     }
 
-    /// <summary>Issue or rotate the invite for an event (plaintext stored in table; returned here).</summary>
+    /// <summary>
+    /// Issue an invite for an event. When <see cref="CreateEventInviteRequestDto.TargetUserId"/>
+    /// is supplied, the invite is issued personally to that user (fires <c>EventInviteReceived</c>)
+    /// and does NOT revoke other event invites. Otherwise the event-level rotate path is used.
+    /// </summary>
     [HttpPost("events/{eventId}/invites")]
     public async Task<ActionResult<ApiResponse<CreateEventInviteResponseDto>>> CreateEventInvite(
         string eventId,
         [FromBody] CreateEventInviteRequestDto request)
     {
-        var (plain, exp) = await _eventInvites.CreateOrRotateInviteAsync(eventId, request.ExpiresAtUtc, request.PlainCode);
+        string plain;
+        DateTime exp;
+        if (!string.IsNullOrWhiteSpace(request.TargetUserId))
+        {
+            var issuedBy = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "system";
+            var (p, e) = await _eventInvites.IssuePersonalInviteAsync(
+                eventId,
+                request.TargetUserId,
+                request.ExpiresAtUtc == default ? null : request.ExpiresAtUtc,
+                issuedBy,
+                request.PlainCode);
+            plain = p;
+            exp = e ?? request.ExpiresAtUtc;
+        }
+        else
+        {
+            (plain, exp) = await _eventInvites.CreateOrRotateInviteAsync(eventId, request.ExpiresAtUtc, request.PlainCode);
+        }
         return Ok(ApiResponse<CreateEventInviteResponseDto>.SuccessResponse(
             new CreateEventInviteResponseDto(plain, exp)));
     }
@@ -539,6 +560,7 @@ public class AdminController : ControllerBase
                 ["manage_events"] = cfg.Permissions.ManageEvents,
                 ["manage_blog"] = cfg.Permissions.ManageBlog,
                 ["manage_store"] = cfg.Permissions.ManageStore,
+                ["send_broadcast"] = cfg.Permissions.SendBroadcast,
             },
             Registration: new()
             {

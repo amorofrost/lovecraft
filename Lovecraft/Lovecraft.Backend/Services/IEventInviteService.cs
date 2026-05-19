@@ -19,6 +19,22 @@ public interface IEventInviteService
         string? plainCodeOverride = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Issue an invite scoped (informationally) to a specific user. Writes a new row with
+    /// <see cref="Storage.Entities.EventInviteEntity.TargetUserId"/> populated and fires the
+    /// <see cref="Lovecraft.Common.Enums.NotificationType.EventInviteReceived"/> notification
+    /// to the target. The code itself works for anyone who knows it — <c>TargetUserId</c> is
+    /// metadata for the notification, not a redemption restriction. Unlike
+    /// <see cref="CreateOrRotateInviteAsync"/>, this does NOT revoke any other invites for the event.
+    /// </summary>
+    Task<(string PlainCode, DateTime? ExpiresAtUtc)> IssuePersonalInviteAsync(
+        string eventId,
+        string targetUserId,
+        DateTime? expiresAtUtc,
+        string issuedByUserId,
+        string? plainCodeOverride = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Non-event campaign invite (negative EventId). Does not revoke other codes.</summary>
     Task<(string PlainCode, DateTime ExpiresAtUtc)> CreateCampaignInviteAsync(
         string campaignId,

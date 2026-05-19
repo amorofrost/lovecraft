@@ -383,10 +383,11 @@ await UpsertAppConfigAsync("permissions", "override_rank", "admin");
 await UpsertAppConfigAsync("permissions", "manage_events", "admin");
 await UpsertAppConfigAsync("permissions", "manage_blog", "admin");
 await UpsertAppConfigAsync("permissions", "manage_store", "admin");
+await UpsertAppConfigAsync("permissions", "send_broadcast", "admin");
 
 // registration (site-wide — see spec: require_event_invite)
 await UpsertAppConfigAsync("registration", "require_event_invite", "false");
-Console.WriteLine("  [appconfig]     10 rank_thresholds + 11 permissions + 1 registration");
+Console.WriteLine("  [appconfig]     10 rank_thresholds + 12 permissions + 1 registration");
 
 // Likes + LikesReceived
 // Scenarios:

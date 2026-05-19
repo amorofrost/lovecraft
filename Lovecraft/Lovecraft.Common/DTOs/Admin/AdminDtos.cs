@@ -15,6 +15,12 @@ public class CreateEventInviteRequestDto
     public DateTime ExpiresAtUtc { get; set; }
     /// <summary>If set, this plaintext is stored (normalized); otherwise a code is generated.</summary>
     public string? PlainCode { get; set; }
+    /// <summary>
+    /// If set, the invite is issued personally to this user — an <c>EventInviteReceived</c>
+    /// notification is fired on creation. The code itself still works for anyone who knows it.
+    /// If omitted, the existing event-level rotate behaviour is used (revokes prior invites).
+    /// </summary>
+    public string? TargetUserId { get; set; }
 }
 
 public record CreateEventInviteResponseDto(string PlainCode, DateTime ExpiresAtUtc);

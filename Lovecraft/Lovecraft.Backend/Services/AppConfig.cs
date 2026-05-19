@@ -46,7 +46,8 @@ public record PermissionConfig(
     string OverrideRank,
     string ManageEvents,
     string ManageBlog,
-    string ManageStore)
+    string ManageStore,
+    string SendBroadcast)
 {
     public static PermissionConfig Defaults => new(
         CreateTopic: "activeMember",
@@ -59,7 +60,8 @@ public record PermissionConfig(
         OverrideRank: "admin",
         ManageEvents: "admin",
         ManageBlog: "admin",
-        ManageStore: "admin");
+        ManageStore: "admin",
+        SendBroadcast: "admin");
 }
 
 public static class AppConfigKeys
@@ -91,6 +93,7 @@ public static class AppConfigKeys
         public const string ManageEvents = "manage_events";
         public const string ManageBlog = "manage_blog";
         public const string ManageStore = "manage_store";
+        public const string SendBroadcast = "send_broadcast";
     }
 
     public static class RegistrationKeys

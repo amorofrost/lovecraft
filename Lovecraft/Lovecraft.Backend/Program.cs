@@ -196,7 +196,11 @@ if (useAzure)
     builder.Services.AddSingleton<UserCache>();
     builder.Services.AddSingleton<IAppConfigService, AzureAppConfigService>();
     builder.Services.AddSingleton<IImageService, AzureImageService>();
-    builder.Services.AddSingleton<IEventInviteService, AzureEventInviteService>();
+    builder.Services.AddSingleton<IEventInviteService>(sp => new AzureEventInviteService(
+        sp.GetRequiredService<TableServiceClient>(),
+        sp.GetRequiredService<ILogger<AzureEventInviteService>>(),
+        sp.GetRequiredService<INotificationProducer>(),
+        sp.GetRequiredService<IEventService>()));
     builder.Services.AddSingleton<IAuthService, AzureAuthService>();
     builder.Services.AddSingleton<IUserService, AzureUserService>();
     builder.Services.AddSingleton<IMatchingService>(sp => new AzureMatchingService(
@@ -209,7 +213,8 @@ if (useAzure)
         new AzureEventService(
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<IUserService>(),
-            sp.GetRequiredService<ILogger<AzureEventService>>()),
+            sp.GetRequiredService<ILogger<AzureEventService>>(),
+            sp.GetRequiredService<INotificationProducer>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IStoreService>(sp => new CachingStoreService(
         new AzureStoreService(
@@ -250,16 +255,24 @@ if (useAzure)
     builder.Services.AddSingleton<IPushSubscriptionService>(sp =>
         new AzurePushSubscriptionService(pushTable,
             sp.GetRequiredService<ILogger<AzurePushSubscriptionService>>()));
+    builder.Services.AddSingleton<IBroadcastService>(sp =>
+        new AzureBroadcastService(serviceClient));
 }
 else
 {
     builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
-    builder.Services.AddSingleton<IEventInviteService, MockEventInviteService>();
+    builder.Services.AddSingleton<IEventInviteService>(sp => new MockEventInviteService(
+        sp.GetRequiredService<INotificationProducer>(),
+        sp.GetRequiredService<IEventService>(),
+        sp.GetRequiredService<ILogger<MockEventInviteService>>()));
     builder.Services.AddSingleton<IAuthService, MockAuthService>();
     builder.Services.AddSingleton<IUserService>(sp => new MockUserService(
         sp.GetRequiredService<IAppConfigService>()));
     builder.Services.AddSingleton<IEventService>(sp =>
-        new MockEventService(sp.GetRequiredService<IUserService>()));
+        new MockEventService(
+            sp.GetRequiredService<IUserService>(),
+            sp.GetRequiredService<INotificationProducer>(),
+            sp.GetRequiredService<ILogger<MockEventService>>()));
     builder.Services.AddSingleton<IMatchingService>(sp => new MockMatchingService(
         sp.GetRequiredService<IChatService>(),
         sp.GetRequiredService<IUserService>(),
@@ -276,6 +289,7 @@ else
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();
     builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
     builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
+    builder.Services.AddSingleton<IBroadcastService, MockBroadcastService>();
 }
 
 // Mode-agnostic notification infrastructure
@@ -297,6 +311,7 @@ builder.Services.AddSingleton<IWebPushDispatcher>(sp =>
 });
 builder.Services.AddSingleton<NotificationDeduper>();
 builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
+builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver>();
 
 var app = builder.Build();
 
