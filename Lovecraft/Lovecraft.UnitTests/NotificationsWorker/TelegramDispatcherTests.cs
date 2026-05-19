@@ -24,13 +24,13 @@ public class TelegramDispatcherTests
         var users = new Mock<TableClient>();
         if (telegramUserId is not null)
         {
-            users.Setup(t => t.GetEntityAsync<UserTelegramContactEntity>(
+            users.Setup(t => t.GetEntityAsync<UserContactEntity>(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Response.FromValue(new UserTelegramContactEntity { TelegramUserId = telegramUserId }, new Mock<Response>().Object));
+                .ReturnsAsync(Response.FromValue(new UserContactEntity { TelegramUserId = telegramUserId }, new Mock<Response>().Object));
         }
         else
         {
-            users.Setup(t => t.GetEntityAsync<UserTelegramContactEntity>(
+            users.Setup(t => t.GetEntityAsync<UserContactEntity>(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new RequestFailedException(404, "not found"));
         }

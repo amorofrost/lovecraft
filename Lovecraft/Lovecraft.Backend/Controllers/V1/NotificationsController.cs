@@ -1,4 +1,5 @@
 using Lovecraft.Backend.Services;
+using Lovecraft.Common;
 using Lovecraft.Common.DTOs.Notifications;
 using Lovecraft.Common.Enums;
 using Lovecraft.Common.Models;
@@ -103,6 +104,38 @@ public class NotificationsController : ControllerBase
         if (!found)
             return NotFound(ApiResponse<object>.ErrorResponse("NOT_FOUND", "Notification not found"));
         return Ok(ApiResponse<object>.SuccessResponse(new { }));
+    }
+
+    // ── Email unsubscribe (no-auth, signed token) ───────────────────────────
+
+    /// <summary>GET /api/v1/notifications/unsubscribe?token=... — one-click email unsubscribe via signed token. No auth required.</summary>
+    [AllowAnonymous]
+    [HttpGet("notifications/unsubscribe")]
+    public async Task<IActionResult> EmailUnsubscribe([FromQuery] string? token = null)
+    {
+        if (string.IsNullOrEmpty(token))
+            return BadRequest("Missing or invalid link");
+
+        var secret = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+        if (string.IsNullOrEmpty(secret))
+            return StatusCode(503, "Server not configured");
+
+        if (!UnsubscribeToken.TryVerify(token, secret, out var userId))
+            return BadRequest("Invalid or expired link");
+
+        // Flip every email cell to false
+        var prefs = await _preferenceService.GetPreferencesAsync(userId);
+        foreach (var row in prefs.Matrix.Values)
+            row["email"] = false;
+        await _preferenceService.UpdatePreferencesAsync(userId, prefs);
+
+        return Content(
+            "<!DOCTYPE html><html><head><title>Unsubscribed</title></head><body style=\"font-family: sans-serif; text-align: center; padding: 40px;\">" +
+            "<h1>You're unsubscribed</h1>" +
+            "<p>You won't receive notification emails anymore. You can re-enable them anytime in your account settings.</p>" +
+            $"<p><a href=\"{Environment.GetEnvironmentVariable("FRONTEND_BASE_URL") ?? "https://aloeve.club"}/settings\">Open Settings</a></p>" +
+            "</body></html>",
+            "text/html");
     }
 
     // ── Web Push VAPID ──────────────────────────────────────────────────────

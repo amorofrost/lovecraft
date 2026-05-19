@@ -285,6 +285,7 @@ dotnet test
 - ✅ Notifications Phase C: Lovecraft.NotificationsWorker container with DispatcherWorker (10s), DigestWorker (top-of-hour), JanitorWorker (3am UTC). Channel dispatchers are stubs (log + Delivered). Phase D adds real Telegram; Phase F adds real email.
 - ✅ Notifications Phase D: real TelegramDispatcher (lookup chat id from users table, render HTML + inline keyboard, rate limiting); mute callback flow via service-token internal endpoint; Lovecraft.TelegramBot handles `mute:{type}` callbacks.
 - ✅ Notifications Phase E: WebPushDispatcher (in-process, VAPID, dead-sub cleanup); Lovecraft.Tools.VapidKeygen CLI; GET /push/vapid-public-key; service worker + browser-side helper; "Enable on this device" UI. Producer now skips outbox enqueue for in-process channels.
+- ✅ Notifications Phase F: real EmailDispatcher + EmailDigestRenderer (SendGrid), UnsubscribeToken signed links, `POST /api/v1/notifications/unsubscribe` public endpoint, DigestProcessor signature change (passes full DigestModel), required env vars (SENDGRID_API_KEY, FROM_EMAIL, FRONTEND_BASE_URL, JWT_SECRET_KEY)
 - ✅ Roles & ACL (rank thresholds + permissions in `appconfig`, `[RequireStaffRole]` + `[RequirePermission]`)
 - ✅ Event invites + campaign invites (`eventinvites` table, admin API)
 - ✅ HTTPS via Cloudflare + Origin Certificate (deployed at https://aloeve.club)

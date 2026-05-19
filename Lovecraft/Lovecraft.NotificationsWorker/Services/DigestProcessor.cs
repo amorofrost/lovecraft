@@ -82,18 +82,25 @@ public class DigestProcessor : IDigestProcessor
 
                 if (members.Count == 0) continue;
 
-                // Build digest model — Phase C stub dispatchers ignore it (use only first member);
-                // Phase F adds real DispatchDigestAsync(DigestModel) for full multi-row rendering.
-                _ = new DigestModel(userId, members);
+                // Build digest model — Phase F: Email uses full DispatchDigestAsync;
+                // Telegram still uses single-member trick (real digest impl deferred).
+                var digest = new DigestModel(userId, members);
 
-                // Dispatch (stub in Phase C — logs, returns Delivered)
                 var first = members[0];
-                var result = channel switch
+                DispatchResult result;
+                if (channel == "Email")
                 {
-                    "Telegram" => await _telegram.DispatchAsync(first, ct),    // stub ignores rest
-                    "Email" => await _email.DispatchAsync(first, ct),
-                    _ => DispatchResult.PermanentError,
-                };
+                    result = await _email.DispatchDigestAsync(digest, ct);
+                }
+                else if (channel == "Telegram")
+                {
+                    // Phase F: Telegram digests still use single-member trick (real digest impl deferred).
+                    result = await _telegram.DispatchAsync(first, ct);
+                }
+                else
+                {
+                    result = DispatchResult.PermanentError;
+                }
 
                 if (result == DispatchResult.Delivered)
                 {

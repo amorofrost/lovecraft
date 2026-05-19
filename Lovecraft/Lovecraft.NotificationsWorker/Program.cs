@@ -47,6 +47,10 @@ internal sealed class NotificationsWorkerEntryPoint
         // outbox + preferences are accessed via the processors that take them explicitly via captured closures.
         // notificationsTable is also captured directly — do NOT register it via DI to avoid type ambiguity.
 
+        // Hoist usersTable so both Telegram and Email blocks can capture it via closure.
+        // Do NOT call CreateIfNotExists — the backend owns the users table.
+        var usersTable = serviceClient.GetTableClient(TableNames.Users);
+
         var telegramBotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
         if (string.IsNullOrEmpty(telegramBotToken))
         {
@@ -56,9 +60,6 @@ internal sealed class NotificationsWorkerEntryPoint
         }
         else
         {
-            var usersTable = serviceClient.GetTableClient(TableNames.Users);
-            // Do NOT call CreateIfNotExists — the backend owns the users table.
-
             builder.Services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramBotToken));
             builder.Services.AddSingleton(usersTable);
             builder.Services.AddSingleton<ITelegramRateLimiter, TelegramRateLimiter>();
@@ -73,7 +74,31 @@ internal sealed class NotificationsWorkerEntryPoint
                     sp.GetRequiredService<ILogger<TelegramDispatcher>>()));
         }
 
-        builder.Services.AddSingleton<IEmailDispatcher, StubEmailDispatcher>();
+        var sendGridApiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
+        var jwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+        if (!string.IsNullOrEmpty(sendGridApiKey) && !string.IsNullOrEmpty(jwtSecretKey))
+        {
+            var fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL") ?? "noreply@aloeband.ru";
+            var frontendBaseUrl = Environment.GetEnvironmentVariable("FRONTEND_BASE_URL") ?? "https://aloeve.club";
+
+            builder.Services.AddSingleton<IEmailSendClient>(
+                new SendGridEmailSendClient(sendGridApiKey, fromEmail));
+            builder.Services.AddSingleton<IEmailDigestRenderer>(sp =>
+                new EmailDigestRenderer(frontendBaseUrl, frontendBaseUrl, sp.GetRequiredService<ILogger<EmailDigestRenderer>>()));
+            builder.Services.AddSingleton<IEmailDispatcher>(sp =>
+                new EmailDispatcher(
+                    sp.GetRequiredService<IEmailSendClient>(),
+                    usersTable,
+                    sp.GetRequiredService<IEmailDigestRenderer>(),
+                    jwtSecretKey,
+                    sp.GetRequiredService<ILogger<EmailDispatcher>>()));
+        }
+        else
+        {
+            var startupLogger = builder.Services.BuildServiceProvider().GetRequiredService<ILogger<NotificationsWorkerEntryPoint>>();
+            startupLogger.LogWarning("SENDGRID_API_KEY or JWT_SECRET_KEY is not set; using StubEmailDispatcher. Email notifications will be silently dropped.");
+            builder.Services.AddSingleton<IEmailDispatcher, StubEmailDispatcher>();
+        }
 
         builder.Services.AddSingleton<IOutboxProcessor>(sp =>
             new OutboxProcessor(

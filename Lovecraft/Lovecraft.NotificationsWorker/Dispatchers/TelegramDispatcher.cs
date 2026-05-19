@@ -43,8 +43,8 @@ public class TelegramDispatcher : ITelegramDispatcher
         string? telegramUserId = null;
         try
         {
-            var pk = UserTelegramContactEntity.GetPartitionKey(notification.UserId);
-            var entity = await _users.GetEntityAsync<UserTelegramContactEntity>(pk, notification.UserId, cancellationToken: ct);
+            var pk = UserContactEntity.GetPartitionKey(notification.UserId);
+            var entity = await _users.GetEntityAsync<UserContactEntity>(pk, notification.UserId, cancellationToken: ct);
             telegramUserId = entity.Value.TelegramUserId;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)

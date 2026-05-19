@@ -23,4 +23,12 @@ public class StubEmailDispatcher : IEmailDispatcher
             notification.NotificationId, notification.Type, notification.UserId);
         return Task.FromResult(DispatchResult.Delivered);
     }
+
+    public Task<DispatchResult> DispatchDigestAsync(DigestModel digest, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "[STUB Email] would dispatch digest with {Count} notifications to user {UserId}",
+            digest.Members.Count, digest.UserId);
+        return Task.FromResult(DispatchResult.Delivered);
+    }
 }
