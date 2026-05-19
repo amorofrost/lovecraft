@@ -250,6 +250,8 @@ if (useAzure)
     builder.Services.AddSingleton<IPushSubscriptionService>(sp =>
         new AzurePushSubscriptionService(pushTable,
             sp.GetRequiredService<ILogger<AzurePushSubscriptionService>>()));
+    builder.Services.AddSingleton<IBroadcastService>(sp =>
+        new AzureBroadcastService(serviceClient));
 }
 else
 {
@@ -276,6 +278,7 @@ else
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();
     builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
     builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
+    builder.Services.AddSingleton<IBroadcastService, MockBroadcastService>();
 }
 
 // Mode-agnostic notification infrastructure
