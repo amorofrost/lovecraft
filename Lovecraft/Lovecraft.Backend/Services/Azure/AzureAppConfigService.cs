@@ -106,7 +106,8 @@ public class AzureAppConfigService : IAppConfigService
                 OverrideRank: S(AppConfigKeys.PermissionKeys.OverrideRank, p.OverrideRank),
                 ManageEvents: S(AppConfigKeys.PermissionKeys.ManageEvents, p.ManageEvents),
                 ManageBlog: S(AppConfigKeys.PermissionKeys.ManageBlog, p.ManageBlog),
-                ManageStore: S(AppConfigKeys.PermissionKeys.ManageStore, p.ManageStore)),
+                ManageStore: S(AppConfigKeys.PermissionKeys.ManageStore, p.ManageStore),
+                SendBroadcast: S(AppConfigKeys.PermissionKeys.SendBroadcast, p.SendBroadcast)),
             new RegistrationConfig(
                 RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)));
     }

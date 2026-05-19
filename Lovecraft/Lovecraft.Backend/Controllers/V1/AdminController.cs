@@ -539,6 +539,7 @@ public class AdminController : ControllerBase
                 ["manage_events"] = cfg.Permissions.ManageEvents,
                 ["manage_blog"] = cfg.Permissions.ManageBlog,
                 ["manage_store"] = cfg.Permissions.ManageStore,
+                ["send_broadcast"] = cfg.Permissions.SendBroadcast,
             },
             Registration: new()
             {

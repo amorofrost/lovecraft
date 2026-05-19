@@ -38,6 +38,15 @@ public class MockAppConfigServiceTests
     }
 
     [Fact]
+    public async Task GetConfigAsync_DefaultSendBroadcastIsAdmin()
+    {
+        var service = new MockAppConfigService();
+        var config = await service.GetConfigAsync();
+
+        Assert.Equal("admin", config.Permissions.SendBroadcast);
+    }
+
+    [Fact]
     public async Task GetConfigAsync_ReturnsDefaultRegistration()
     {
         var service = new MockAppConfigService();
@@ -115,6 +124,34 @@ public class AzureAppConfigServiceTests
         var config = await svc.GetConfigAsync();
 
         Assert.Equal(5, config.Ranks.ActiveReplies); // default
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_SendBroadcastDefaultsToAdminWhenNoRow()
+    {
+        var (tsc, _) = BuildClientMocks(Array.Empty<AppConfigEntity>());
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.Equal("admin", config.Permissions.SendBroadcast);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_OverridesSendBroadcastFromTable()
+    {
+        var entities = new[]
+        {
+            Row(AppConfigEntity.PartitionPermissions, AppConfigKeys.PermissionKeys.SendBroadcast, "moderator"),
+        };
+        var (tsc, _) = BuildClientMocks(entities);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.Equal("moderator", config.Permissions.SendBroadcast);
     }
 
     [Fact]
