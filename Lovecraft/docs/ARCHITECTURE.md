@@ -167,6 +167,13 @@ Lovecraft/
 │   ├── TelegramBotWorker.cs                # Long-poll worker
 │   └── Lovecraft.TelegramBot.csproj
 │
+├── Lovecraft.NotificationsWorker/          # Outbox dispatcher + digest aggregator + janitor (Phase C+)
+│   ├── Dispatchers/                        # ITelegramDispatcher, IEmailDispatcher (stubs in C; real in D/F)
+│   ├── Entities/                           # Duplicate of notification entities (sync with Backend)
+│   ├── Models/                             # NotificationModel, DigestModel
+│   ├── Services/                           # OutboxProcessor, DigestProcessor, OutboxJanitor
+│   └── Workers/                            # DispatcherWorker, DigestWorker, JanitorWorker (BackgroundServices)
+│
 ├── Lovecraft.Tools.Seeder/                 # CLI: seed Azure Tables from MockDataStore
 │
 ├── Lovecraft.UnitTests/                    # xUnit

@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Lovecraft.Backend\Lovecraft.Backend.csproj" />
+    <ProjectReference Include="..\Lovecraft.NotificationsWorker\Lovecraft.NotificationsWorker.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,19 @@
+# Notifications outbox worker
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY ["Lovecraft.NotificationsWorker/Lovecraft.NotificationsWorker.csproj", "Lovecraft.NotificationsWorker/"]
+COPY ["Lovecraft.Common/Lovecraft.Common.csproj", "Lovecraft.Common/"]
+RUN dotnet restore "Lovecraft.NotificationsWorker/Lovecraft.NotificationsWorker.csproj"
+
+COPY . .
+WORKDIR "/src/Lovecraft.NotificationsWorker"
+RUN dotnet publish "Lovecraft.NotificationsWorker.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+
+ENV DOTNET_ENVIRONMENT=Production
+
+ENTRYPOINT ["dotnet", "Lovecraft.NotificationsWorker.dll"]
