@@ -74,6 +74,19 @@ public class TelegramMessageRendererTests
     }
 
     [Fact]
+    public void CommunityBroadcast_disallows_off_domain_absolute_urls()
+    {
+        var notif = new NotificationModel("n7", "u1", "CommunityBroadcast", null,
+            "{\"title\":\"X\",\"body\":\"Y\",\"link\":\"https://evil.example/phish\"}", DateTime.UtcNow);
+
+        var (_, keyboard) = _renderer.Render(notif);
+
+        var openButton = keyboard.InlineKeyboard.SelectMany(row => row).First(b => b.Text != null && b.Text.Contains("Open"));
+        Assert.StartsWith("https://aloeve.club/", openButton.Url);
+        Assert.DoesNotContain("evil.example", openButton.Url);
+    }
+
+    [Fact]
     public void Malformed_payload_renders_gracefully()
     {
         var notif = new NotificationModel("n6", "u1", "MessageReceived", "actor",

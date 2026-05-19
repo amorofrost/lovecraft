@@ -44,10 +44,8 @@ internal sealed class NotificationsWorkerEntryPoint
         outboxTable.CreateIfNotExists();
         preferencesTable.CreateIfNotExists();
 
-        // Register table clients as named-by-type singletons. Since multiple TableClients share the same type,
-        // register as factory-resolved by parameter name in each service constructor:
-        builder.Services.AddSingleton(notificationsTable);
-        // outbox + preferences are accessed via the processors that take them explicitly:
+        // outbox + preferences are accessed via the processors that take them explicitly via captured closures.
+        // notificationsTable is also captured directly — do NOT register it via DI to avoid type ambiguity.
 
         var telegramBotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
         if (string.IsNullOrEmpty(telegramBotToken))

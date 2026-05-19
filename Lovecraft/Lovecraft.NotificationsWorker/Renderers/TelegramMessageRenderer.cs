@@ -86,8 +86,18 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
         if (string.IsNullOrEmpty(link))
             return $"{AppBaseUrl}/aloevera";
 
-        if (IsAbsoluteUrl(link))
-            return link;
+        if (Uri.TryCreate(link, UriKind.Absolute, out var absolute))
+        {
+            // Only allow absolute URLs pointing to the app's own domain.
+            if (absolute.Scheme == Uri.UriSchemeHttps &&
+                (absolute.Host.Equals("aloeve.club", StringComparison.OrdinalIgnoreCase) ||
+                 absolute.Host.Equals("www.aloeve.club", StringComparison.OrdinalIgnoreCase)))
+            {
+                return absolute.ToString();
+            }
+            // Disallowed absolute URL (off-domain or non-HTTPS) — fall back to safe default.
+            return $"{AppBaseUrl}/aloevera";
+        }
 
         // Relative path — prepend base URL (path must start with /)
         return link.StartsWith('/') ? $"{AppBaseUrl}{link}" : $"{AppBaseUrl}/{link}";
@@ -105,9 +115,6 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
         if (!payload.TryGetValue(key, out var v) || v is null) return string.Empty;
         return v.ToString() ?? string.Empty;
     }
-
-    private static bool IsAbsoluteUrl(string s) =>
-        Uri.TryCreate(s, UriKind.Absolute, out _);
 
     private static string ToCamelCase(string pascal)
     {
