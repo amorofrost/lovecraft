@@ -164,4 +164,27 @@ public class NotificationsControllerTests : IClassFixture<AclTests.TestAppFactor
         Assert.True(body.GetProperty("data").GetProperty("matrix")
             .GetProperty("likeReceived").GetProperty("inApp").GetBoolean());
     }
+
+    [Fact]
+    public async Task GET_vapid_public_key_no_auth_returns_configured_key()
+    {
+        Environment.SetEnvironmentVariable("VAPID_PUBLIC_KEY", "test-public-key-base64url-abc123");
+        var client = _factory.CreateClient();
+        // Note: no Authorization header
+        var resp = await client.GetAsync("/api/v1/push/vapid-public-key");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("test-public-key-base64url-abc123", body.GetProperty("data").GetProperty("publicKey").GetString());
+    }
+
+    [Fact]
+    public async Task GET_vapid_public_key_returns_empty_when_unconfigured()
+    {
+        Environment.SetEnvironmentVariable("VAPID_PUBLIC_KEY", null);
+        var client = _factory.CreateClient();
+        var resp = await client.GetAsync("/api/v1/push/vapid-public-key");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("", body.GetProperty("data").GetProperty("publicKey").GetString());
+    }
 }

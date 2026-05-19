@@ -152,3 +152,37 @@ BACKEND_INTERNAL_URL=http://backend:8080   # optional; defaults shown
 - English-only message text (no `Settings.Language` lookup yet)
 - Actor names not resolved — notifications render with `Someone` or fall back to payload fields. Producer-side denormalization of actor display name into `NotificationModel.ActorName` is a follow-up.
 - Bot-blocked (403) does not auto-clear `prefs.matrix.*.telegram = false` — would need a worker→backend back-channel call. Currently just dead-letters; user keeps receiving failed-dispatch attempts on subsequent notifications until they manually toggle off.
+
+---
+
+## Phase E scope (shipped 2026-05-18)
+
+**Web Push** is a real delivery channel. Architecture: dispatcher lives in `Lovecraft.Backend` (the API process), NOT in `Lovecraft.NotificationsWorker`. Producer dispatches in-process via `IWebPushDispatcher` for `WebPush` channel, same pattern as `IInAppDispatcher` for SignalR.
+
+**Setup:**
+- `Lovecraft.Tools.VapidKeygen` CLI: `dotnet run --project Lovecraft.Tools.VapidKeygen` prints a fresh keypair. Copy `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` into `.env`. Run once per environment; rotation invalidates all subscriptions.
+- `GET /api/v1/push/vapid-public-key` (no auth) exposes the public key to the frontend.
+
+**Pipeline:**
+- `WebPushPayloadRenderer` maps `NotificationDto` → `WebPushNotificationDto` (title, body, url). Same URL-allowlist treatment as Telegram for `CommunityBroadcast`.
+- `WebPushDispatcher` iterates `IPushSubscriptionService.ListAsync(userId)`, sends each subscription via `WebPushClient.SendNotificationAsync(subscription, payload, vapidDetails)`. Dead subscriptions (HTTP 404/410) → call `_pushService.UnsubscribeAsync(userId, deviceId)`. Other errors → log + continue.
+
+**In-process channel orphan fix:** `NotificationProducer` no longer enqueues `OUTBOX_InApp_PENDING` or `OUTBOX_WebPush_PENDING` rows — those channels are dispatched in-process and the outbox rows would be orphaned. The DispatcherWorker / DigestWorker / JanitorWorker only handle Telegram and Email.
+
+**Frontend:**
+- `public/sw.js` service worker — minimal `push` + `notificationclick` handlers
+- `src/lib/webPush.ts` — `isWebPushSupported`, `getSubscriptionStatus`, `enableWebPush`, `disableWebPush` helpers
+- `src/components/settings/NotificationPreferences.tsx` Web Push channel block has an "Enable on this device" button (or "Disable" if subscribed)
+- Permission is requested on the explicit Enable click (browser requirement for user gesture)
+
+**Required env vars (Phase E additions):**
+```
+VAPID_PUBLIC_KEY=...     # P-256 public key, base64url
+VAPID_PRIVATE_KEY=...    # P-256 private key, base64url
+VAPID_SUBJECT=mailto:noreply@aloeband.ru
+```
+Generate via `dotnet run --project Lovecraft.Tools.VapidKeygen`.
+
+**Known follow-ups:**
+- English-only payload text (no `Settings.Language` lookup yet — same trade-off as Phase D Telegram).
+- `AppBaseUrl` hardcoded `/` paths in the renderer (no scheme/host — the URL is the path-only string; frontend's service worker prepends origin). Sufficient because notifications are origin-scoped to the user's subscribed app.

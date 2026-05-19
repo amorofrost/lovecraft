@@ -3,6 +3,7 @@
   <Project Path="Lovecraft.Common/Lovecraft.Common.csproj" />
   <Project Path="Lovecraft.UnitTests/Lovecraft.UnitTests.csproj" />
   <Project Path="Lovecraft.Tools.Seeder/Lovecraft.Tools.Seeder.csproj" />
+  <Project Path="Lovecraft.Tools.VapidKeygen/Lovecraft.Tools.VapidKeygen.csproj" />
   <Project Path="Lovecraft.TelegramBot/Lovecraft.TelegramBot.csproj" />
   <Project Path="Lovecraft.NotificationsWorker/Lovecraft.NotificationsWorker.csproj" />
 </Solution>

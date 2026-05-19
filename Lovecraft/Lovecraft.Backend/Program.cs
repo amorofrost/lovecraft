@@ -281,6 +281,20 @@ else
 // Mode-agnostic notification infrastructure
 builder.Services.AddSingleton<IPresenceTracker, PresenceTracker>();
 builder.Services.AddSingleton<IInAppDispatcher, InAppDispatcher>();
+builder.Services.AddSingleton<WebPush.IWebPushClient, WebPushClientAdapter>();
+builder.Services.AddSingleton<IWebPushPayloadRenderer, WebPushPayloadRenderer>();
+builder.Services.AddSingleton<IWebPushDispatcher>(sp =>
+{
+    var publicKey = Environment.GetEnvironmentVariable("VAPID_PUBLIC_KEY");
+    var privateKey = Environment.GetEnvironmentVariable("VAPID_PRIVATE_KEY");
+    var subject = Environment.GetEnvironmentVariable("VAPID_SUBJECT");
+    return new WebPushDispatcher(
+        sp.GetRequiredService<WebPush.IWebPushClient>(),
+        sp.GetRequiredService<IPushSubscriptionService>(),
+        sp.GetRequiredService<IWebPushPayloadRenderer>(),
+        publicKey, privateKey, subject,
+        sp.GetRequiredService<ILogger<WebPushDispatcher>>());
+});
 builder.Services.AddSingleton<NotificationDeduper>();
 builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
 
