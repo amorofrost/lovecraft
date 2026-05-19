@@ -51,6 +51,11 @@ internal sealed class NotificationsWorkerEntryPoint
         // Do NOT call CreateIfNotExists — the backend owns the users table.
         var usersTable = serviceClient.GetTableClient(TableNames.Users);
 
+        // Events + attendees tables (owned by the backend) — needed by EventReminderProcessor.
+        // No CreateIfNotExists; backend owns the schema.
+        var eventsTable = serviceClient.GetTableClient(TableNames.Events);
+        var attendeesTable = serviceClient.GetTableClient(TableNames.EventAttendees);
+
         var telegramBotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN");
         if (string.IsNullOrEmpty(telegramBotToken))
         {
@@ -117,9 +122,15 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddSingleton<IOutboxJanitor>(sp =>
             new OutboxJanitor(outboxTable, notificationsTable, sp.GetRequiredService<ILogger<OutboxJanitor>>()));
 
+        builder.Services.AddSingleton<IEventReminderProcessor>(sp =>
+            new EventReminderProcessor(
+                eventsTable, attendeesTable, notificationsTable, outboxTable, preferencesTable,
+                sp.GetRequiredService<ILogger<EventReminderProcessor>>()));
+
         builder.Services.AddHostedService<DispatcherWorker>();
         builder.Services.AddHostedService<DigestWorker>();
         builder.Services.AddHostedService<JanitorWorker>();
+        builder.Services.AddHostedService<EventReminderWorker>();
 
         var host = builder.Build();
         await host.RunAsync();

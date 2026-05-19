@@ -13,4 +13,6 @@ public static class TableNames
     public static string NotificationsOutbox     => Prefix + "notificationsoutbox";
     public static string NotificationPreferences => Prefix + "notificationpreferences";
     public static string Users                   => Prefix + "users";
+    public static string Events                  => Prefix + "events";
+    public static string EventAttendees          => Prefix + "eventattendees";
 }
