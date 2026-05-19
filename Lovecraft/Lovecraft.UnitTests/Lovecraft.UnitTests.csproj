@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Lovecraft.Backend\Lovecraft.Backend.csproj" />
     <ProjectReference Include="..\Lovecraft.NotificationsWorker\Lovecraft.NotificationsWorker.csproj" />
+    <ProjectReference Include="..\Lovecraft.TelegramBot\Lovecraft.TelegramBot.csproj" />
   </ItemGroup>
 
 </Project>
