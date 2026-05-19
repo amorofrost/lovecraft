@@ -87,3 +87,41 @@ All require `Authorization: Bearer <token>`.
 
 All channels off except in-app. In-app frequency is immediate. Telegram/Web Push frequency
 defaults to immediate; email defaults to daily. `DailyDigestHourUtc` defaults to 9.
+
+---
+
+## Phase C scope (shipped 2026-05-18)
+
+**Worker container:** new `Lovecraft.NotificationsWorker` project alongside `Lovecraft.TelegramBot`. Runs three `BackgroundService` loops:
+
+- **DispatcherWorker** (10s tick): drains `OUTBOX_{channel}_PENDING` rows whose `RowKey <= now` and `Frequency = Immediate`. Dispatches via `ITelegramDispatcher` or `IEmailDispatcher` (stubs in Phase C — log + return Delivered). Moves rows to `OUTBOX_{channel}_DONE_{date}` on success, `*_DEAD_{date}` after 5 retryable failures or 1 permanent failure. Retry backoff `{ 30s, 2m, 10m, 1h, 6h }`.
+- **DigestWorker** (top-of-hour): aggregates `Frequency in (Hourly, Daily)` rows per user × channel. Daily rows are only dispatched when `now.Hour == user.DailyDigestHourUtc`. One dispatch per (user, channel) group regardless of member count.
+- **JanitorWorker** (3am UTC daily): deletes `OUTBOX_*_DONE_*` / `*_DEAD_*` partitions older than 30 days; deletes `notifications` rows older than 90 days.
+
+**Stub dispatchers:** `StubTelegramDispatcher` and `StubEmailDispatcher` log `"would dispatch X to user Y"` and return success. Replaced by real implementations in Phase D (Telegram.Bot SendMessage + inline keyboard) and Phase F (SendGrid digest renderer + signed unsubscribe links).
+
+**Web Push is NOT in the worker** — it's dispatched in-process from `Lovecraft.Backend` (Phase E adds the dispatcher and VAPID config; outbox rows for `webPush` are written but the worker ignores them per channel filtering).
+
+**Mock mode:** worker only runs when `USE_AZURE_STORAGE=true`. Local dev with `USE_AZURE_STORAGE=false` skips the worker entirely (backend runs in-process with all mock storage).
+
+**Entity duplication:** `NotificationEntity`, `NotificationOutboxEntity`, `NotificationPreferencesEntity` are duplicated under `Lovecraft.NotificationsWorker/Entities/`. Keep in sync with `Lovecraft.Backend/Storage/Entities/`. Helpers like `PendingPartition()`, `DonePartition()`, `DeadPartition()`, `GetRowKey()` are duplicated.
+
+**Outbox lifecycle illustrated:**
+```
+[producer writes]                [worker drains]
+PENDING (Immediate, ready) ───►  DONE_{date}      (success)
+                          ───►  DEAD_{date}      (5 retryable / 1 permanent)
+                          ───►  PENDING (rescheduled, attempts+1)  (retryable)
+
+[digest worker, top of hour]
+PENDING (Hourly)        ───►  DONE_{date}        (aggregated, one dispatch per (user, channel))
+PENDING (Daily)         ───►  DONE_{date}        (only when now.Hour == prefs.DailyDigestHourUtc)
+```
+
+**Required env vars (worker container):**
+```
+USE_AZURE_STORAGE=true
+AZURE_STORAGE_CONNECTION_STRING=...
+AZURE_TABLE_PREFIX=                  # optional; mirrors backend's prefix
+```
+(No JWT, no SendGrid, no Telegram bot token in Phase C — stubs require nothing. Phases D and F add their respective configs.)
