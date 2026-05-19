@@ -201,13 +201,8 @@ Generate via `dotnet run --project Lovecraft.Tools.VapidKeygen`.
 **Pipeline:**
 - `EmailDispatcher` in `Lovecraft.NotificationsWorker` reads user's email from the `users` table.
 - `EmailDigestRenderer` maps `DigestModel` (list of `NotificationModel` grouped by type) → HTML email body. Subject: `"AloeVera News Digest — {date}"` (English; no i18n yet). Includes a signed unsubscribe link.
-- Unsubscribe flow: `UnsubscribeToken` helper generates HMAC-SHA256 signed `{userId}_{timestamp}_{digest}` tokens. Frontend or email click routes to `POST /api/v1/notifications/unsubscribe` (public, no auth) with token + channel. Token validity is 7 days; signature validated in-process.
+- Unsubscribe flow: `UnsubscribeToken` helper generates HMAC-SHA256 signed tokens with format `{userIdBase64Url}.{expiresAtUnixSeconds}.{base64hmac}` (dot-separated, base64url-encoded). Email click routes to `GET /api/v1/notifications/unsubscribe?token=...` (public, no auth). Token validity is 30 days; signature validated in-process.
 - Errors: 4xx → PermanentError (dead-letter); network/timeout → RetryableError (retry backoff).
-
-**`DigestProcessor` path change (Phase F):**
-- Producer was calling `DigestProcessor.CreateDigestAsync(userId, channel, notificationIds)` which returned a list of `NotificationModel`.
-- Phase F changes this: producer now passes the full `DigestModel` (pre-aggregated by type) directly to the dispatcher. `IEmailDispatcher.DispatchAsync(user, digest)` signature.
-- Summary rendering logic moves into `EmailDigestRenderer.RenderAsync(digest) → html`.
 
 **Required env vars (Phase F additions):**
 ```
@@ -219,6 +214,6 @@ JWT_SECRET_KEY=...                # HMAC key for unsubscribe token signing
 
 **Follow-ups:**
 - Localization: render digest title and section headers in user's `Settings.Language` (currently English-only).
-- Unsubscribe token expiry: 7 days is hardcoded; consider making it configurable.
+- Unsubscribe token expiry: 30 days is hardcoded; consider making it configurable.
 - Digest template: currently plain HTML; consider styled HTML templates or Handlebars.
 - Test email delivery: `dotnet test Lovecraft.UnitTests` includes `EmailServiceTests` and digest rendering tests.

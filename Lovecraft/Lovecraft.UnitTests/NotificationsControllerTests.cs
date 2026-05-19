@@ -215,6 +215,15 @@ public class NotificationsControllerTests : IClassFixture<AclTests.TestAppFactor
     }
 
     [Fact]
+    public async Task GET_unsubscribe_with_missing_token_returns_400()
+    {
+        Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-jwt-secret-32-chars-or-more!");
+        var client = _factory.CreateClient();
+        var resp = await client.GetAsync("/api/v1/notifications/unsubscribe");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task GET_unsubscribe_with_invalid_token_returns_400()
     {
         Environment.SetEnvironmentVariable("JWT_SECRET_KEY", "test-jwt-secret-32-chars-or-more!");

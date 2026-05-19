@@ -77,7 +77,9 @@ public class EmailDigestRenderer : IEmailDigestRenderer
 
         var text = n.Type switch
         {
-            "LikeReceived"        => IsAnonymous(payload) ? "Someone liked your profile" : "Someone liked your profile",
+            // Actor name not yet denormalized into payload — both anonymous and non-anonymous render generically.
+            // See Phase D/E/F follow-up "actor name resolution" for the eventual differentiation.
+            "LikeReceived"        => "Someone liked your profile",
             "MatchCreated"        => "You have a new match!",
             "MessageReceived"     => $"{GetString(payload, "preview")}",
             "ForumReplyToThread"  => "Someone replied in a thread",

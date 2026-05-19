@@ -111,8 +111,11 @@ public class NotificationsController : ControllerBase
     /// <summary>GET /api/v1/notifications/unsubscribe?token=... — one-click email unsubscribe via signed token. No auth required.</summary>
     [AllowAnonymous]
     [HttpGet("notifications/unsubscribe")]
-    public async Task<IActionResult> EmailUnsubscribe([FromQuery] string token)
+    public async Task<IActionResult> EmailUnsubscribe([FromQuery] string? token = null)
     {
+        if (string.IsNullOrEmpty(token))
+            return BadRequest("Missing or invalid link");
+
         var secret = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
         if (string.IsNullOrEmpty(secret))
             return StatusCode(503, "Server not configured");

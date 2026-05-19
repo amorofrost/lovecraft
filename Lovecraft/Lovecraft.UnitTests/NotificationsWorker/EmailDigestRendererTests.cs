@@ -83,4 +83,23 @@ public class EmailDigestRendererTests
         Assert.NotEmpty(result.HtmlBody);
         Assert.NotEmpty(result.PlainTextBody);
     }
+
+    /// <summary>
+    /// LikeReceived renders generically ("Someone liked your profile") for both
+    /// anonymous and non-anonymous payloads. Actor name denormalization is a Phase D/E/F
+    /// follow-up; this test locks the current behavior to prevent accidental divergence.
+    /// </summary>
+    [Theory]
+    [InlineData("{\"likeId\":\"l1\",\"anonymous\":true}")]
+    [InlineData("{\"likeId\":\"l2\",\"anonymous\":false}")]
+    [InlineData("{\"likeId\":\"l3\"}")]
+    public void RenderSingle_LikeReceived_renders_generic_text_regardless_of_anonymous_flag(string payloadJson)
+    {
+        var notif = MakeNotification("LikeReceived", payloadJson, actorId: "actor-user-1");
+
+        var result = _renderer.RenderSingle(notif, "unsub-token-abc");
+
+        Assert.Contains("Someone liked your profile", result.HtmlBody);
+        Assert.Contains("Someone liked your profile", result.PlainTextBody);
+    }
 }
