@@ -209,7 +209,8 @@ if (useAzure)
         new AzureEventService(
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<IUserService>(),
-            sp.GetRequiredService<ILogger<AzureEventService>>()),
+            sp.GetRequiredService<ILogger<AzureEventService>>(),
+            sp.GetRequiredService<INotificationProducer>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IStoreService>(sp => new CachingStoreService(
         new AzureStoreService(
@@ -261,7 +262,10 @@ else
     builder.Services.AddSingleton<IUserService>(sp => new MockUserService(
         sp.GetRequiredService<IAppConfigService>()));
     builder.Services.AddSingleton<IEventService>(sp =>
-        new MockEventService(sp.GetRequiredService<IUserService>()));
+        new MockEventService(
+            sp.GetRequiredService<IUserService>(),
+            sp.GetRequiredService<INotificationProducer>(),
+            sp.GetRequiredService<ILogger<MockEventService>>()));
     builder.Services.AddSingleton<IMatchingService>(sp => new MockMatchingService(
         sp.GetRequiredService<IChatService>(),
         sp.GetRequiredService<IUserService>(),

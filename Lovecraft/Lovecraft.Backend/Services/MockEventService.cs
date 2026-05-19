@@ -2,16 +2,25 @@ using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Backend.Services.Notifications;
+using Microsoft.Extensions.Logging;
 
 namespace Lovecraft.Backend.Services;
 
 public class MockEventService : IEventService
 {
     private readonly IUserService _userService;
+    private readonly INotificationProducer? _producer;
+    private readonly ILogger<MockEventService>? _logger;
 
-    public MockEventService(IUserService userService)
+    public MockEventService(
+        IUserService userService,
+        INotificationProducer? producer = null,
+        ILogger<MockEventService>? logger = null)
     {
         _userService = userService;
+        _producer = producer;
+        _logger = logger;
     }
 
     public Task<List<EventDto>> GetEventsAsync()
@@ -37,7 +46,7 @@ public class MockEventService : IEventService
         return Task.FromResult(eventDto);
     }
 
-    public Task<EventDto> CreateEventAsync(AdminEventWriteDto dto)
+    public async Task<EventDto> CreateEventAsync(AdminEventWriteDto dto)
     {
         var id = $"evt-{Guid.NewGuid():N}"[..16];
         var ev = new EventDto
@@ -62,7 +71,51 @@ public class MockEventService : IEventService
             Archived = dto.Archived,
         };
         MockDataStore.Events.Add(ev);
-        return Task.FromResult(ev);
+
+        // Fan out EventPublished notifications to all users for public events.
+        // Per-user channel filtering is done by NotificationPolicy.ResolveChannels (Phase A).
+        // NOTE: take: 10_000 mirrors BroadcastAudienceResolver — switch to paginated
+        // bulk-list when the user table outgrows a single round-trip.
+        if (_producer is not null && dto.Visibility == EventVisibility.Public)
+        {
+            try
+            {
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    eventId = ev.Id,
+                    eventTitle = ev.Title,
+                    eventDateUtc = ev.Date.ToString("o"),
+                });
+
+                var allUsers = await _userService.GetUsersAsync(skip: 0, take: 10_000);
+                foreach (var u in allUsers)
+                {
+                    try
+                    {
+                        await _producer.ProduceAsync(
+                            u.Id,
+                            NotificationType.EventPublished,
+                            actorId: null,
+                            payloadJson: payload,
+                            sourceEventId: $"event-published-{ev.Id}",
+                            presenceGroup: null);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex,
+                            "EventPublished producer failed for {UserId} on event {EventId}",
+                            u.Id, ev.Id);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex,
+                    "EventPublished fanout failed for event {EventId}", ev.Id);
+            }
+        }
+
+        return ev;
     }
 
     public Task<EventDto?> UpdateEventAsync(string eventId, AdminEventWriteDto dto)
