@@ -1,18 +1,29 @@
+using System.Text.Json;
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Lovecraft.Backend.Services;
 
 public class MockUserService : IUserService
 {
     private readonly IAppConfigService _appConfig;
+    private readonly Lazy<INotificationProducer>? _producer;
+    private readonly ILogger<MockUserService> _logger;
 
-    public MockUserService(IAppConfigService appConfig)
+    public MockUserService(
+        IAppConfigService appConfig,
+        Lazy<INotificationProducer>? producer = null,
+        ILogger<MockUserService>? logger = null)
     {
         _appConfig = appConfig;
+        _producer = producer;
+        _logger = logger ?? NullLogger<MockUserService>.Instance;
     }
 
     public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
@@ -80,13 +91,24 @@ public class MockUserService : IUserService
         return AugmentWithRank(existing, config.Ranks);
     }
 
-    public Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1)
+    public async Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1)
     {
         if (!MockDataStore.UserActivity.TryGetValue(userId, out var activity))
         {
             activity = new MockUserActivity();
             MockDataStore.UserActivity[userId] = activity;
         }
+
+        // Snapshot pre-increment counters for rank-up detection.
+        var preReply   = activity.ReplyCount;
+        var preLikes   = activity.LikesReceived;
+        var preEvents  = activity.EventsAttended;
+        var preMatches = activity.MatchCount;
+        MockDataStore.UserRankOverrides.TryGetValue(userId, out var overrideRank);
+        var preOverride = MockDataStore.UserRankOverrides.ContainsKey(userId)
+            ? overrideRank.ToString().ToCamelCase()
+            : null;
+
         switch (counter)
         {
             case UserCounter.ReplyCount:     activity.ReplyCount     += delta; break;
@@ -94,7 +116,64 @@ public class MockUserService : IUserService
             case UserCounter.EventsAttended: activity.EventsAttended += delta; break;
             case UserCounter.MatchCount:     activity.MatchCount     += delta; break;
         }
-        return Task.CompletedTask;
+
+        await TryFireRankUpAsync(userId, preReply, preLikes, preEvents, preMatches, preOverride, activity);
+    }
+
+    private async Task TryFireRankUpAsync(
+        string userId,
+        int preReply, int preLikes, int preEvents, int preMatches, string? preOverride,
+        MockUserActivity newActivity)
+    {
+        if (_producer is null) return;
+        try
+        {
+            var oldEntity = new UserEntity
+            {
+                ReplyCount = preReply,
+                LikesReceived = preLikes,
+                EventsAttended = preEvents,
+                MatchCount = preMatches,
+                RankOverride = preOverride,
+            };
+            var newEntity = new UserEntity
+            {
+                ReplyCount = newActivity.ReplyCount,
+                LikesReceived = newActivity.LikesReceived,
+                EventsAttended = newActivity.EventsAttended,
+                MatchCount = newActivity.MatchCount,
+                RankOverride = preOverride,
+            };
+
+            var cfg = await _appConfig.GetConfigAsync();
+            var oldRank = RankCalculator.Compute(oldEntity, cfg.Ranks);
+            var newRank = RankCalculator.Compute(newEntity, cfg.Ranks);
+
+            if (oldRank == newRank) return;
+
+            var oldRankName = oldRank.ToString().ToCamelCase();
+            var newRankName = newRank.ToString().ToCamelCase();
+            var oldLevel = EffectiveLevel.Parse(oldRankName);
+            var newLevel = EffectiveLevel.Parse(newRankName);
+            if (newLevel <= oldLevel) return;
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                previousRank = oldRankName,
+                newRank = newRankName,
+            });
+            await _producer.Value.ProduceAsync(
+                userId,
+                NotificationType.RankUp,
+                actorId: null,
+                payloadJson: payload,
+                sourceEventId: $"rank-up-{userId}-{newRankName}",
+                presenceGroup: null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RankUp producer failed for {UserId}", userId);
+        }
     }
 
     public Task SetStaffRoleAsync(string userId, StaffRole role)

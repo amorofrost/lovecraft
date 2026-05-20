@@ -3,6 +3,7 @@ using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services.Caching;
+using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Users;
@@ -17,16 +18,19 @@ public class AzureUserService : IUserService
     private readonly ILogger<AzureUserService> _logger;
     private readonly IAppConfigService _appConfig;
     private readonly UserCache _cache;
+    private readonly Lazy<INotificationProducer>? _producer;
 
     public AzureUserService(
         TableServiceClient tableServiceClient,
         ILogger<AzureUserService> logger,
         IAppConfigService appConfig,
-        UserCache cache)
+        UserCache cache,
+        Lazy<INotificationProducer>? producer = null)
     {
         _logger = logger;
         _appConfig = appConfig;
         _cache = cache;
+        _producer = producer;
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
         _usersTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
         _telegramIndexTable = tableServiceClient.GetTableClient(TableNames.UserTelegramIndex);
@@ -148,6 +152,14 @@ public class AzureUserService : IUserService
                 var response = await _usersTable.GetEntityAsync<UserEntity>(
                     UserEntity.GetPartitionKey(userId), userId);
                 var entity = response.Value;
+
+                // Snapshot pre-increment counter values for rank-up detection.
+                var preReply    = entity.ReplyCount;
+                var preLikes    = entity.LikesReceived;
+                var preEvents   = entity.EventsAttended;
+                var preMatches  = entity.MatchCount;
+                var preOverride = entity.RankOverride;
+
                 switch (counter)
                 {
                     case UserCounter.ReplyCount:     entity.ReplyCount     += delta; break;
@@ -158,6 +170,8 @@ public class AzureUserService : IUserService
                 entity.UpdatedAt = DateTime.UtcNow;
                 await _usersTable.UpdateEntityAsync(entity, entity.ETag);
                 _cache.Set(entity);
+
+                await TryFireRankUpAsync(userId, preReply, preLikes, preEvents, preMatches, preOverride, entity);
                 return;
             }
             catch (RequestFailedException ex) when (ex.Status == 404)
@@ -174,6 +188,56 @@ public class AzureUserService : IUserService
             }
         }
     }
+
+    private async Task TryFireRankUpAsync(
+        string userId,
+        int preReply, int preLikes, int preEvents, int preMatches, string? preOverride,
+        UserEntity newEntity)
+    {
+        if (_producer is null) return;
+        try
+        {
+            var oldEntity = new UserEntity
+            {
+                ReplyCount = preReply,
+                LikesReceived = preLikes,
+                EventsAttended = preEvents,
+                MatchCount = preMatches,
+                RankOverride = preOverride,
+            };
+            var cfg = await _appConfig.GetConfigAsync();
+            var oldRank = RankCalculator.Compute(oldEntity, cfg.Ranks);
+            var newRank = RankCalculator.Compute(newEntity, cfg.Ranks);
+
+            if (oldRank == newRank) return;
+
+            var oldRankName = ToCamel(oldRank.ToString());
+            var newRankName = ToCamel(newRank.ToString());
+            var oldLevel = EffectiveLevel.Parse(oldRankName);
+            var newLevel = EffectiveLevel.Parse(newRankName);
+            if (newLevel <= oldLevel) return;
+
+            var payload = JsonSerializer.Serialize(new
+            {
+                previousRank = oldRankName,
+                newRank = newRankName,
+            });
+            await _producer.Value.ProduceAsync(
+                userId,
+                NotificationType.RankUp,
+                actorId: null,
+                payloadJson: payload,
+                sourceEventId: $"rank-up-{userId}-{newRankName}",
+                presenceGroup: null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RankUp producer failed for {UserId}", userId);
+        }
+    }
+
+    private static string ToCamel(string s) =>
+        string.IsNullOrEmpty(s) ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     public async Task SetStaffRoleAsync(string userId, StaffRole role)
     {
