@@ -267,7 +267,9 @@ else
         sp.GetRequiredService<ILogger<MockEventInviteService>>()));
     builder.Services.AddSingleton<IAuthService, MockAuthService>();
     builder.Services.AddSingleton<IUserService>(sp => new MockUserService(
-        sp.GetRequiredService<IAppConfigService>()));
+        sp.GetRequiredService<IAppConfigService>(),
+        sp.GetRequiredService<Lazy<INotificationProducer>>(),
+        sp.GetRequiredService<ILogger<MockUserService>>()));
     builder.Services.AddSingleton<IEventService>(sp =>
         new MockEventService(
             sp.GetRequiredService<IUserService>(),
@@ -311,6 +313,11 @@ builder.Services.AddSingleton<IWebPushDispatcher>(sp =>
 });
 builder.Services.AddSingleton<NotificationDeduper>();
 builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
+// Lazy<INotificationProducer> breaks the circular DI between IUserService and INotificationProducer
+// (NotificationProducer depends on IUserService for ChannelAvailability; IUserService fires RankUp
+// notifications via the producer in IncrementCounterAsync).
+builder.Services.AddSingleton(sp => new Lazy<INotificationProducer>(
+    () => sp.GetRequiredService<INotificationProducer>()));
 builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver>();
 
 var app = builder.Build();
