@@ -1,7 +1,7 @@
 # Notifications (backend)
 
 **Last updated:** 2026-05-19
-**Phase:** A–G shipped. Phase H (rank-up) pending — see spec.
+**Phase:** A–H shipped — notifications subsystem feature-complete (MCF.4 resolved).
 
 ## Architecture
 
@@ -269,3 +269,22 @@ NOTIFICATIONS_WORKER_REMINDER_SCAN_INTERVAL_MINUTES=5   # default 5
 - Personal invite codes are shareable. If strict per-user restriction is needed later, the validator at redemption time can check `TargetUserId` against the redeemer's user id.
 - `EventReminderProcessor` mute-vs-canonical-row behavior: muted users still get a canonical notification (for the bell on next visit) but no outbox rows. Snoozed users behave the same way.
 - Worker entity duplication carries drift risk if backend schema changes. Integration tests against shared Azure tables guard against this in production deploys.
+
+---
+
+## Phase H scope (shipped 2026-05-19) — Final phase
+
+**RankUp producer wired into `IUserService.IncrementCounterAsync`.** Closes the loop — all 9 producers active.
+
+- `AzureUserService` + `MockUserService` extended with nullable optional ctor param `Lazy<INotificationProducer>? producer = null`. **`Lazy<T>` is required** because `NotificationProducer` itself depends on `IUserService` (for `GetNotificationContactStatusAsync`). Direct injection would create a circular DI graph that the singleton container cannot resolve; `Lazy<T>` defers resolution until first `.Value` access, after the graph is built. New Program.cs registration: `services.AddSingleton(sp => new Lazy<INotificationProducer>(() => sp.GetRequiredService<INotificationProducer>()))`.
+- Inside `IncrementCounterAsync`, before the counter switch: snapshot the four counter fields + `RankOverride` into local variables. After the successful ETag write, build a synthetic pre-state `UserEntity`, compute `oldRank = RankCalculator.Compute(oldEntity, cfg.Ranks)` and `newRank = RankCalculator.Compute(entity, cfg.Ranks)`. `RankCalculator` short-circuits on non-null `RankOverride`, so admin-overridden users automatically yield no rank change → no fire.
+- **Strict level-increase guard**: only fire when `EffectiveLevel.Parse(newRankName) > EffectiveLevel.Parse(oldRankName)`. This means decrement transitions (e.g., `UnregisterFromEvent` calls `IncrementCounterAsync(..., -1)` and drops the user below a threshold) do NOT fire RankUp.
+- Payload: `{ previousRank: "novice", newRank: "activeMember" }` (camelCase rank names matching existing conventions). Renderers (Web Push, Telegram, Email) currently read only `newRank` — `previousRank` is included for forward-compatibility.
+- `sourceEventId = "rank-up-{userId}-{newRank}"` — same user reaching the same rank within the 60-second producer dedup window is suppressed.
+- `actorId = null` (system-generated; no acting user).
+- Producer call wrapped in try/catch with `LogWarning` — counter increment never fails if producer fails.
+
+### Follow-ups
+- Renderers don't yet use `previousRank` — could render "🎉 Promoted from novice to activeMember!" but currently just "You're now activeMember".
+- No threshold-change UI in the admin panel yet (MCF.12 partial — covered separately from MCF.4).
+- Rank-down notifications aren't fired by design; could be added as a separate type if user feedback indicates it.
