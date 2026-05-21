@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Communication.Email;
+using System.Net;
 
 namespace Lovecraft.Backend.Services;
 
@@ -22,14 +23,16 @@ public class AzureEmailService : IEmailService
 
     public async Task SendVerificationEmailAsync(string toEmail, string name, string verificationToken)
     {
-        var link = $"{_frontendBaseUrl}/verify-email?token={verificationToken}";
+        var encodedToken = Uri.EscapeDataString(verificationToken);
+        var link = $"{_frontendBaseUrl}/verify-email?token={encodedToken}";
+        var htmlName = WebUtility.HtmlEncode(name);
 
         var emailMessage = new EmailMessage(
             senderAddress: _fromEmail,
             content: new EmailContent("Verify your AloeVera email")
             {
                 PlainText = $"Hi {name},\n\nVerify your email: {link}\n\nThis link expires in 7 days.",
-                Html = $"<p>Hi {name},</p><p>Click to verify your email:<br><a href=\"{link}\">{link}</a></p><p>This link expires in 7 days.</p>"
+                Html = $"<p>Hi {htmlName},</p><p>Click to verify your email:<br><a href=\"{link}\">{link}</a></p><p>This link expires in 7 days.</p>"
             },
             recipients: new EmailRecipients(new List<EmailAddress>
             {
@@ -49,14 +52,16 @@ public class AzureEmailService : IEmailService
 
     public async Task SendPasswordResetEmailAsync(string toEmail, string name, string resetToken)
     {
-        var link = $"{_frontendBaseUrl}/reset-password?token={resetToken}";
+        var encodedToken = Uri.EscapeDataString(resetToken);
+        var link = $"{_frontendBaseUrl}/reset-password?token={encodedToken}";
+        var htmlName = WebUtility.HtmlEncode(name);
 
         var emailMessage = new EmailMessage(
             senderAddress: _fromEmail,
             content: new EmailContent("Reset your AloeVera password")
             {
                 PlainText = $"Hi {name},\n\nReset your password: {link}\n\nThis link expires in 1 hour.",
-                Html = $"<p>Hi {name},</p><p>Click to reset your password:<br><a href=\"{link}\">{link}</a></p><p>This link expires in 1 hour. If you did not request this, ignore this email.</p>"
+                Html = $"<p>Hi {htmlName},</p><p>Click to reset your password:<br><a href=\"{link}\">{link}</a></p><p>This link expires in 1 hour. If you did not request this, ignore this email.</p>"
             },
             recipients: new EmailRecipients(new List<EmailAddress>
             {
