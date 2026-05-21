@@ -104,6 +104,70 @@ public class MockNotificationServiceTests
 
         Assert.Empty(hits);
     }
+
+    [Fact]
+    public async Task Create_populates_ActorName_and_ActorAvatar_when_IUserService_provided()
+    {
+        var users = new Mock<IUserService>();
+        users.Setup(u => u.GetUserByIdAsync("actor-1")).ReturnsAsync(new Lovecraft.Common.DTOs.Users.UserDto
+        {
+            Id = "actor-1", Name = "Anna", ProfileImage = "https://cdn/anna.jpg",
+        });
+        var svc = new MockNotificationService(users.Object);
+
+        var n = await svc.CreateAsync("u1", NotificationType.LikeReceived, "actor-1", "{}", "like-1");
+
+        Assert.Equal("Anna", n.ActorName);
+        Assert.Equal("https://cdn/anna.jpg", n.ActorAvatar);
+    }
+
+    [Fact]
+    public async Task Create_leaves_ActorName_null_when_actorId_null()
+    {
+        var users = new Mock<IUserService>();
+        var svc = new MockNotificationService(users.Object);
+
+        var n = await svc.CreateAsync("u1", NotificationType.CommunityBroadcast, null, "{}", "bc-1");
+
+        Assert.Null(n.ActorName);
+        users.Verify(u => u.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task List_populates_ActorName_for_each_row()
+    {
+        var users = new Mock<IUserService>();
+        users.Setup(u => u.GetUserByIdAsync("actor-1")).ReturnsAsync(new Lovecraft.Common.DTOs.Users.UserDto { Id = "actor-1", Name = "Anna" });
+        users.Setup(u => u.GetUserByIdAsync("actor-2")).ReturnsAsync(new Lovecraft.Common.DTOs.Users.UserDto { Id = "actor-2", Name = "Boris" });
+        var svc = new MockNotificationService(users.Object);
+
+        await svc.CreateAsync("u1", NotificationType.LikeReceived, "actor-1", "{}", "like-1");
+        await svc.CreateAsync("u1", NotificationType.MessageReceived, "actor-2", "{}", "msg-1");
+
+        var list = await svc.ListAsync("u1", 10, null);
+
+        Assert.Equal(2, list.Count);
+        Assert.Contains(list, n => n.ActorId == "actor-1" && n.ActorName == "Anna");
+        Assert.Contains(list, n => n.ActorId == "actor-2" && n.ActorName == "Boris");
+    }
+
+    [Fact]
+    public async Task List_dedupes_actor_lookups_across_rows()
+    {
+        var users = new Mock<IUserService>();
+        users.Setup(u => u.GetUserByIdAsync("actor-1")).ReturnsAsync(new Lovecraft.Common.DTOs.Users.UserDto { Id = "actor-1", Name = "Anna" });
+        var svc = new MockNotificationService(users.Object);
+
+        // 3 notifications from the same actor — should only resolve once.
+        await svc.CreateAsync("u1", NotificationType.LikeReceived, "actor-1", "{}", "like-1");
+        await svc.CreateAsync("u1", NotificationType.MessageReceived, "actor-1", "{}", "msg-1");
+        await svc.CreateAsync("u1", NotificationType.MessageReceived, "actor-1", "{}", "msg-2");
+        users.Invocations.Clear();
+
+        await svc.ListAsync("u1", 10, null);
+
+        users.Verify(u => u.GetUserByIdAsync("actor-1"), Times.Once);
+    }
 }
 
 public class AzureNotificationServiceTests

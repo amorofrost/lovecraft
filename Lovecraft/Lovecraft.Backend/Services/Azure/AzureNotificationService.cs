@@ -12,12 +12,18 @@ public class AzureNotificationService : INotificationService
     private readonly TableClient _notifications;
     private readonly TableClient _outbox;
     private readonly ILogger<AzureNotificationService> _logger;
+    private readonly IUserService? _users;
 
-    public AzureNotificationService(TableClient notifications, TableClient outbox, ILogger<AzureNotificationService> logger)
+    public AzureNotificationService(
+        TableClient notifications,
+        TableClient outbox,
+        ILogger<AzureNotificationService> logger,
+        IUserService? users = null)
     {
         _notifications = notifications;
         _outbox = outbox;
         _logger = logger;
+        _users = users;
     }
 
     public async Task<NotificationDto> CreateAsync(
@@ -40,7 +46,9 @@ public class AzureNotificationService : INotificationService
             IsDismissed = false,
         };
         await _notifications.AddEntityAsync(entity);
-        return ToDto(entity);
+        var dto = ToDto(entity);
+        await PopulateActorAsync(dto);
+        return dto;
     }
 
     public async Task EnqueueOutboxAsync(
@@ -72,7 +80,9 @@ public class AzureNotificationService : INotificationService
             results.AddRange(page.Values.Select(ToDto));
             if (results.Count >= limit) break;
         }
-        return results.Take(limit).ToList();
+        var trimmed = results.Take(limit).ToList();
+        await PopulateActorsBatchAsync(trimmed);
+        return trimmed;
     }
 
     public async Task<int> UnreadCountAsync(string userId)
@@ -165,4 +175,57 @@ public class AzureNotificationService : INotificationService
         DigestGroupId = e.DigestGroupId,
         Cursor = e.RowKey,
     };
+
+    private async Task PopulateActorAsync(NotificationDto dto)
+    {
+        if (_users is null || string.IsNullOrEmpty(dto.ActorId)) return;
+        try
+        {
+            var actor = await _users.GetUserByIdAsync(dto.ActorId);
+            if (actor is not null)
+            {
+                dto.ActorName = actor.Name;
+                dto.ActorAvatar = string.IsNullOrEmpty(actor.ProfileImage) ? null : actor.ProfileImage;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve actor {ActorId} for notification {NotificationId}", dto.ActorId, dto.Id);
+        }
+    }
+
+    private async Task PopulateActorsBatchAsync(List<NotificationDto> dtos)
+    {
+        if (_users is null) return;
+        var uniqueActorIds = dtos
+            .Where(d => !string.IsNullOrEmpty(d.ActorId))
+            .Select(d => d.ActorId!)
+            .Distinct()
+            .ToList();
+        if (uniqueActorIds.Count == 0) return;
+
+        var resolved = new Dictionary<string, (string Name, string? Avatar)>();
+        foreach (var actorId in uniqueActorIds)
+        {
+            try
+            {
+                var u = await _users.GetUserByIdAsync(actorId);
+                if (u is not null)
+                    resolved[actorId] = (u.Name, string.IsNullOrEmpty(u.ProfileImage) ? null : u.ProfileImage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve actor {ActorId}", actorId);
+            }
+        }
+        foreach (var d in dtos)
+        {
+            if (string.IsNullOrEmpty(d.ActorId)) continue;
+            if (resolved.TryGetValue(d.ActorId, out var info))
+            {
+                d.ActorName = info.Name;
+                d.ActorAvatar = info.Avatar;
+            }
+        }
+    }
 }

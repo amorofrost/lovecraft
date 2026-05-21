@@ -248,7 +248,8 @@ if (useAzure)
 
     builder.Services.AddSingleton<INotificationService>(sp =>
         new AzureNotificationService(notificationsTable, outboxTable,
-            sp.GetRequiredService<ILogger<AzureNotificationService>>()));
+            sp.GetRequiredService<ILogger<AzureNotificationService>>(),
+            sp.GetRequiredService<IUserService>()));
     builder.Services.AddSingleton<INotificationPreferenceService>(sp =>
         new AzureNotificationPreferenceService(prefsTable,
             sp.GetRequiredService<ILogger<AzureNotificationPreferenceService>>()));

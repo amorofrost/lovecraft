@@ -6,7 +6,14 @@ namespace Lovecraft.Backend.Services;
 
 public class MockNotificationService : INotificationService
 {
-    public Task<NotificationDto> CreateAsync(
+    private readonly IUserService? _users;
+
+    public MockNotificationService(IUserService? users = null)
+    {
+        _users = users;
+    }
+
+    public async Task<NotificationDto> CreateAsync(
         string userId, NotificationType type, string? actorId, string payloadJson, string? sourceEventId)
     {
         var dto = new NotificationDto
@@ -25,7 +32,9 @@ public class MockNotificationService : INotificationService
             // store SourceEventId in PayloadJson alongside the rest? No — use a parallel dict keyed by notification id.
             DedupKeys[dto.Id] = (type, actorId, sourceEventId);
         }
-        return Task.FromResult(Clone(dto));
+        var cloned = Clone(dto);
+        await PopulateActorAsync(cloned);
+        return cloned;
     }
 
     public Task EnqueueOutboxAsync(
@@ -37,18 +46,21 @@ public class MockNotificationService : INotificationService
         return Task.CompletedTask;
     }
 
-    public Task<List<NotificationDto>> ListAsync(string userId, int limit, string? cursor)
+    public async Task<List<NotificationDto>> ListAsync(string userId, int limit, string? cursor)
     {
+        List<NotificationDto> snapshot;
         var list = MockDataStore.Notifications.GetOrAdd(userId, _ => new());
         lock (list)
         {
-            return Task.FromResult(list
+            snapshot = list
                 .Where(n => n.DismissedAtUtc is null)
                 .OrderByDescending(n => n.CreatedAtUtc)
                 .Take(limit)
                 .Select(Clone)
-                .ToList());
+                .ToList();
         }
+        await PopulateActorsBatchAsync(snapshot);
+        return snapshot;
     }
 
     public Task<int> UnreadCountAsync(string userId)
@@ -134,4 +146,51 @@ public class MockNotificationService : INotificationService
         DismissedAtUtc = src.DismissedAtUtc,
         DigestGroupId = src.DigestGroupId,
     };
+
+    private async Task PopulateActorAsync(NotificationDto dto)
+    {
+        if (_users is null || string.IsNullOrEmpty(dto.ActorId)) return;
+        try
+        {
+            var actor = await _users.GetUserByIdAsync(dto.ActorId);
+            if (actor is not null)
+            {
+                dto.ActorName = actor.Name;
+                dto.ActorAvatar = string.IsNullOrEmpty(actor.ProfileImage) ? null : actor.ProfileImage;
+            }
+        }
+        catch { /* mock-mode best-effort */ }
+    }
+
+    private async Task PopulateActorsBatchAsync(List<NotificationDto> dtos)
+    {
+        if (_users is null) return;
+        var uniqueActorIds = dtos
+            .Where(d => !string.IsNullOrEmpty(d.ActorId))
+            .Select(d => d.ActorId!)
+            .Distinct()
+            .ToList();
+        if (uniqueActorIds.Count == 0) return;
+
+        var resolved = new Dictionary<string, (string Name, string? Avatar)>();
+        foreach (var actorId in uniqueActorIds)
+        {
+            try
+            {
+                var u = await _users.GetUserByIdAsync(actorId);
+                if (u is not null)
+                    resolved[actorId] = (u.Name, string.IsNullOrEmpty(u.ProfileImage) ? null : u.ProfileImage);
+            }
+            catch { /* best-effort */ }
+        }
+        foreach (var d in dtos)
+        {
+            if (string.IsNullOrEmpty(d.ActorId)) continue;
+            if (resolved.TryGetValue(d.ActorId, out var info))
+            {
+                d.ActorName = info.Name;
+                d.ActorAvatar = info.Avatar;
+            }
+        }
+    }
 }
