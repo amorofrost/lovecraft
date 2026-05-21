@@ -387,7 +387,10 @@ await UpsertAppConfigAsync("permissions", "send_broadcast", "admin");
 
 // registration (site-wide — see spec: require_event_invite)
 await UpsertAppConfigAsync("registration", "require_event_invite", "false");
-Console.WriteLine("  [appconfig]     10 rank_thresholds + 12 permissions + 1 registration");
+
+// features (client-visible kill switches)
+await UpsertAppConfigAsync("features", "feed_enabled", "true");
+Console.WriteLine("  [appconfig]     10 rank_thresholds + 12 permissions + 1 registration + 1 features");
 
 // Likes + LikesReceived
 // Scenarios:

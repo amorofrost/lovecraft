@@ -1,6 +1,15 @@
 namespace Lovecraft.Backend.Services;
 
-public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration);
+public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration, FeatureFlagsConfig Features);
+
+/// <summary>
+/// Client-visible feature flags (Azure Table appconfig partition <c>features</c>).
+/// Defaults reflect the intended production state; flags exist primarily as kill switches.
+/// </summary>
+public record FeatureFlagsConfig(bool FeedEnabled)
+{
+    public static FeatureFlagsConfig Defaults => new(FeedEnabled: true);
+}
 
 /// <summary>
 /// Site-wide registration policy (Azure Table appconfig partition <c>registration</c>).
@@ -99,5 +108,10 @@ public static class AppConfigKeys
     public static class RegistrationKeys
     {
         public const string RequireEventInvite = "require_event_invite";
+    }
+
+    public static class FeatureKeys
+    {
+        public const string FeedEnabled = "feed_enabled";
     }
 }
