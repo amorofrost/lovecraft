@@ -100,6 +100,18 @@ public class CachingForumService : IForumService
         return result;
     }
 
+    public async Task<ForumReplyDto?> UpdateReplyAsync(string topicId, string replyId, string content, string editorUserId, string editorUserName)
+    {
+        var result = await _inner.UpdateReplyAsync(topicId, replyId, content, editorUserId, editorUserName);
+
+        // Reply content changed — invalidate cached reply list for this topic so other clients
+        // see the updated body on next fetch. Topic detail isn't affected by reply content.
+        if (result is not null)
+            _cache.Remove(RepliesKey(topicId));
+
+        return result;
+    }
+
     public Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName)
         => _inner.CreateEventTopicAsync(eventId, eventName);
 

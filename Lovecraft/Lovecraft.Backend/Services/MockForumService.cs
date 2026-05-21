@@ -142,6 +142,9 @@ public class MockForumService : IForumService
                 AuthorStaffRole = authors.GetValueOrDefault(r.AuthorId)?.StaffRole ?? StaffRole.None,
                 AuthorEventBadgeImageUrls = urls,
                 AuthorEventBadgeTotalCount = total,
+                EditedAt = r.EditedAt,
+                EditedById = r.EditedById,
+                EditedByName = r.EditedByName,
             });
         }
 
@@ -216,6 +219,42 @@ public class MockForumService : IForumService
             AuthorStaffRole = author?.StaffRole ?? StaffRole.None,
             AuthorEventBadgeImageUrls = badgeUrls,
             AuthorEventBadgeTotalCount = badgeTotal,
+        };
+    }
+
+    public async Task<ForumReplyDto?> UpdateReplyAsync(string topicId, string replyId, string content, string editorUserId, string editorUserName)
+    {
+        var stored = MockDataStore.ForumReplies.FirstOrDefault(r => r.TopicId == topicId && r.Id == replyId);
+        if (stored is null) return null;
+
+        stored.Content = content;
+        stored.EditedAt = DateTime.UtcNow;
+        stored.EditedById = editorUserId;
+        stored.EditedByName = editorUserName;
+
+        var author = await _userService.GetUserByIdAsync(stored.AuthorId);
+        var (badgeUrls, badgeTotal) = string.IsNullOrEmpty(stored.AuthorId)
+            ? (new List<string>(), 0)
+            : await _eventService.GetUserEventBadgePreviewAsync(stored.AuthorId);
+
+        return new ForumReplyDto
+        {
+            Id = stored.Id,
+            TopicId = stored.TopicId,
+            AuthorId = stored.AuthorId,
+            AuthorName = stored.AuthorName,
+            AuthorAvatar = stored.AuthorAvatar,
+            Content = stored.Content,
+            CreatedAt = stored.CreatedAt,
+            Likes = stored.Likes,
+            ImageUrls = stored.ImageUrls,
+            AuthorRank = author?.Rank ?? UserRank.Novice,
+            AuthorStaffRole = author?.StaffRole ?? StaffRole.None,
+            AuthorEventBadgeImageUrls = badgeUrls,
+            AuthorEventBadgeTotalCount = badgeTotal,
+            EditedAt = stored.EditedAt,
+            EditedById = stored.EditedById,
+            EditedByName = stored.EditedByName,
         };
     }
 

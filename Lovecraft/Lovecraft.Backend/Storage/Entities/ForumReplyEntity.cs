@@ -21,6 +21,11 @@ public class ForumReplyEntity : ITableEntity
     public int Likes { get; set; }
     public string ImageUrls { get; set; } = "[]"; // stored as JSON array
 
+    // Edit metadata — null when reply has never been edited.
+    public DateTime? EditedAt { get; set; }
+    public string EditedById { get; set; } = string.Empty;
+    public string EditedByName { get; set; } = string.Empty;
+
     public static string GetPartitionKey(string topicId) => $"topic-{topicId}";
 
     public static string BuildRowKey(DateTime createdAt, string replyId)

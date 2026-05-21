@@ -97,6 +97,11 @@ public interface IForumService
     Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
     Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
     Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null);
+    /// <summary>
+    /// Update an existing reply's content. Returns null if the reply is not found.
+    /// Authorization is enforced by the controller (author or moderator+).
+    /// </summary>
+    Task<ForumReplyDto?> UpdateReplyAsync(string topicId, string replyId, string content, string editorUserId, string editorUserName);
     Task<ForumTopicDto> CreateEventTopicAsync(string eventId, string eventName);
     Task<ForumTopicDto> CreateTopicAsync(
         string sectionId,

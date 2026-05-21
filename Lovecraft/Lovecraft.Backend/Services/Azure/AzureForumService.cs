@@ -331,6 +331,40 @@ public class AzureForumService : IForumService
         return await ToReplyDtoAsync(replyEntity, authorAvatar, author);
     }
 
+    public async Task<ForumReplyDto?> UpdateReplyAsync(string topicId, string replyId, string content, string editorUserId, string editorUserName)
+    {
+        var pk = ForumReplyEntity.GetPartitionKey(topicId);
+
+        // Locate the entity. Reply RowKey embeds CreatedAt ticks, so we have to query the partition
+        // and filter by ReplyId rather than computing a point key.
+        ForumReplyEntity? entity = null;
+        await foreach (var candidate in _repliesTable.QueryAsync<ForumReplyEntity>(
+            filter: $"PartitionKey eq '{pk}' and ReplyId eq '{replyId}'"))
+        {
+            entity = candidate;
+            break;
+        }
+        if (entity is null) return null;
+
+        entity.Content = content;
+        entity.EditedAt = DateTime.UtcNow;
+        entity.EditedById = editorUserId;
+        entity.EditedByName = editorUserName;
+
+        try
+        {
+            await _repliesTable.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        var author = await _userService.GetUserByIdAsync(entity.AuthorId);
+        var authorAvatar = await GetAuthorAvatarAsync(entity.AuthorId);
+        return await ToReplyDtoAsync(entity, authorAvatar, author);
+    }
+
     private static ForumSectionDto ToSectionDto(ForumSectionEntity entity) => new ForumSectionDto
     {
         Id = entity.RowKey,
@@ -890,6 +924,9 @@ public class AzureForumService : IForumService
             ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),
             AuthorRank = author?.Rank ?? UserRank.Novice,
             AuthorStaffRole = author?.StaffRole ?? StaffRole.None,
+            EditedAt = entity.EditedAt,
+            EditedById = string.IsNullOrEmpty(entity.EditedById) ? null : entity.EditedById,
+            EditedByName = string.IsNullOrEmpty(entity.EditedByName) ? null : entity.EditedByName,
         };
 
         if (!string.IsNullOrEmpty(entity.AuthorId))

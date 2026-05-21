@@ -304,6 +304,47 @@ public class ForumController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Edit a forum reply. Author can edit their own reply; moderator+ can edit any.
+    /// </summary>
+    [HttpPut("topics/{topicId}/replies/{replyId}")]
+    public async Task<IActionResult> UpdateReply(string topicId, string replyId, [FromBody] UpdateReplyRequestDto request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<ForumReplyDto>.ErrorResponse("VALIDATION_ERROR", "Validation failed"));
+
+        if (HtmlGuard.ContainsHtml(request.Content))
+            return BadRequest(ApiResponse<ForumReplyDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in reply content"));
+
+        var topic = await _forumService.GetTopicByIdAsync(topicId);
+        if (topic is null)
+            return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+        if (!await CallerMayAccessEventTopicContentAsync(topic))
+            return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
+        var replies = await _forumService.GetRepliesAsync(topicId);
+        var reply = replies.FirstOrDefault(r => r.Id == replyId);
+        if (reply is null)
+            return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Reply not found"));
+
+        var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var callerName = User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
+        var staffRole = User.FindFirst("staffRole")?.Value ?? "none";
+        var isAuthor = !string.IsNullOrEmpty(callerId) && callerId == reply.AuthorId;
+        var isModerator = EffectiveLevel.Parse(staffRole) >= EffectiveLevel.Moderator;
+
+        if (!isAuthor && !isModerator)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                ApiResponse<ForumReplyDto>.ErrorResponse(
+                    AuthorizationErrors.InsufficientRank, AuthorizationErrors.InsufficientRankMessage));
+
+        var updated = await _forumService.UpdateReplyAsync(topicId, replyId, request.Content, callerId!, callerName);
+        if (updated is null)
+            return NotFound(ApiResponse<ForumReplyDto>.ErrorResponse("NOT_FOUND", "Reply not found"));
+
+        return Ok(ApiResponse<ForumReplyDto>.SuccessResponse(updated));
+    }
+
     [HttpPut("topics/{topicId}")]
     public async Task<IActionResult> UpdateTopic(string topicId, [FromBody] UpdateTopicRequestDto request)
     {

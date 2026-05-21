@@ -241,6 +241,52 @@ public class ForumTests : IDisposable
         Assert.Equal(UserRank.Novice, user!.Rank);
         MockDataStore.UserActivity.Clear();
     }
+
+    // ── UpdateReply ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateReply_ChangesContentAndSetsEditedMetadata()
+    {
+        var service = CreateService();
+        var original = await service.CreateReplyAsync("t1", "u-author", "Author", "Original body text");
+
+        var updated = await service.UpdateReplyAsync(
+            "t1", original.Id, "Edited body text", "u-author", "Author");
+
+        Assert.NotNull(updated);
+        Assert.Equal("Edited body text", updated!.Content);
+        Assert.NotNull(updated.EditedAt);
+        Assert.Equal("u-author", updated.EditedById);
+        Assert.Equal("Author", updated.EditedByName);
+    }
+
+    [Fact]
+    public async Task UpdateReply_ByModerator_RecordsModeratorAsEditor()
+    {
+        var service = CreateService();
+        var original = await service.CreateReplyAsync("t1", "u-author", "Author", "Original body text");
+
+        var updated = await service.UpdateReplyAsync(
+            "t1", original.Id, "Mod edited this", "u-mod", "Modder");
+
+        Assert.NotNull(updated);
+        Assert.Equal("u-mod", updated!.EditedById);
+        Assert.Equal("Modder", updated.EditedByName);
+        // Author identity is unchanged — moderator's edit doesn't reassign authorship.
+        Assert.Equal("u-author", updated.AuthorId);
+        Assert.Equal("Author", updated.AuthorName);
+    }
+
+    [Fact]
+    public async Task UpdateReply_UnknownReply_ReturnsNull()
+    {
+        var service = CreateService();
+
+        var updated = await service.UpdateReplyAsync(
+            "t1", "does-not-exist", "anything", "u-author", "Author");
+
+        Assert.Null(updated);
+    }
 }
 
 [Collection("ForumTests")]

@@ -112,6 +112,20 @@ public class ForumReplyDto
 
     /// <summary>Total count of attended events that have a badge image (for +N overflow).</summary>
     public int AuthorEventBadgeTotalCount { get; set; }
+
+    /// <summary>When the reply was last edited (null if never edited).</summary>
+    public DateTime? EditedAt { get; set; }
+    /// <summary>User id of the editor (author, moderator, or admin).</summary>
+    public string? EditedById { get; set; }
+    /// <summary>Display name of the editor at the time of edit.</summary>
+    public string? EditedByName { get; set; }
+}
+
+public class UpdateReplyRequestDto
+{
+    [Required]
+    [StringLength(5000, MinimumLength = 1)]
+    public string Content { get; set; } = string.Empty;
 }
 
 public class CreateTopicRequestDto
