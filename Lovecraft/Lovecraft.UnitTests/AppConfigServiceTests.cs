@@ -54,6 +54,15 @@ public class MockAppConfigServiceTests
 
         Assert.False(config.Registration.RequireEventInvite);
     }
+
+    [Fact]
+    public async Task GetConfigAsync_DefaultFeedEnabledIsTrue()
+    {
+        var service = new MockAppConfigService();
+        var config = await service.GetConfigAsync();
+
+        Assert.True(config.Features.FeedEnabled);
+    }
 }
 
 public class AzureAppConfigServiceTests
@@ -168,5 +177,33 @@ public class AzureAppConfigServiceTests
         var config = await svc.GetConfigAsync();
 
         Assert.True(config.Registration.RequireEventInvite);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_FeedEnabledDefaultsToTrueWhenNoRow()
+    {
+        var (tsc, _) = BuildClientMocks(Array.Empty<AppConfigEntity>());
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.True(config.Features.FeedEnabled);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_FeedEnabledOverriddenToFalseFromTable()
+    {
+        var entities = new[]
+        {
+            Row(AppConfigEntity.PartitionFeatures, AppConfigKeys.FeatureKeys.FeedEnabled, "false"),
+        };
+        var (tsc, _) = BuildClientMocks(entities);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.False(config.Features.FeedEnabled);
     }
 }

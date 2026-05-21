@@ -50,6 +50,9 @@ public class AzureAppConfigService : IAppConfigService
         var registration = rows
             .Where(r => r.PartitionKey == AppConfigEntity.PartitionRegistration)
             .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
+        var features = rows
+            .Where(r => r.PartitionKey == AppConfigEntity.PartitionFeatures)
+            .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
 
         int I(string key, int fallback)
         {
@@ -77,6 +80,17 @@ public class AzureAppConfigService : IAppConfigService
             if (bool.TryParse(v, out var b)) return b;
             _logger.LogWarning(
                 "AppConfig registration {Key} has non-boolean value {Value}; falling back to {Fallback}",
+                key, v, fallback);
+            return fallback;
+        }
+
+        var featureDefaults = FeatureFlagsConfig.Defaults;
+        bool Feat(string key, bool fallback)
+        {
+            if (!features.TryGetValue(key, out var v)) return fallback;
+            if (bool.TryParse(v, out var b)) return b;
+            _logger.LogWarning(
+                "AppConfig feature {Key} has non-boolean value {Value}; falling back to {Fallback}",
                 key, v, fallback);
             return fallback;
         }
@@ -109,6 +123,8 @@ public class AzureAppConfigService : IAppConfigService
                 ManageStore: S(AppConfigKeys.PermissionKeys.ManageStore, p.ManageStore),
                 SendBroadcast: S(AppConfigKeys.PermissionKeys.SendBroadcast, p.SendBroadcast)),
             new RegistrationConfig(
-                RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)));
+                RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)),
+            new FeatureFlagsConfig(
+                FeedEnabled: Feat(AppConfigKeys.FeatureKeys.FeedEnabled, featureDefaults.FeedEnabled)));
     }
 }
