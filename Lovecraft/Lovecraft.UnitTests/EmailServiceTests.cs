@@ -2,6 +2,7 @@ using Xunit;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Auth;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -21,6 +22,33 @@ public class EmailServiceTests
     {
         var svc = new NullEmailService(NullLogger<NullEmailService>.Instance);
         await svc.SendPasswordResetEmailAsync("user@example.com", "Alice", "token-456");
+    }
+
+    [Fact]
+    public void AzureEmailService_ThrowsWhenConnectionStringMissing()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new AzureEmailService(config, NullLogger<AzureEmailService>.Instance));
+    }
+
+    [Fact]
+    public void AzureEmailService_ConstructsSuccessfullyWithConnectionString()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AZURE_COMMUNICATION_CONNECTION_STRING"] = "endpoint=https://test.communication.azure.com/;accesskey=dGVzdA==",
+                ["FROM_EMAIL"] = "test@example.com",
+                ["FRONTEND_BASE_URL"] = "https://example.com"
+            })
+            .Build();
+
+        var svc = new AzureEmailService(config, NullLogger<AzureEmailService>.Instance);
+        Assert.NotNull(svc);
     }
 }
 

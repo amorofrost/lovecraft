@@ -179,8 +179,11 @@ builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 
+var azureCommConnectionString = builder.Configuration["AZURE_COMMUNICATION_CONNECTION_STRING"];
 var sendGridKey = builder.Configuration["SENDGRID_API_KEY"];
-if (!string.IsNullOrEmpty(sendGridKey))
+if (!string.IsNullOrEmpty(azureCommConnectionString))
+    builder.Services.AddSingleton<IEmailService, AzureEmailService>();
+else if (!string.IsNullOrEmpty(sendGridKey))
     builder.Services.AddSingleton<IEmailService, SendGridEmailService>();
 else
     builder.Services.AddSingleton<IEmailService, NullEmailService>();
