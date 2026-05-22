@@ -192,6 +192,24 @@ public class TelegramMiniAppFlowTests
         });
         Assert.Null(res);
     }
+
+    [Fact]
+    public async Task MiniAppRegister_UsesAccountNameAsUserId()
+    {
+        var tg = NewTgInfo(950001);
+        var reg = await _authService.MiniAppRegisterAsync(new TelegramMiniAppRegisterRequestDto
+        {
+            InitData = Sign(tg),
+            AccountName = "miniMia55",
+            Name = "Mia",
+            Age = 23,
+            Location = "RU",
+            Gender = "female",
+        });
+        Assert.NotNull(reg);
+        Assert.Equal("minimia55", reg!.User.Id);
+        Assert.Equal("miniMia55", reg.User.AccountName);
+    }
 }
 
 /// <summary>Spin up a MockAuthService with an empty BotToken to exercise the 503-path.</summary>
