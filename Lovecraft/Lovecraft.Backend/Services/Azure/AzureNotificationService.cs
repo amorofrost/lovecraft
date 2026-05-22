@@ -138,6 +138,14 @@ public class AzureNotificationService : INotificationService
         return true;
     }
 
+    public async Task<bool> RemoveAsync(string userId, string notificationId)
+    {
+        var entity = await FindByIdAsync(userId, notificationId);
+        if (entity is null) return false;
+        await _notifications.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
+        return true;
+    }
+
     public async Task<List<NotificationDto>> RecentForDedupAsync(
         string userId, NotificationType type, string? actorId, string? sourceEventId, int withinSeconds)
     {

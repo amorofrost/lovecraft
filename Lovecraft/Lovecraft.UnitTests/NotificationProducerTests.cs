@@ -209,4 +209,94 @@ public class NotificationProducerTests
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<NotificationChannel>(),
             It.IsAny<NotificationFrequency>(), It.IsAny<DateTime>()), Times.Never);
     }
+
+    // ------ Conversation supersede (MessageReceived per chat, ForumReplyToThread per topic) ------
+
+    [Fact]
+    public async Task Second_message_in_same_chat_supersedes_first()
+    {
+        var (producer, notifs, _, _) = BuildProducer();
+
+        await producer.ProduceAsync("u-recipient", NotificationType.MessageReceived,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { chatId = "chat-1", preview = "hi" }), "msg-1");
+        await producer.ProduceAsync("u-recipient", NotificationType.MessageReceived,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { chatId = "chat-1", preview = "hello" }), "msg-2");
+
+        var list = await notifs.ListAsync("u-recipient", 10, null);
+        Assert.Single(list);
+        Assert.Contains("hello", list[0].PayloadJson);
+    }
+
+    [Fact]
+    public async Task Messages_in_different_chats_are_kept_separately()
+    {
+        var (producer, notifs, _, _) = BuildProducer();
+
+        await producer.ProduceAsync("u-recipient", NotificationType.MessageReceived,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { chatId = "chat-1", preview = "a" }), "msg-1");
+        await producer.ProduceAsync("u-recipient", NotificationType.MessageReceived,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { chatId = "chat-2", preview = "b" }), "msg-2");
+
+        var list = await notifs.ListAsync("u-recipient", 10, null);
+        Assert.Equal(2, list.Count);
+    }
+
+    [Fact]
+    public async Task Second_reply_in_same_topic_supersedes_first()
+    {
+        var (producer, notifs, _, _) = BuildProducer();
+
+        await producer.ProduceAsync("u-recipient", NotificationType.ForumReplyToThread,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { topicId = "topic-1", replyId = "r1" }), "r1");
+        await producer.ProduceAsync("u-recipient", NotificationType.ForumReplyToThread,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { topicId = "topic-1", replyId = "r2" }), "r2");
+
+        var list = await notifs.ListAsync("u-recipient", 10, null);
+        Assert.Single(list);
+        Assert.Contains("\"replyId\":\"r2\"", list[0].PayloadJson);
+    }
+
+    [Fact]
+    public async Task Replies_in_different_topics_are_kept_separately()
+    {
+        var (producer, notifs, _, _) = BuildProducer();
+
+        await producer.ProduceAsync("u-recipient", NotificationType.ForumReplyToThread,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { topicId = "topic-1", replyId = "r1" }), "r1");
+        await producer.ProduceAsync("u-recipient", NotificationType.ForumReplyToThread,
+            "actor", System.Text.Json.JsonSerializer.Serialize(new { topicId = "topic-2", replyId = "r2" }), "r2");
+
+        var list = await notifs.ListAsync("u-recipient", 10, null);
+        Assert.Equal(2, list.Count);
+    }
+
+    [Fact]
+    public async Task Likes_from_same_actor_are_NOT_superseded()
+    {
+        var (producer, notifs, _, _) = BuildProducer();
+
+        await producer.ProduceAsync("u-recipient", NotificationType.LikeReceived,
+            "actor", "{}", "like-1");
+        await producer.ProduceAsync("u-recipient", NotificationType.LikeReceived,
+            "actor", "{}", "like-2");
+
+        var list = await notifs.ListAsync("u-recipient", 10, null);
+        Assert.Equal(2, list.Count);
+    }
+
+    [Fact]
+    public async Task Third_message_in_same_chat_leaves_only_the_third()
+    {
+        var (producer, notifs, _, _) = BuildProducer();
+
+        for (var i = 1; i <= 3; i++)
+        {
+            await producer.ProduceAsync("u-recipient", NotificationType.MessageReceived,
+                "actor", System.Text.Json.JsonSerializer.Serialize(new { chatId = "chat-1", preview = $"msg{i}" }), $"msg-{i}");
+        }
+
+        var list = await notifs.ListAsync("u-recipient", 10, null);
+        Assert.Single(list);
+        Assert.Contains("msg3", list[0].PayloadJson);
+    }
 }

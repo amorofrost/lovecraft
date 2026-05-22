@@ -63,6 +63,13 @@ public class NotificationProducer : INotificationProducer
         // 5. Write canonical row (always, even if no channels — bell is the inbox)
         var dto = await _notifications.CreateAsync(recipientUserId, type, actorId, payloadJson, sourceEventId);
 
+        // 5b. Supersede older conversation-style notifications so the feed only
+        //     shows the latest message per chat / latest reply per forum topic.
+        //     Failures here are logged but never abort the produce — the new row
+        //     is already persisted at this point.
+        try { await SupersedeOlderAsync(recipientUserId, type, payloadJson, dto.Id); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to supersede older notifications for {Type} on {RecipientId}", type, recipientUserId); }
+
         // 6. Dispatch in-process channels or enqueue outbox for worker-dispatched channels
         var now = DateTime.UtcNow;
         foreach (var channel in channels)
@@ -115,6 +122,61 @@ public class NotificationProducer : INotificationProducer
             }
         }
         catch { /* malformed JSON — don't suppress */ }
+        return null;
+    }
+
+    /// <summary>
+    /// For conversation-style notification types (MessageReceived per chat,
+    /// ForumReplyToThread per topic), hard-deletes every prior notification
+    /// in the recipient's history that targets the same conversation. The
+    /// just-written notification is exempt (by id). Other notification types
+    /// are no-ops — likes, matches, broadcasts, events, etc. are NOT collapsed
+    /// since each represents a distinct discrete event.
+    /// </summary>
+    private async Task SupersedeOlderAsync(
+        string recipientUserId, NotificationType type, string payloadJson, string newNotificationId)
+    {
+        var key = ExtractConversationKey(type, payloadJson);
+        if (key is null) return;
+
+        // Most users have <50 active notifications; 200 gives generous headroom.
+        var existing = await _notifications.ListAsync(recipientUserId, limit: 200, cursor: null);
+        foreach (var n in existing)
+        {
+            if (n.Id == newNotificationId) continue;
+            if (n.Type != type) continue;
+            var otherKey = ExtractConversationKey(type, n.PayloadJson);
+            if (otherKey != key) continue;
+            try { await _notifications.RemoveAsync(recipientUserId, n.Id); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to remove superseded notification {Id}", n.Id); }
+        }
+    }
+
+    /// <summary>
+    /// Returns the conversation key (chatId for MessageReceived, topicId for
+    /// ForumReplyToThread) extracted from payload JSON; null for any other type
+    /// or when the expected field is missing/malformed.
+    /// </summary>
+    private static string? ExtractConversationKey(NotificationType type, string payloadJson)
+    {
+        var fieldName = type switch
+        {
+            NotificationType.MessageReceived    => "chatId",
+            NotificationType.ForumReplyToThread => "topicId",
+            _ => null,
+        };
+        if (fieldName is null) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (doc.RootElement.TryGetProperty(fieldName, out var prop)
+                && prop.ValueKind == JsonValueKind.String)
+            {
+                var value = prop.GetString();
+                return string.IsNullOrEmpty(value) ? null : value;
+            }
+        }
+        catch { /* malformed JSON — treat as no key */ }
         return null;
     }
 

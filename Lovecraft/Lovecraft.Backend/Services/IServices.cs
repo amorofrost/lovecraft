@@ -172,6 +172,14 @@ public interface INotificationService
     Task<bool> MarkReadAsync(string userId, string notificationId);
     Task<int> MarkAllReadAsync(string userId);
     Task<bool> DismissAsync(string userId, string notificationId);
+    /// <summary>
+    /// Hard-delete a notification row. Unlike <see cref="DismissAsync"/> the row is
+    /// physically removed from storage — used by the producer to supersede older
+    /// conversation-style notifications (MessageReceived per chat,
+    /// ForumReplyToThread per topic) so the feed only shows the latest one.
+    /// Returns true if a row was removed.
+    /// </summary>
+    Task<bool> RemoveAsync(string userId, string notificationId);
     /// <summary>Returns rows for this user created in the last `withinSeconds` that match the given (type, actor, sourceEventId).</summary>
     Task<List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> RecentForDedupAsync(
         string userId, Lovecraft.Common.Enums.NotificationType type, string? actorId, string? sourceEventId, int withinSeconds);

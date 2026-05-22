@@ -111,6 +111,19 @@ public class MockNotificationService : INotificationService
         }
     }
 
+    public Task<bool> RemoveAsync(string userId, string notificationId)
+    {
+        var list = MockDataStore.Notifications.GetOrAdd(userId, _ => new());
+        lock (list)
+        {
+            var n = list.FirstOrDefault(x => x.Id == notificationId);
+            if (n is null) return Task.FromResult(false);
+            list.Remove(n);
+            DedupKeys.TryRemove(notificationId, out _);
+            return Task.FromResult(true);
+        }
+    }
+
     public Task<List<NotificationDto>> RecentForDedupAsync(
         string userId, NotificationType type, string? actorId, string? sourceEventId, int withinSeconds)
     {
