@@ -55,6 +55,7 @@ public class TelegramPendingFlowTests
         var res = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
             Ticket = ticket,
+            AccountName = "tgAlice100001",
             Name = "Alice",
             Age = 25,
             Location = "Moscow",
@@ -89,6 +90,7 @@ public class TelegramPendingFlowTests
         var first = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
             Ticket = ticket,
+            AccountName = "tgAlice100002",
             Name = "Alice", Age = 25, Location = "Moscow", Gender = "female",
         });
         Assert.NotNull(first);
@@ -98,6 +100,7 @@ public class TelegramPendingFlowTests
         var second = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
             Ticket = ticket2,
+            AccountName = "tgAlice100002b",
             Name = "Alice2", Age = 25, Location = "Moscow", Gender = "female",
         });
         Assert.Null(second);
@@ -111,6 +114,7 @@ public class TelegramPendingFlowTests
         var reg = await _authService.RegisterAsync(new RegisterRequestDto
         {
             Email = email, Password = pw,
+            AccountName = "tgLinkBob30",
             Name = "Bob", Age = 30, Location = "Berlin", Gender = "male", Bio = string.Empty,
         });
         Assert.NotNull(reg);
@@ -161,7 +165,7 @@ public class TelegramPendingFlowTests
         var ticket1 = _jwt.GenerateTelegramPendingTicket(tg1);
         var reg = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
-            Ticket = ticket1, Name = "Carol", Age = 28, Location = "Paris", Gender = "female",
+            Ticket = ticket1, AccountName = "tgCarol300001", Name = "Carol", Age = 28, Location = "Paris", Gender = "female",
         });
         Assert.NotNull(reg);
 
@@ -180,7 +184,7 @@ public class TelegramPendingFlowTests
         var ticket = _jwt.GenerateTelegramPendingTicket(tg);
         var reg = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
-            Ticket = ticket, Name = "Dan", Age = 33, Location = "Oslo", Gender = "male",
+            Ticket = ticket, AccountName = "tgDan400001", Name = "Dan", Age = 33, Location = "Oslo", Gender = "male",
         });
         Assert.NotNull(reg);
         var userId = reg!.User.Id;
@@ -234,7 +238,7 @@ public class TelegramPendingFlowTests
         var ticket = _jwt.GenerateTelegramPendingTicket(tg);
         var reg = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
-            Ticket = ticket, Name = "Eve", Age = 22, Location = "Riga", Gender = "female",
+            Ticket = ticket, AccountName = "tgEve500001", Name = "Eve", Age = 22, Location = "Riga", Gender = "female",
         });
         Assert.NotNull(reg);
 
@@ -272,5 +276,22 @@ public class TelegramPendingFlowTests
         var validated = _jwt.ValidateTelegramPendingTicket(ticket);
         Assert.NotNull(validated);
         Assert.Equal(tg.Id, validated!.Id);
+    }
+
+    [Fact]
+    public async Task TelegramRegister_UsesAccountNameAsUserId()
+    {
+        var tg = NewTgInfo(99777);
+        var ticket = _jwt.GenerateTelegramPendingTicket(tg);
+        var res = await _authService.TelegramRegisterAsync(new TelegramRegisterRequestDto
+        {
+            Ticket = ticket,
+            AccountName = "tgAlice99",
+            Name = "Alice", Age = 22, Country = "RU", Gender = "female",
+        });
+        Assert.NotNull(res);
+        Assert.True(res!.User.EmailVerified);
+        Assert.Equal("tgalice99", res.User.Id);
+        Assert.Equal("tgAlice99", res.User.AccountName);
     }
 }

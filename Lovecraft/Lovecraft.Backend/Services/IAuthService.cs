@@ -56,6 +56,9 @@ public interface IAuthService
     Task<List<AuthMethodDto>> GetAuthMethodsAsync(string userId);
     Task RevokeRefreshTokenAsync(string refreshToken);
     Task RevokeAllUserTokensAsync(string userId);
+
+    /// <summary>Returns availability of a chosen account name. See AccountNameAvailabilityDto for reason codes.</summary>
+    Task<AccountNameAvailabilityDto> CheckAccountNameAvailabilityAsync(string name);
 }
 
 public enum AttachEmailResult

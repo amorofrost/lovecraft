@@ -3,6 +3,7 @@ using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.MockData;
 using Microsoft.Extensions.Options;
 
@@ -96,11 +97,21 @@ public class MockAuthService : IAuthService
             return null;
         }
 
-        // Create new user
-        var userId = Guid.NewGuid().ToString();
+        // Validate account name first.
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+        if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            throw new AccountNameTakenException();
+
         var user = new MockUser
         {
             Id = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = request.Email,
             Name = request.Name,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
@@ -157,6 +168,7 @@ public class MockAuthService : IAuthService
                 EmailVerified = false,
                 AuthMethods = user.AuthMethods,
                 ProfileImage = user.ProfileImage,
+                AccountName = user.AccountNameDisplay,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15)
         };
@@ -218,6 +230,16 @@ public class MockAuthService : IAuthService
             return null;
         }
 
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+        if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            throw new AccountNameTakenException();
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
         var syntheticEmail = $"telegram_{tgInfo.Id}{TelegramSyntheticEmailDomain}";
@@ -227,8 +249,6 @@ public class MockAuthService : IAuthService
             syntheticEmail = $"telegram_{tgInfo.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
             key = syntheticEmail.ToLowerInvariant();
         }
-
-        var userId = Guid.NewGuid().ToString();
         var displayName = string.IsNullOrWhiteSpace(request.Name)
             ? (string.IsNullOrWhiteSpace(tgInfo.LastName)
                 ? tgInfo.FirstName.Trim()
@@ -238,6 +258,7 @@ public class MockAuthService : IAuthService
         var user = new MockUser
         {
             Id = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = syntheticEmail,
             Name = displayName,
             PasswordHash = _passwordHasher.HashPassword(Guid.NewGuid().ToString("N")),
@@ -338,6 +359,7 @@ public class MockAuthService : IAuthService
         return await TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
             Ticket = ticket,
+            AccountName = request.AccountName,
             Name = request.Name,
             Age = request.Age,
             Location = request.Location,
@@ -441,9 +463,18 @@ public class MockAuthService : IAuthService
         var emailKey = gInfo.Email.ToLower();
         if (_users.ContainsKey(emailKey)) return null;
 
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+        if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            throw new AccountNameTakenException();
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
-        var userId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
         var displayName = string.IsNullOrWhiteSpace(request.Name) ? gInfo.Name.Trim() : request.Name.Trim();
         if (string.IsNullOrEmpty(displayName)) displayName = gInfo.Email;
@@ -451,6 +482,7 @@ public class MockAuthService : IAuthService
         var user = new MockUser
         {
             Id = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = gInfo.Email,
             Name = displayName,
             PasswordHash = _passwordHasher.HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
@@ -578,6 +610,7 @@ public class MockAuthService : IAuthService
                 EmailVerified = user.EmailVerified,
                 AuthMethods = user.AuthMethods,
                 ProfileImage = user.ProfileImage,
+                AccountName = user.AccountNameDisplay,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15),
         };
@@ -594,6 +627,21 @@ public class MockAuthService : IAuthService
         }
         if (cfg.Registration.RequireEventInvite) throw new InviteRequiredException();
         return null;
+    }
+
+    public Task<AccountNameAvailabilityDto> CheckAccountNameAvailabilityAsync(string name)
+    {
+        var validation = AccountNameValidator.Validate(name);
+        if (validation == AccountNameValidationResult.InvalidFormat)
+            return Task.FromResult(new AccountNameAvailabilityDto { Available = false, Reason = "invalidFormat" });
+        if (validation == AccountNameValidationResult.Reserved)
+            return Task.FromResult(new AccountNameAvailabilityDto { Available = false, Reason = "reserved" });
+
+        var canonical = AccountNameValidator.Normalize(name);
+        var taken = _users.Values.Any(u => string.Equals(u.Id, canonical, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(taken
+            ? new AccountNameAvailabilityDto { Available = false, Reason = "taken" }
+            : new AccountNameAvailabilityDto { Available = true });
     }
 
     public async Task<AuthResponseDto?> LoginAsync(LoginRequestDto request)
@@ -901,6 +949,7 @@ public class MockAuthService : IAuthService
     private class MockUser
     {
         public string Id { get; set; } = string.Empty;
+        public string AccountNameDisplay { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;

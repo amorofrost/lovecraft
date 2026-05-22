@@ -6,6 +6,7 @@ using Lovecraft.Common.Models;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Metrics;
+using Lovecraft.Backend.Helpers;
 using System.Security.Claims;
 using Microsoft.Extensions.Options;
 
@@ -128,6 +129,14 @@ public class AuthController : ControllerBase
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
+        catch (InvalidAccountNameException ex)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_ACCOUNT_NAME", $"Invalid account name: {ex.Reason}"));
+        }
+        catch (AccountNameTakenException)
+        {
+            return Conflict(ApiResponse<AuthResponseDto>.ErrorResponse("ACCOUNT_NAME_TAKEN", "Account name is already taken."));
+        }
         catch (InvalidInviteCodeException)
         {
             return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_INVITE_CODE", "Invalid invite code"));
@@ -204,6 +213,14 @@ public class AuthController : ControllerBase
             try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram_widget"); }
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (InvalidAccountNameException ex)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_ACCOUNT_NAME", $"Invalid account name: {ex.Reason}"));
+        }
+        catch (AccountNameTakenException)
+        {
+            return Conflict(ApiResponse<AuthResponseDto>.ErrorResponse("ACCOUNT_NAME_TAKEN", "Account name is already taken."));
         }
         catch (InvalidInviteCodeException)
         {
@@ -348,6 +365,14 @@ public class AuthController : ControllerBase
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
+        catch (InvalidAccountNameException ex)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_ACCOUNT_NAME", $"Invalid account name: {ex.Reason}"));
+        }
+        catch (AccountNameTakenException)
+        {
+            return Conflict(ApiResponse<AuthResponseDto>.ErrorResponse("ACCOUNT_NAME_TAKEN", "Account name is already taken."));
+        }
         catch (InvalidInviteCodeException)
         {
             return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_INVITE_CODE", "Invalid invite code"));
@@ -462,6 +487,14 @@ public class AuthController : ControllerBase
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
+        catch (InvalidAccountNameException ex)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_ACCOUNT_NAME", $"Invalid account name: {ex.Reason}"));
+        }
+        catch (AccountNameTakenException)
+        {
+            return Conflict(ApiResponse<AuthResponseDto>.ErrorResponse("ACCOUNT_NAME_TAKEN", "Account name is already taken."));
+        }
         catch (InvalidInviteCodeException)
         {
             return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse(
@@ -493,6 +526,18 @@ public class AuthController : ControllerBase
         var cfg = await _appConfig.GetConfigAsync();
         return Ok(ApiResponse<RegistrationConfigDto>.SuccessResponse(
             new RegistrationConfigDto(cfg.Registration.RequireEventInvite)));
+    }
+
+    /// <summary>
+    /// Check whether an account name is available for registration.
+    /// </summary>
+    [HttpGet("account-name-availability")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AccountNameAvailabilityDto>>> CheckAccountNameAvailability([FromQuery] string name)
+    {
+        var result = await _authService.CheckAccountNameAvailabilityAsync(name ?? string.Empty);
+        return Ok(ApiResponse<AccountNameAvailabilityDto>.SuccessResponse(result));
     }
 
     /// <summary>

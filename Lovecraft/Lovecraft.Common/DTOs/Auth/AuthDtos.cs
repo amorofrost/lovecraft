@@ -12,6 +12,7 @@ public class LoginRequestDto
 public class RegisterRequestDto
 {
     public string Email { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int? Age { get; set; }
@@ -43,6 +44,7 @@ public class UserInfo
     public bool EmailVerified { get; set; }
     public List<string> AuthMethods { get; set; } = new();
     public string ProfileImage { get; set; } = string.Empty;
+    public string? AccountName { get; set; }
 }
 
 public class RefreshTokenRequestDto
@@ -130,6 +132,7 @@ public class TelegramLoginResultDto
 public class TelegramRegisterRequestDto
 {
     public string Ticket { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
     public string Location { get; set; } = string.Empty;
@@ -196,6 +199,7 @@ public class TelegramMiniAppLoginResultDto
 public class TelegramMiniAppRegisterRequestDto
 {
     public string InitData { get; set; } = string.Empty;
+    public string AccountName { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
     public string Location { get; set; } = string.Empty;
@@ -262,6 +266,7 @@ public class GoogleLoginResultDto
 public class GoogleRegisterRequestDto
 {
     [Required] public string Ticket { get; set; } = string.Empty;
+    [Required] public string AccountName { get; set; } = string.Empty;
     [Required, MinLength(1), MaxLength(100)] public string Name { get; set; } = string.Empty;
     [Range(18, 99)] public int Age { get; set; }
     [Required, MinLength(1), MaxLength(200)] public string Location { get; set; } = string.Empty;
@@ -279,4 +284,12 @@ public class AuthMethodDto
     public string Provider { get; set; } = string.Empty;
     public DateTime LinkedAt { get; set; }
     public DateTime LastUsedAt { get; set; }
+}
+
+/// <summary>Result of <c>GET /auth/account-name-availability</c>.</summary>
+public class AccountNameAvailabilityDto
+{
+    public bool Available { get; set; }
+    /// <summary>One of "invalidFormat" | "reserved" | "taken"; null when Available.</summary>
+    public string? Reason { get; set; }
 }

@@ -12,6 +12,8 @@ public class UserEntity : ITableEntity
     public ETag ETag { get; set; }
 
     public string Email { get; set; } = string.Empty;
+    /// <summary>Original-case account name as typed at registration. Empty for legacy GUID-userId rows.</summary>
+    public string AccountNameDisplay { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
