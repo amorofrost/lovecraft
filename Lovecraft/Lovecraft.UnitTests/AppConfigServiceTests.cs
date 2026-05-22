@@ -63,6 +63,20 @@ public class MockAppConfigServiceTests
 
         Assert.True(config.Features.FeedEnabled);
     }
+
+    [Fact]
+    public async Task MockAppConfigService_SetMetricsConfig_AffectsBothGetters()
+    {
+        var svc = new MockAppConfigService();
+        var custom = new MetricsConfig(false, true, false, true, 12, 30, 7);
+        svc.SetMetricsConfig(custom);
+
+        var direct = await svc.GetMetricsConfigAsync();
+        var composite = (await svc.GetConfigAsync()).Metrics;
+
+        Assert.Equal(custom, direct);
+        Assert.Equal(custom, composite);
+    }
 }
 
 public class AzureAppConfigServiceTests
@@ -205,5 +219,39 @@ public class AzureAppConfigServiceTests
         var config = await svc.GetConfigAsync();
 
         Assert.False(config.Features.FeedEnabled);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_MetricsDefaultsWhenNoRows()
+    {
+        var (tsc, _) = BuildClientMocks(Array.Empty<AppConfigEntity>());
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.Equal(MetricsConfig.Defaults, config.Metrics);
+    }
+
+    [Fact]
+    public async Task GetConfigAsync_MetricsFrontendPerfOverriddenToFalseFromTable()
+    {
+        var entities = new[]
+        {
+            Row(AppConfigEntity.PartitionMetrics, AppConfigKeys.MetricsKeys.FrontendPerf, "false"),
+        };
+        var (tsc, _) = BuildClientMocks(entities);
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var svc = new AzureAppConfigService(tsc.Object, cache, NullLogger<AzureAppConfigService>.Instance);
+
+        var config = await svc.GetConfigAsync();
+
+        Assert.False(config.Metrics.FrontendPerf);
+        Assert.True(config.Metrics.RequestTiming);   // not overridden → default
+        Assert.True(config.Metrics.BiEvents);         // not overridden → default
+        Assert.True(config.Metrics.ContainerStats);   // not overridden → default
+        Assert.Equal(MetricsConfig.Defaults.RetentionMinuteHours, config.Metrics.RetentionMinuteHours);
+        Assert.Equal(MetricsConfig.Defaults.RetentionHourDays, config.Metrics.RetentionHourDays);
+        Assert.Equal(MetricsConfig.Defaults.RetentionDauDays, config.Metrics.RetentionDauDays);
     }
 }
