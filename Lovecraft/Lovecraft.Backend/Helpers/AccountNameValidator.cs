@@ -9,6 +9,10 @@ public enum AccountNameValidationResult
     Reserved,
 }
 
+/// <summary>
+/// Validates and normalizes user-chosen account names (logins). Telegram-style format:
+/// 5–32 chars, starts with a letter, [A-Za-z0-9_]. Rejects a fixed reserved-name list.
+/// </summary>
 public static class AccountNameValidator
 {
     private static readonly Regex Pattern = new(
@@ -23,14 +27,18 @@ public static class AccountNameValidator
         "official", "mod", "moderator", "staff", "undefined", "null", "anonymous", "bot",
     };
 
+    /// <summary>Returns Ok / InvalidFormat / Reserved for the given raw input (trimmed).</summary>
     public static AccountNameValidationResult Validate(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return AccountNameValidationResult.InvalidFormat;
         var trimmed = raw.Trim();
         if (!Pattern.IsMatch(trimmed)) return AccountNameValidationResult.InvalidFormat;
+        // Reserved HashSet uses OrdinalIgnoreCase, so casing is folded here.
         if (Reserved.Contains(trimmed)) return AccountNameValidationResult.Reserved;
         return AccountNameValidationResult.Ok;
     }
 
-    public static string Normalize(string raw) => raw.Trim().ToLowerInvariant();
+    /// <summary>Returns the canonical (trimmed + lowercased) form. Empty input → empty string.</summary>
+    public static string Normalize(string? raw) =>
+        string.IsNullOrEmpty(raw) ? string.Empty : raw.Trim().ToLowerInvariant();
 }

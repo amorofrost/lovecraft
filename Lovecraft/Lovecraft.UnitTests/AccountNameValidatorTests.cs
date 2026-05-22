@@ -28,6 +28,7 @@ public class AccountNameValidatorTests
     [InlineData("alice doe")]         // space
     [InlineData("alice@doe")]         // @
     [InlineData("abcdefghijklmnopqrstuvwxyz0123456")] // 33 chars
+    [InlineData(null)]
     public void Validate_RejectsInvalidFormat(string name)
     {
         Assert.Equal(AccountNameValidationResult.InvalidFormat, AccountNameValidator.Validate(name));
@@ -53,5 +54,19 @@ public class AccountNameValidatorTests
     public void Normalize_LowercasesAndTrims(string input, string expected)
     {
         Assert.Equal(expected, AccountNameValidator.Normalize(input));
+    }
+
+    [Theory]
+    [InlineData("  alice  ")]
+    [InlineData("\talice99\n")]
+    public void Validate_TrimsWhitespaceBeforeChecking(string name)
+    {
+        Assert.Equal(AccountNameValidationResult.Ok, AccountNameValidator.Validate(name));
+    }
+
+    [Fact]
+    public void Normalize_HandlesNull()
+    {
+        Assert.Equal(string.Empty, AccountNameValidator.Normalize(null));
     }
 }
