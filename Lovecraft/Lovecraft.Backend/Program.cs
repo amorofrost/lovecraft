@@ -2,6 +2,7 @@ using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Services.Caching;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Auth;
@@ -320,6 +321,9 @@ builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
 builder.Services.AddSingleton(sp => new Lazy<INotificationProducer>(
     () => sp.GetRequiredService<INotificationProducer>()));
 builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver>();
+
+// BI metrics — Task 15 will swap MockMetricsCollector for AzureMetricsCollector in Azure mode
+builder.Services.AddSingleton<IMetricsCollector, MockMetricsCollector>();
 
 var app = builder.Build();
 

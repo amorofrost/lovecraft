@@ -5,6 +5,7 @@ using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Metrics;
 using System.Security.Claims;
 using Microsoft.Extensions.Options;
 
@@ -19,19 +20,22 @@ public class AuthController : ControllerBase
     private readonly IAppConfigService _appConfig;
     private readonly TelegramAuthOptions _telegramAuth;
     private readonly GoogleAuthOptions _googleAuth;
+    private readonly IMetricsCollector _metrics;
 
     public AuthController(
         IAuthService authService,
         ILogger<AuthController> logger,
         IAppConfigService appConfig,
         IOptions<TelegramAuthOptions> telegramAuth,
-        IOptions<GoogleAuthOptions> googleAuth)
+        IOptions<GoogleAuthOptions> googleAuth,
+        IMetricsCollector metrics)
     {
         _authService = authService;
         _logger = logger;
         _appConfig = appConfig;
         _telegramAuth = telegramAuth.Value;
         _googleAuth = googleAuth.Value;
+        _metrics = metrics;
     }
 
     /// <summary>Public config for the Telegram Login Widget (bot username). No secrets.</summary>
@@ -88,7 +92,11 @@ public class AuthController : ControllerBase
             }
 
             if (result.Status == "signedIn" && result.Auth is not null)
+            {
                 SetRefreshTokenCookie(result.Auth.RefreshToken);
+                try { _metrics.RecordCount("bi_events", "bi|user_login|google"); }
+                catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
+            }
 
             return Ok(ApiResponse<GoogleLoginResultDto>.SuccessResponse(result));
         }
@@ -116,6 +124,8 @@ public class AuthController : ControllerBase
                     "Google sign-up failed. The pending ticket may have expired, or the email is already in use."));
             }
             SetRefreshTokenCookie(result.RefreshToken);
+            try { _metrics.RecordCount("bi_events", "bi|user_registered|google"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
         catch (InvalidInviteCodeException)
@@ -157,7 +167,11 @@ public class AuthController : ControllerBase
             }
 
             if (result.Status == "signedIn" && result.Auth is not null)
+            {
                 SetRefreshTokenCookie(result.Auth.RefreshToken);
+                try { _metrics.RecordCount("bi_events", "bi|user_login|telegram"); }
+                catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
+            }
 
             return Ok(ApiResponse<TelegramLoginResultDto>.SuccessResponse(result));
         }
@@ -187,6 +201,8 @@ public class AuthController : ControllerBase
             }
 
             SetRefreshTokenCookie(result.RefreshToken);
+            try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
         catch (InvalidInviteCodeException)
@@ -289,7 +305,11 @@ public class AuthController : ControllerBase
             }
 
             if (result.Status == "signedIn" && result.Auth is not null)
+            {
                 SetRefreshTokenCookie(result.Auth.RefreshToken);
+                try { _metrics.RecordCount("bi_events", "bi|user_login|telegram"); }
+                catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
+            }
 
             return Ok(ApiResponse<TelegramMiniAppLoginResultDto>.SuccessResponse(result));
         }
@@ -324,6 +344,8 @@ public class AuthController : ControllerBase
             }
 
             SetRefreshTokenCookie(result.RefreshToken);
+            try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
         catch (InvalidInviteCodeException)
@@ -436,6 +458,8 @@ public class AuthController : ControllerBase
                     "Email or username already exists"));
             }
 
+            try { _metrics.RecordCount("bi_events", "bi|user_registered|local"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
         catch (InvalidInviteCodeException)
@@ -492,6 +516,8 @@ public class AuthController : ControllerBase
 
             // Set refresh token as HttpOnly cookie
             SetRefreshTokenCookie(result.RefreshToken);
+            try { _metrics.RecordCount("bi_events", "bi|user_login|local"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
 
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
