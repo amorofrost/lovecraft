@@ -463,9 +463,18 @@ public class MockAuthService : IAuthService
         var emailKey = gInfo.Email.ToLower();
         if (_users.ContainsKey(emailKey)) return null;
 
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+        if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            throw new AccountNameTakenException();
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
-        var userId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
         var displayName = string.IsNullOrWhiteSpace(request.Name) ? gInfo.Name.Trim() : request.Name.Trim();
         if (string.IsNullOrEmpty(displayName)) displayName = gInfo.Email;
@@ -473,6 +482,7 @@ public class MockAuthService : IAuthService
         var user = new MockUser
         {
             Id = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = gInfo.Email,
             Name = displayName,
             PasswordHash = _passwordHasher.HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),

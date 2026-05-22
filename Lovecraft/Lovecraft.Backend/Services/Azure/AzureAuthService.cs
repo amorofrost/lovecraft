@@ -792,9 +792,16 @@ public class AzureAuthService : IAuthService
         }
         catch (RequestFailedException ex) when (ex.Status == 404) { }
 
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
-        var userId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
         var displayName = string.IsNullOrWhiteSpace(request.Name) ? gInfo.Name.Trim() : request.Name.Trim();
         if (string.IsNullOrEmpty(displayName)) displayName = gInfo.Email;
@@ -805,6 +812,7 @@ public class AzureAuthService : IAuthService
         {
             PartitionKey = UserEntity.GetPartitionKey(userId),
             RowKey = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = gInfo.Email.Trim(),
             PasswordHash = _passwordHasher.HashPassword(Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
             Name = displayName,
@@ -854,11 +862,18 @@ public class AzureAuthService : IAuthService
 
         try
         {
-            // AddEntityAsync (not Upsert) on the email index so a concurrent registration
-            // with the same email fails with 409 rather than silently overwriting.
-            await Task.WhenAll(
-                _usersTable.UpsertEntityAsync(userEntity),
-                _emailIndexTable.AddEntityAsync(emailIndexEntity));
+            await _usersTable.AddEntityAsync(userEntity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            _logger.LogWarning("Google register: account name {AccountName} already taken", request.AccountName);
+            try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* ignore */ }
+            throw new AccountNameTakenException();
+        }
+
+        try
+        {
+            await _emailIndexTable.AddEntityAsync(emailIndexEntity);
 
             if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
                 await _events.RegisterForEventAsync(userId, sourceEventId);
@@ -868,7 +883,6 @@ public class AzureAuthService : IAuthService
         }
         catch (RequestFailedException ex) when (ex.Status == 409)
         {
-            // Another registration claimed the email between our read-check and write.
             _logger.LogWarning("Google register: email index conflict for {Email}", emailLower);
             _userCache.Remove(userId);
             try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* */ }
@@ -877,7 +891,7 @@ public class AzureAuthService : IAuthService
         }
         catch (Exception signupEx)
         {
-            _logger.LogError(signupEx, "Google register failed after index write for sub {Sub}", gInfo.Sub);
+            _logger.LogError(signupEx, "Google register failed after users write for sub {Sub}", gInfo.Sub);
             _userCache.Remove(userId);
             try { await _googleIndexTable.DeleteEntityAsync(gInfo.Sub, "INDEX"); } catch { /* */ }
             try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* */ }

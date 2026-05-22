@@ -129,6 +129,14 @@ public class AuthController : ControllerBase
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
+        catch (InvalidAccountNameException ex)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_ACCOUNT_NAME", $"Invalid account name: {ex.Reason}"));
+        }
+        catch (AccountNameTakenException)
+        {
+            return Conflict(ApiResponse<AuthResponseDto>.ErrorResponse("ACCOUNT_NAME_TAKEN", "Account name is already taken."));
+        }
         catch (InvalidInviteCodeException)
         {
             return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_INVITE_CODE", "Invalid invite code"));
