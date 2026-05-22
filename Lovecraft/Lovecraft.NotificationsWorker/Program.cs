@@ -8,6 +8,7 @@ using Lovecraft.NotificationsWorker.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
 using Telegram.Bot;
 
 // Explicit class avoids an implicit public `Program` type that conflicts with
@@ -18,7 +19,13 @@ internal sealed class NotificationsWorkerEntryPoint
     {
         var builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddLogging(b => b.AddSimpleConsole(o => { o.TimestampFormat = "yyyy-MM-dd HH:mm:ss "; o.IncludeScopes = false; }));
+        builder.Services.AddSerilog((services, cfg) => cfg
+            .ReadFrom.Configuration(builder.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("service", "notifications-worker")
+            .Enrich.WithProperty("version", typeof(NotificationsWorkerEntryPoint).Assembly.GetName().Version?.ToString() ?? "0.0.0")
+            .WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter()));
 
         var connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))

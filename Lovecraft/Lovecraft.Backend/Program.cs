@@ -1,3 +1,4 @@
+using Serilog;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
@@ -21,6 +22,14 @@ using Lovecraft.Common.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 Lovecraft.Backend.Helpers.AppRuntime.AppStartedAtUtc = DateTime.UtcNow;
+
+builder.Host.UseSerilog((ctx, services, cfg) => cfg
+    .ReadFrom.Configuration(ctx.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("service", "backend")
+    .Enrich.WithProperty("version", typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0")
+    .WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter()));
 
 // Table prefix — must be set before any Azure service is constructed
 Lovecraft.Backend.Storage.TableNames.Prefix =
@@ -424,6 +433,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseForwardedHeaders();
+app.UseSerilogRequestLogging();
 app.UseRateLimiter();
 app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
