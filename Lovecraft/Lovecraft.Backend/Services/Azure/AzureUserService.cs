@@ -101,6 +101,27 @@ public class AzureUserService : IUserService
         }
     }
 
+    public async Task<UserDto?> GetUserByAccountNameAsync(string accountName)
+    {
+        if (AccountNameValidator.Validate(accountName) == AccountNameValidationResult.InvalidFormat)
+            return null;
+        var canonical = AccountNameValidator.Normalize(accountName);
+        var partitionKey = UserEntity.GetPartitionKey(canonical);
+        try
+        {
+            var config = await _appConfig.GetConfigAsync();
+            var resp = await _usersTable.GetEntityAsync<UserEntity>(partitionKey, canonical);
+            var entity = resp.Value;
+            // Legacy GUID-userId rows never have AccountNameDisplay set; refuse to leak them via this endpoint.
+            if (string.IsNullOrEmpty(entity.AccountNameDisplay)) return null;
+            return ToDto(entity, config.Ranks);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
     public async Task<UserDto> UpdateUserAsync(string userId, UserDto dto)
     {
         try

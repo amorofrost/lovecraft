@@ -30,6 +30,12 @@ public interface IUserService
     Task<(bool TelegramLinked, bool EmailVerified)> GetNotificationContactStatusAsync(string userId);
     /// <summary>Resolves a Telegram user id (string) to the app user id. Returns null if no user is linked.</summary>
     Task<string?> GetUserIdByTelegramIdAsync(string telegramUserId);
+
+    /// <summary>
+    /// Find a user by account name (case-insensitive). Returns null if the name is invalid,
+    /// no user has that name, or the matched row is a legacy GUID-userId row (i.e. AccountNameDisplay is empty).
+    /// </summary>
+    Task<UserDto?> GetUserByAccountNameAsync(string accountName);
 }
 
 public interface IEventService

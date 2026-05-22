@@ -62,6 +62,19 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Get user by account name (e.g. /users/by-account-name/alice99).
+    /// Returns 404 for unknown names and for legacy GUID-userId rows.
+    /// </summary>
+    [HttpGet("by-account-name/{name}")]
+    public async Task<IActionResult> GetByAccountName(string name)
+    {
+        var user = await _userService.GetUserByAccountNameAsync(name);
+        if (user is null)
+            return NotFound(ApiResponse<UserDto>.ErrorResponse("USER_NOT_FOUND", "User not found."));
+        return Ok(ApiResponse<UserDto>.SuccessResponse(user));
+    }
+
+    /// <summary>
     /// Get user by ID
     /// </summary>
     [HttpGet("{id}")]

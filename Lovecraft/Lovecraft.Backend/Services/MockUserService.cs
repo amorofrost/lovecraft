@@ -208,6 +208,22 @@ public class MockUserService : IUserService
         return Task.FromResult(userId);
     }
 
+    public async Task<UserDto?> GetUserByAccountNameAsync(string accountName)
+    {
+        if (AccountNameValidator.Validate(accountName) == AccountNameValidationResult.InvalidFormat)
+            return null;
+        var canonical = AccountNameValidator.Normalize(accountName);
+        // In mock mode, new-style users have userId == canonical account name (set at register time).
+        // Legacy seeded users ("1", "2", "3", "4") have numeric IDs that fail AccountNameValidator,
+        // so we use the same validator check to guard against leaking them via this endpoint.
+        var match = MockDataStore.Users.FirstOrDefault(u =>
+            string.Equals(u.Id, canonical, StringComparison.OrdinalIgnoreCase)
+            && AccountNameValidator.Validate(u.Id) == AccountNameValidationResult.Ok);
+        if (match is null) return null;
+        var config = await _appConfig.GetConfigAsync();
+        return AugmentWithRank(match, config.Ranks);
+    }
+
     private UserDto AugmentWithRank(UserDto dto, RankThresholds t)
     {
         var activity = MockDataStore.UserActivity.TryGetValue(dto.Id, out var a)
