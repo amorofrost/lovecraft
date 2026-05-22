@@ -320,6 +320,14 @@ public class AzureAuthService : IAuthService
             // good, not linked — continue
         }
 
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
         var syntheticEmail = $"telegram_{tgInfo.Id}{TelegramSyntheticEmailDomain}";
@@ -335,8 +343,6 @@ public class AzureAuthService : IAuthService
         {
             // canonical free
         }
-
-        var userId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
         var displayName = string.IsNullOrWhiteSpace(request.Name)
             ? (string.IsNullOrWhiteSpace(tgInfo.LastName)
@@ -350,6 +356,7 @@ public class AzureAuthService : IAuthService
         {
             PartitionKey = UserEntity.GetPartitionKey(userId),
             RowKey = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = syntheticEmail,
             PasswordHash = _passwordHasher.HashPassword(
                 Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
@@ -402,9 +409,18 @@ public class AzureAuthService : IAuthService
 
         try
         {
-            await Task.WhenAll(
-                _usersTable.UpsertEntityAsync(userEntity),
-                _emailIndexTable.UpsertEntityAsync(emailIndexEntity));
+            await _usersTable.AddEntityAsync(userEntity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            // Roll back the tg index we just claimed.
+            try { await _telegramIndexTable.DeleteEntityAsync(tgKey, "INDEX"); } catch { /* ignore */ }
+            throw new AccountNameTakenException();
+        }
+
+        try
+        {
+            await _emailIndexTable.AddEntityAsync(emailIndexEntity);
             _userCache.Set(userEntity);
 
             if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
@@ -415,7 +431,7 @@ public class AzureAuthService : IAuthService
         }
         catch (Exception signupEx)
         {
-            _logger.LogError(signupEx, "Telegram register failed after tg index write for tg {TgId}", tgKey);
+            _logger.LogError(signupEx, "Telegram register failed after users write for tg {TgId}", tgKey);
             _userCache.Remove(userId);
             try { await _telegramIndexTable.DeleteEntityAsync(tgKey, "INDEX"); } catch { /* ignore */ }
             try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* ignore */ }
@@ -563,6 +579,7 @@ public class AzureAuthService : IAuthService
         return await TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
             Ticket = ticket,
+            AccountName = request.AccountName,
             Name = request.Name,
             Age = request.Age,
             Location = request.Location,
@@ -1013,6 +1030,7 @@ public class AzureAuthService : IAuthService
                 EmailVerified = userEntity.EmailVerified,
                 AuthMethods = authMethods,
                 ProfileImage = userEntity.ProfileImage,
+                AccountName = userEntity.AccountNameDisplay,
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };

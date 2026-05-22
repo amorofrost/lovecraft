@@ -124,6 +124,7 @@ public class TelegramMiniAppFlowTests
         var reg = await _authService.MiniAppRegisterAsync(new TelegramMiniAppRegisterRequestDto
         {
             InitData = Sign(tg),
+            AccountName = "tgMia920001",
             Name = "Mia",
             Age = 27,
             Location = "Lisbon",

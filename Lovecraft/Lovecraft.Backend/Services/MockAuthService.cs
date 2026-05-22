@@ -230,6 +230,16 @@ public class MockAuthService : IAuthService
             return null;
         }
 
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+        if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            throw new AccountNameTakenException();
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
         var syntheticEmail = $"telegram_{tgInfo.Id}{TelegramSyntheticEmailDomain}";
@@ -239,8 +249,6 @@ public class MockAuthService : IAuthService
             syntheticEmail = $"telegram_{tgInfo.Id}_{Guid.NewGuid():N}{TelegramSyntheticEmailDomain}";
             key = syntheticEmail.ToLowerInvariant();
         }
-
-        var userId = Guid.NewGuid().ToString();
         var displayName = string.IsNullOrWhiteSpace(request.Name)
             ? (string.IsNullOrWhiteSpace(tgInfo.LastName)
                 ? tgInfo.FirstName.Trim()
@@ -250,6 +258,7 @@ public class MockAuthService : IAuthService
         var user = new MockUser
         {
             Id = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = syntheticEmail,
             Name = displayName,
             PasswordHash = _passwordHasher.HashPassword(Guid.NewGuid().ToString("N")),
@@ -350,6 +359,7 @@ public class MockAuthService : IAuthService
         return await TelegramRegisterAsync(new TelegramRegisterRequestDto
         {
             Ticket = ticket,
+            AccountName = request.AccountName,
             Name = request.Name,
             Age = request.Age,
             Location = request.Location,
@@ -590,6 +600,7 @@ public class MockAuthService : IAuthService
                 EmailVerified = user.EmailVerified,
                 AuthMethods = user.AuthMethods,
                 ProfileImage = user.ProfileImage,
+                AccountName = user.AccountNameDisplay,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15),
         };
