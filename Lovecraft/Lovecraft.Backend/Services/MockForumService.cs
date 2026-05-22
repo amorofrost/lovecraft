@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.DTOs.Forum;
@@ -15,12 +16,14 @@ public class MockForumService : IForumService
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
     private readonly INotificationProducer? _producer;
+    private readonly IMetricsCollector? _metrics;
 
-    public MockForumService(IUserService userService, IEventService eventService, INotificationProducer? producer = null)
+    public MockForumService(IUserService userService, IEventService eventService, INotificationProducer? producer = null, IMetricsCollector? metrics = null)
     {
         _userService = userService;
         _eventService = eventService;
         _producer = producer;
+        _metrics = metrics;
     }
 
     public Task<List<ForumSectionDto>> GetSectionsAsync()
@@ -287,6 +290,8 @@ public class MockForumService : IForumService
 
         MockDataStore.ForumTopics.Add(topic);
         section.TopicCount++;
+        try { _metrics?.RecordCount("bi_events", $"bi|topic_created|{sectionId}"); }
+        catch { /* BI metric must never fail the operation */ }
         return Task.FromResult(topic);
     }
 

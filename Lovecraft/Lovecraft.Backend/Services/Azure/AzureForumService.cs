@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
@@ -25,18 +26,21 @@ public class AzureForumService : IForumService
     private readonly IEventService _eventService;
     private readonly ILogger<AzureForumService> _logger;
     private readonly INotificationProducer? _producer;
+    private readonly IMetricsCollector? _metrics;
 
     public AzureForumService(
         TableServiceClient tableServiceClient,
         IUserService userService,
         IEventService eventService,
         ILogger<AzureForumService> logger,
-        INotificationProducer? producer = null)
+        INotificationProducer? producer = null,
+        IMetricsCollector? metrics = null)
     {
         _userService = userService;
         _eventService = eventService;
         _logger = logger;
         _producer = producer;
+        _metrics = metrics;
         _sectionsTable = tableServiceClient.GetTableClient(TableNames.ForumSections);
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
         _topicIndexTable = tableServiceClient.GetTableClient(TableNames.ForumTopicIndex);
@@ -696,6 +700,9 @@ public class AzureForumService : IForumService
         // 4. Increment TopicCount on the section (read-merge-upsert)
         sectionEntity.TopicCount++;
         await _sectionsTable.UpdateEntityAsync(sectionEntity, sectionEntity.ETag, TableUpdateMode.Merge);
+
+        try { _metrics?.RecordCount("bi_events", $"bi|topic_created|{sectionId}"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
 
         // 5. Return DTO
         return new ForumTopicDto
