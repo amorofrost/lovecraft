@@ -165,6 +165,31 @@ public class AzureAppConfigService : IAppConfigService
         return config.Metrics;
     }
 
+    public async Task SetMetricsConfigAsync(MetricsConfig config, CancellationToken ct = default)
+    {
+        var rows = new[]
+        {
+            (AppConfigKeys.MetricsKeys.RequestTiming,         config.RequestTiming.ToString().ToLower()),
+            (AppConfigKeys.MetricsKeys.BiEvents,              config.BiEvents.ToString().ToLower()),
+            (AppConfigKeys.MetricsKeys.ContainerStats,        config.ContainerStats.ToString().ToLower()),
+            (AppConfigKeys.MetricsKeys.FrontendPerf,          config.FrontendPerf.ToString().ToLower()),
+            (AppConfigKeys.MetricsKeys.RetentionMinuteHours,  config.RetentionMinuteHours.ToString()),
+            (AppConfigKeys.MetricsKeys.RetentionHourDays,     config.RetentionHourDays.ToString()),
+            (AppConfigKeys.MetricsKeys.RetentionDauDays,      config.RetentionDauDays.ToString()),
+        };
+
+        foreach (var (key, value) in rows)
+        {
+            var entity = new AppConfigEntity
+            {
+                PartitionKey = AppConfigEntity.PartitionMetrics,
+                RowKey = key,
+                Value = value,
+            };
+            await _table.UpsertEntityAsync(entity, TableUpdateMode.Replace, ct);
+        }
+    }
+
     public Task InvalidateAsync()
     {
         _cache.Remove(CacheKey);

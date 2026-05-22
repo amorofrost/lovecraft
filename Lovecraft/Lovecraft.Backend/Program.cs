@@ -279,6 +279,7 @@ if (useAzure)
 }
 else
 {
+    builder.Services.AddSingleton<UserCache>();
     builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
     builder.Services.AddSingleton<IEventInviteService>(sp => new MockEventInviteService(
         sp.GetRequiredService<INotificationProducer>(),
@@ -345,6 +346,15 @@ builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver
 
 // BI metrics — Task 15 will swap MockMetricsCollector for AzureMetricsCollector in Azure mode
 builder.Services.AddSingleton<IMetricsCollector, MockMetricsCollector>();
+
+// MauCalculator: used by AdminMetricsController for DAU/MAU aggregation.
+// Registered with the TableServiceClient when Azure storage is available (may be null in mock mode).
+builder.Services.AddSingleton(sp =>
+{
+    var tables = sp.GetService<TableServiceClient>();
+    var cache = sp.GetRequiredService<IMemoryCache>();
+    return new MauCalculator(tables, cache);
+});
 
 var app = builder.Build();
 
