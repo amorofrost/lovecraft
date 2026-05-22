@@ -18,4 +18,5 @@ public class AppConfigEntity : ITableEntity
     public const string PartitionPermissions = "permissions";
     public const string PartitionRegistration = "registration";
     public const string PartitionFeatures = "features";
+    public const string PartitionMetrics = "metrics";
 }

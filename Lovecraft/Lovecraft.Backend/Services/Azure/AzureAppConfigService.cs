@@ -53,6 +53,9 @@ public class AzureAppConfigService : IAppConfigService
         var features = rows
             .Where(r => r.PartitionKey == AppConfigEntity.PartitionFeatures)
             .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
+        var metrics = rows
+            .Where(r => r.PartitionKey == AppConfigEntity.PartitionMetrics)
+            .ToDictionary(r => r.RowKey, r => r.Value, StringComparer.OrdinalIgnoreCase);
 
         int I(string key, int fallback)
         {
@@ -95,6 +98,26 @@ public class AzureAppConfigService : IAppConfigService
             return fallback;
         }
 
+        var metricsDefaults = MetricsConfig.Defaults;
+        bool MetBool(string key, bool fallback)
+        {
+            if (!metrics.TryGetValue(key, out var v)) return fallback;
+            if (bool.TryParse(v, out var b)) return b;
+            _logger.LogWarning(
+                "AppConfig metrics {Key} has non-boolean value {Value}; falling back to {Fallback}",
+                key, v, fallback);
+            return fallback;
+        }
+        int MetInt(string key, int fallback)
+        {
+            if (!metrics.TryGetValue(key, out var v)) return fallback;
+            if (int.TryParse(v, out var n)) return n;
+            _logger.LogWarning(
+                "AppConfig metrics {Key} has non-integer value {Value}; falling back to {Fallback}",
+                key, v, fallback);
+            return fallback;
+        }
+
         var d = RankThresholds.Defaults;
         var p = PermissionConfig.Defaults;
         return new AppConfig(
@@ -125,6 +148,26 @@ public class AzureAppConfigService : IAppConfigService
             new RegistrationConfig(
                 RequireEventInvite: Reg(AppConfigKeys.RegistrationKeys.RequireEventInvite, regDefaults.RequireEventInvite)),
             new FeatureFlagsConfig(
-                FeedEnabled: Feat(AppConfigKeys.FeatureKeys.FeedEnabled, featureDefaults.FeedEnabled)));
+                FeedEnabled: Feat(AppConfigKeys.FeatureKeys.FeedEnabled, featureDefaults.FeedEnabled)),
+            new MetricsConfig(
+                RequestTiming: MetBool(AppConfigKeys.MetricsKeys.RequestTiming, metricsDefaults.RequestTiming),
+                BiEvents: MetBool(AppConfigKeys.MetricsKeys.BiEvents, metricsDefaults.BiEvents),
+                ContainerStats: MetBool(AppConfigKeys.MetricsKeys.ContainerStats, metricsDefaults.ContainerStats),
+                FrontendPerf: MetBool(AppConfigKeys.MetricsKeys.FrontendPerf, metricsDefaults.FrontendPerf),
+                RetentionMinuteHours: MetInt(AppConfigKeys.MetricsKeys.RetentionMinuteHours, metricsDefaults.RetentionMinuteHours),
+                RetentionHourDays: MetInt(AppConfigKeys.MetricsKeys.RetentionHourDays, metricsDefaults.RetentionHourDays),
+                RetentionDauDays: MetInt(AppConfigKeys.MetricsKeys.RetentionDauDays, metricsDefaults.RetentionDauDays)));
+    }
+
+    public async Task<MetricsConfig> GetMetricsConfigAsync(CancellationToken ct = default)
+    {
+        var config = await GetConfigAsync();
+        return config.Metrics;
+    }
+
+    public Task InvalidateAsync()
+    {
+        _cache.Remove(CacheKey);
+        return Task.CompletedTask;
     }
 }

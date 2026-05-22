@@ -23,6 +23,7 @@ public class ForumController : ControllerBase
     private readonly IAppConfigService _appConfig;
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
+    private readonly IForumSubscriptionService _subscriptions;
 
     public ForumController(
         IForumService forumService,
@@ -30,7 +31,8 @@ public class ForumController : ControllerBase
         ILogger<ForumController> logger,
         IAppConfigService appConfig,
         IUserService userService,
-        IEventService eventService)
+        IEventService eventService,
+        IForumSubscriptionService subscriptions)
     {
         _forumService = forumService;
         _hubContext = hubContext;
@@ -38,6 +40,7 @@ public class ForumController : ControllerBase
         _appConfig = appConfig;
         _userService = userService;
         _eventService = eventService;
+        _subscriptions = subscriptions;
     }
 
     /// <summary>
@@ -372,6 +375,92 @@ public class ForumController : ControllerBase
 
         var updated = await _forumService.UpdateTopicAsync(topicId, request);
         return Ok(ApiResponse<ForumTopicDto>.SuccessResponse(updated!));
+    }
+
+    /// <summary>
+    /// Returns whether the caller is currently subscribed to the topic.
+    /// </summary>
+    [HttpGet("topics/{topicId}/subscription")]
+    public async Task<ActionResult<ApiResponse<ForumSubscriptionDto>>> GetSubscription(string topicId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<ForumSubscriptionDto>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        try
+        {
+            var topic = await _forumService.GetTopicByIdAsync(topicId);
+            if (topic is null)
+                return NotFound(ApiResponse<ForumSubscriptionDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
+            var subscribed = await _subscriptions.IsSubscribedAsync(userId, topicId);
+            return Ok(ApiResponse<ForumSubscriptionDto>.SuccessResponse(new ForumSubscriptionDto
+            {
+                TopicId = topicId,
+                Subscribed = subscribed,
+            }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading subscription for topic {TopicId}", topicId);
+            return StatusCode(500, ApiResponse<ForumSubscriptionDto>.ErrorResponse("INTERNAL_ERROR", "Failed to get subscription"));
+        }
+    }
+
+    /// <summary>
+    /// Subscribe the caller to a topic. Idempotent.
+    /// </summary>
+    [HttpPost("topics/{topicId}/subscribe")]
+    public async Task<ActionResult<ApiResponse<ForumSubscriptionDto>>> Subscribe(string topicId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<ForumSubscriptionDto>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        try
+        {
+            var topic = await _forumService.GetTopicByIdAsync(topicId);
+            if (topic is null)
+                return NotFound(ApiResponse<ForumSubscriptionDto>.ErrorResponse("NOT_FOUND", "Topic not found"));
+
+            await _subscriptions.SubscribeAsync(userId, topicId, "manual");
+            return Ok(ApiResponse<ForumSubscriptionDto>.SuccessResponse(new ForumSubscriptionDto
+            {
+                TopicId = topicId,
+                Subscribed = true,
+            }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error subscribing to topic {TopicId}", topicId);
+            return StatusCode(500, ApiResponse<ForumSubscriptionDto>.ErrorResponse("INTERNAL_ERROR", "Failed to subscribe"));
+        }
+    }
+
+    /// <summary>
+    /// Unsubscribe the caller from a topic. Idempotent (returns subscribed=false either way).
+    /// </summary>
+    [HttpDelete("topics/{topicId}/subscribe")]
+    public async Task<ActionResult<ApiResponse<ForumSubscriptionDto>>> Unsubscribe(string topicId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized(ApiResponse<ForumSubscriptionDto>.ErrorResponse("UNAUTHORIZED", "Not authenticated"));
+
+        try
+        {
+            await _subscriptions.UnsubscribeAsync(userId, topicId);
+            return Ok(ApiResponse<ForumSubscriptionDto>.SuccessResponse(new ForumSubscriptionDto
+            {
+                TopicId = topicId,
+                Subscribed = false,
+            }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error unsubscribing from topic {TopicId}", topicId);
+            return StatusCode(500, ApiResponse<ForumSubscriptionDto>.ErrorResponse("INTERNAL_ERROR", "Failed to unsubscribe"));
+        }
     }
 
     private async Task<UserRank> GetCallerRankAsync()

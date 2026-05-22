@@ -313,7 +313,9 @@ public class ForumNotificationTests : IDisposable
     private static MockForumService BuildService(Mock<INotificationProducer> producer)
     {
         var userSvc = new MockUserService(new MockAppConfigService());
-        return new MockForumService(userSvc, new MockEventService(userSvc), producer.Object);
+        // Clear shared subscription state so each test starts fresh.
+        MockDataStore.ForumSubscriptions.Clear();
+        return new MockForumService(userSvc, new MockEventService(userSvc), producer.Object, new MockForumSubscriptionService());
     }
 
     [Fact]
@@ -322,6 +324,7 @@ public class ForumNotificationTests : IDisposable
         var producer = new Mock<INotificationProducer>();
         var svc = BuildService(producer);
 
+        // Creator is auto-subscribed; replier (different user) does not own the topic.
         var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "Title", "Body", noviceVisible: true, noviceCanReply: true);
 
         await svc.CreateReplyAsync(topic.Id, "u-replier", "Replier", "Reply content", null);
@@ -332,50 +335,111 @@ public class ForumNotificationTests : IDisposable
     }
 
     [Fact]
-    public async Task Reply_fans_out_to_all_prior_participants_except_self()
+    public async Task Reply_fans_out_to_current_subscribers_except_self()
     {
         var producer = new Mock<INotificationProducer>();
         var svc = BuildService(producer);
 
+        // u-author = creator (auto-subscribed)
+        // u-p1, u-p2 reply (each auto-subscribed on reply)
         var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
         await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "first reply", null);
         await svc.CreateReplyAsync(topic.Id, "u-p2", "P2", "second reply", null);
         producer.Invocations.Clear();
 
+        // p1 replies again — all current subscribers (u-author, u-p1, u-p2) excluding p1 should be notified.
         await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "third reply by p1", null);
 
-        // p1 is the new replier — should not get notified of own reply
-        // u-author, u-p2 should each get one
         producer.Verify(p => p.ProduceAsync(
             "u-author", NotificationType.ForumReplyToThread, "u-p1",
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
         producer.Verify(p => p.ProduceAsync(
             "u-p2", NotificationType.ForumReplyToThread, "u-p1",
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+        // The replier never gets notified about their own reply.
         producer.Verify(p => p.ProduceAsync(
             "u-p1", It.IsAny<NotificationType>(), It.IsAny<string?>(),
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
-    public async Task Reply_dedups_repeat_participants()
+    public async Task Reply_subscribers_are_unique_so_no_duplicate_notifications()
     {
         var producer = new Mock<INotificationProducer>();
         var svc = BuildService(producer);
 
         var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
         await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "first", null);
-        await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "second", null);   // p1 replies twice
+        await svc.CreateReplyAsync(topic.Id, "u-p1", "P1", "second", null);   // p1 replies twice — still a single subscription
         producer.Invocations.Clear();
 
         await svc.CreateReplyAsync(topic.Id, "u-other", "Other", "from other", null);
 
-        // u-author + u-p1 each get exactly one notification — not two for p1's pair of prior replies
+        // u-author + u-p1 each get exactly one notification — subscription set dedups by userId.
         producer.Verify(p => p.ProduceAsync(
             "u-author", NotificationType.ForumReplyToThread, "u-other",
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
         producer.Verify(p => p.ProduceAsync(
             "u-p1", NotificationType.ForumReplyToThread, "u-other",
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Reply_does_not_notify_unsubscribed_prior_participants()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var subscriptions = new MockForumSubscriptionService();
+        MockDataStore.ForumSubscriptions.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var svc = new MockForumService(userSvc, new MockEventService(userSvc), producer.Object, subscriptions);
+
+        var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
+        await svc.CreateReplyAsync(topic.Id, "u-quitter", "Quitter", "once-active", null);
+
+        // The prior replier opts out.
+        await subscriptions.UnsubscribeAsync("u-quitter", topic.Id);
+        producer.Invocations.Clear();
+
+        await svc.CreateReplyAsync(topic.Id, "u-other", "Other", "new reply", null);
+
+        // u-quitter unsubscribed — should not be notified despite having replied earlier.
+        producer.Verify(p => p.ProduceAsync(
+            "u-quitter", It.IsAny<NotificationType>(), It.IsAny<string?>(),
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
+        // u-author is still subscribed (creator) and gets the notification.
+        producer.Verify(p => p.ProduceAsync(
+            "u-author", NotificationType.ForumReplyToThread, "u-other",
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateTopic_auto_subscribes_creator()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var subscriptions = new MockForumSubscriptionService();
+        MockDataStore.ForumSubscriptions.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var svc = new MockForumService(userSvc, new MockEventService(userSvc), producer.Object, subscriptions);
+
+        var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
+
+        Assert.True(await subscriptions.IsSubscribedAsync("u-author", topic.Id));
+    }
+
+    [Fact]
+    public async Task CreateReply_auto_subscribes_replier()
+    {
+        var producer = new Mock<INotificationProducer>();
+        var subscriptions = new MockForumSubscriptionService();
+        MockDataStore.ForumSubscriptions.Clear();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var svc = new MockForumService(userSvc, new MockEventService(userSvc), producer.Object, subscriptions);
+
+        var topic = await svc.CreateTopicAsync("general", "u-author", "Author", "T", "B", true, true);
+        await svc.CreateReplyAsync(topic.Id, "u-replier", "Replier", "Hello", null);
+
+        Assert.True(await subscriptions.IsSubscribedAsync("u-replier", topic.Id));
+        // creator still subscribed
+        Assert.True(await subscriptions.IsSubscribedAsync("u-author", topic.Id));
     }
 }

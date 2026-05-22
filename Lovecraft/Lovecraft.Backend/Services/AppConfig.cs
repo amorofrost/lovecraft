@@ -1,6 +1,6 @@
 namespace Lovecraft.Backend.Services;
 
-public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration, FeatureFlagsConfig Features);
+public record AppConfig(RankThresholds Ranks, PermissionConfig Permissions, RegistrationConfig Registration, FeatureFlagsConfig Features, MetricsConfig Metrics);
 
 /// <summary>
 /// Client-visible feature flags (Azure Table appconfig partition <c>features</c>).
@@ -73,6 +73,29 @@ public record PermissionConfig(
         SendBroadcast: "admin");
 }
 
+/// <summary>
+/// Runtime toggle configuration for the metrics subsystem (Azure Table appconfig partition <c>metrics</c>).
+/// All toggles default to enabled; use as kill switches if a metric category causes issues.
+/// </summary>
+public sealed record MetricsConfig(
+    bool RequestTiming,
+    bool BiEvents,
+    bool ContainerStats,
+    bool FrontendPerf,
+    int RetentionMinuteHours,
+    int RetentionHourDays,
+    int RetentionDauDays)
+{
+    public static MetricsConfig Defaults => new(
+        RequestTiming: true,
+        BiEvents: true,
+        ContainerStats: true,
+        FrontendPerf: true,
+        RetentionMinuteHours: 24,
+        RetentionHourDays: 90,
+        RetentionDauDays: 30);
+}
+
 public static class AppConfigKeys
 {
     public static class RankThresholdsKeys
@@ -113,5 +136,16 @@ public static class AppConfigKeys
     public static class FeatureKeys
     {
         public const string FeedEnabled = "feed_enabled";
+    }
+
+    public static class MetricsKeys
+    {
+        public const string RequestTiming = "request_timing";
+        public const string BiEvents = "bi_events";
+        public const string ContainerStats = "container_stats";
+        public const string FrontendPerf = "frontend_perf";
+        public const string RetentionMinuteHours = "retention_minute_hours";
+        public const string RetentionHourDays = "retention_hour_days";
+        public const string RetentionDauDays = "retention_dau_days";
     }
 }
