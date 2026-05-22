@@ -123,6 +123,21 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
+    // Per-user sliding window for the frontend metrics ingest endpoint.
+    // Falls back to IP address for unauthenticated requests (defense in depth —
+    // the endpoint itself requires [Authorize], so the fallback is rarely hit).
+    options.AddPolicy("MetricsFrontendRateLimit", httpContext =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                          ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                SegmentsPerWindow = 6,
+            }));
+
     options.OnRejected = async (ctx, ct) =>
     {
         ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
