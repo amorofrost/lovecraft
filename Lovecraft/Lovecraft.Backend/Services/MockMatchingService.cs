@@ -2,6 +2,7 @@ using System.Text.Json;
 using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.MockData;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 
 namespace Lovecraft.Backend.Services;
@@ -11,12 +12,16 @@ public class MockMatchingService : IMatchingService
     private readonly IChatService _chatService;
     private readonly IUserService _userService;
     private readonly INotificationProducer? _producer;
+    private readonly IMetricsCollector? _metrics;
+    private readonly ILogger<MockMatchingService>? _logger;
 
-    public MockMatchingService(IChatService chatService, IUserService userService, INotificationProducer? producer = null)
+    public MockMatchingService(IChatService chatService, IUserService userService, INotificationProducer? producer = null, IMetricsCollector? metrics = null, ILogger<MockMatchingService>? logger = null)
     {
         _chatService = chatService;
         _userService = userService;
         _producer = producer;
+        _metrics = metrics;
+        _logger = logger;
     }
 
     public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
@@ -69,6 +74,9 @@ public class MockMatchingService : IMatchingService
 
             await _userService.IncrementCounterAsync(fromUserId, UserCounter.MatchCount);
             await _userService.IncrementCounterAsync(toUserId, UserCounter.MatchCount);
+
+            try { _metrics?.RecordCount("bi_events", "bi|match_created"); }
+            catch (Exception ex) { _logger?.LogWarning(ex, "BI metric failed"); }
 
             // Fire MatchCreated notification to both users (skip self-action)
             if (_producer is not null && fromUserId != toUserId)

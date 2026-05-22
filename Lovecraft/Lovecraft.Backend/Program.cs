@@ -1,7 +1,9 @@
+using Serilog;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Azure;
 using Lovecraft.Backend.Services.Caching;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Auth;
@@ -20,6 +22,14 @@ using Lovecraft.Common.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 Lovecraft.Backend.Helpers.AppRuntime.AppStartedAtUtc = DateTime.UtcNow;
+
+builder.Host.UseSerilog((ctx, services, cfg) => cfg
+    .ReadFrom.Configuration(ctx.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("service", "backend")
+    .Enrich.WithProperty("version", typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0")
+    .WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter()));
 
 // Table prefix — must be set before any Azure service is constructed
 Lovecraft.Backend.Storage.TableNames.Prefix =
@@ -122,6 +132,21 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
+    // Per-user sliding window for the frontend metrics ingest endpoint.
+    // Falls back to IP address for unauthenticated requests (defense in depth —
+    // the endpoint itself requires [Authorize], so the fallback is rarely hit).
+    options.AddPolicy("MetricsFrontendRateLimit", httpContext =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                          ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                SegmentsPerWindow = 6,
+            }));
+
     options.OnRejected = async (ctx, ct) =>
     {
         ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
@@ -208,7 +233,8 @@ if (useAzure)
         sp.GetRequiredService<IChatService>(),
         sp.GetRequiredService<IUserService>(),
         sp.GetRequiredService<ILogger<AzureMatchingService>>(),
-        sp.GetRequiredService<INotificationProducer>()));
+        sp.GetRequiredService<INotificationProducer>(),
+        sp.GetRequiredService<IMetricsCollector>()));
     builder.Services.AddSingleton<IEventService>(sp => new CachingEventService(
         new AzureEventService(
             sp.GetRequiredService<TableServiceClient>(),
@@ -237,7 +263,8 @@ if (useAzure)
             sp.GetRequiredService<IEventService>(),
             sp.GetRequiredService<ILogger<AzureForumService>>(),
             sp.GetRequiredService<INotificationProducer>(),
-            sp.GetRequiredService<IForumSubscriptionService>()),
+            sp.GetRequiredService<IForumSubscriptionService>(),
+            sp.GetRequiredService<IMetricsCollector>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IChatService, AzureChatService>();
 
@@ -266,6 +293,7 @@ if (useAzure)
 }
 else
 {
+    builder.Services.AddSingleton<UserCache>();
     builder.Services.AddSingleton<IAppConfigService, MockAppConfigService>();
     builder.Services.AddSingleton<IEventInviteService>(sp => new MockEventInviteService(
         sp.GetRequiredService<INotificationProducer>(),
@@ -284,7 +312,9 @@ else
     builder.Services.AddSingleton<IMatchingService>(sp => new MockMatchingService(
         sp.GetRequiredService<IChatService>(),
         sp.GetRequiredService<IUserService>(),
-        sp.GetRequiredService<INotificationProducer>()));
+        sp.GetRequiredService<INotificationProducer>(),
+        sp.GetRequiredService<IMetricsCollector>(),
+        sp.GetRequiredService<ILogger<MockMatchingService>>()));
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
     builder.Services.AddSingleton<IForumSubscriptionService, MockForumSubscriptionService>();
@@ -293,7 +323,9 @@ else
             sp.GetRequiredService<IUserService>(),
             sp.GetRequiredService<IEventService>(),
             sp.GetRequiredService<INotificationProducer>(),
-            sp.GetRequiredService<IForumSubscriptionService>()));
+            sp.GetRequiredService<IForumSubscriptionService>(),
+            sp.GetRequiredService<IMetricsCollector>(),
+            sp.GetRequiredService<ILogger<MockForumService>>()));
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();
@@ -327,6 +359,44 @@ builder.Services.AddSingleton<INotificationProducer, NotificationProducer>();
 builder.Services.AddSingleton(sp => new Lazy<INotificationProducer>(
     () => sp.GetRequiredService<INotificationProducer>()));
 builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver>();
+
+// BI metrics — mode-aware: AzureMetricsCollector in production, MockMetricsCollector in mock/test.
+if (useAzure)
+{
+    builder.Services.AddSingleton<IMetricsCollector>(sp =>
+        new AzureMetricsCollector(
+            capacity: 1000,
+            tableService: sp.GetRequiredService<TableServiceClient>()));
+    builder.Services.AddSingleton(sp =>
+        new DailyActiveUserCoalescer(
+            windowSeconds: 60,
+            tableService: sp.GetRequiredService<TableServiceClient>()));
+}
+else
+{
+    builder.Services.AddSingleton<IMetricsCollector, MockMetricsCollector>();
+    builder.Services.AddSingleton(new DailyActiveUserCoalescer(windowSeconds: 60));
+}
+
+// MauCalculator: used by AdminMetricsController for DAU/MAU aggregation.
+// Registered with the TableServiceClient when Azure storage is available (may be null in mock mode).
+builder.Services.AddSingleton(sp =>
+{
+    var tables = sp.GetService<TableServiceClient>();
+    var cache = sp.GetRequiredService<IMemoryCache>();
+    return new MauCalculator(tables, cache);
+});
+
+// Metrics background workers (all modes — workers are exception-safe and no-op in mock mode)
+builder.Services.AddHostedService<MetricsFlushWorker>();
+builder.Services.AddHostedService<MetricsConfigPoller>();
+builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
+    sp.GetRequiredService<IMetricsCollector>(),
+    sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+    "backend",
+    typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0"));
+builder.Services.AddHttpClient("frontend-probe");
+builder.Services.AddHostedService<FrontendProbeWorker>();
 
 var app = builder.Build();
 
@@ -370,6 +440,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseForwardedHeaders();
+app.UseSerilogRequestLogging();
 app.UseRateLimiter();
 app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
@@ -377,6 +448,7 @@ app.UseHttpsRedirection();
 // Authentication & Authorization middleware (order matters!)
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<Lovecraft.Backend.Middleware.RequestMetricsMiddleware>();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");

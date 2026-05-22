@@ -1,5 +1,6 @@
 using Azure.Data.Tables;
 using Lovecraft.NotificationsWorker;
+using Lovecraft.NotificationsWorker.Configuration;
 using Lovecraft.NotificationsWorker.Dispatchers;
 using Lovecraft.NotificationsWorker.Renderers;
 using Lovecraft.NotificationsWorker.Services;
@@ -7,6 +8,7 @@ using Lovecraft.NotificationsWorker.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
 using Telegram.Bot;
 
 // Explicit class avoids an implicit public `Program` type that conflicts with
@@ -17,7 +19,13 @@ internal sealed class NotificationsWorkerEntryPoint
     {
         var builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddLogging(b => b.AddSimpleConsole(o => { o.TimestampFormat = "yyyy-MM-dd HH:mm:ss "; o.IncludeScopes = false; }));
+        builder.Services.AddSerilog((services, cfg) => cfg
+            .ReadFrom.Configuration(builder.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("service", "notifications-worker")
+            .Enrich.WithProperty("version", typeof(NotificationsWorkerEntryPoint).Assembly.GetName().Version?.ToString() ?? "0.0.0")
+            .WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter()));
 
         var connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))
@@ -122,6 +130,11 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddSingleton<IOutboxJanitor>(sp =>
             new OutboxJanitor(outboxTable, notificationsTable, sp.GetRequiredService<ILogger<OutboxJanitor>>()));
 
+        // Metrics retention config reader — reads "metrics" partition of shared appconfig table.
+        var appConfigTable = serviceClient.GetTableClient(TableNames.Prefix + "appconfig");
+        builder.Services.AddSingleton(sp =>
+            new WorkerMetricsConfigReader(appConfigTable, sp.GetRequiredService<ILogger<WorkerMetricsConfigReader>>()));
+
         builder.Services.AddSingleton<IEventReminderProcessor>(sp =>
             new EventReminderProcessor(
                 eventsTable, attendeesTable, notificationsTable, outboxTable, preferencesTable,
@@ -131,6 +144,12 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddHostedService<DigestWorker>();
         builder.Services.AddHostedService<JanitorWorker>();
         builder.Services.AddHostedService<EventReminderWorker>();
+        builder.Services.AddSingleton(serviceClient);
+        builder.Services.AddHostedService<MetricsRollupWorker>();
+        builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+            "notifications-worker"));
 
         var host = builder.Build();
         await host.RunAsync();

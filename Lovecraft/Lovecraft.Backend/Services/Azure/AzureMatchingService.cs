@@ -3,6 +3,7 @@ using Azure.Data.Tables;
 using System.Text.Json;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Matching;
 using Lovecraft.Common.Enums;
@@ -17,18 +18,21 @@ public class AzureMatchingService : IMatchingService
     private readonly IUserService _userService;
     private readonly ILogger<AzureMatchingService> _logger;
     private readonly INotificationProducer? _producer;
+    private readonly IMetricsCollector? _metrics;
 
     public AzureMatchingService(
         TableServiceClient tableServiceClient,
         IChatService chatService,
         IUserService userService,
         ILogger<AzureMatchingService> logger,
-        INotificationProducer? producer = null)
+        INotificationProducer? producer = null,
+        IMetricsCollector? metrics = null)
     {
         _chatService = chatService;
         _userService = userService;
         _logger = logger;
         _producer = producer;
+        _metrics = metrics;
         _likesTable = tableServiceClient.GetTableClient(TableNames.Likes);
         _likesReceivedTable = tableServiceClient.GetTableClient(TableNames.LikesReceived);
 
@@ -154,6 +158,9 @@ public class AzureMatchingService : IMatchingService
             }
 
             _logger.LogInformation("Match created between {From} and {To}", fromUserId, toUserId);
+
+            try { _metrics?.RecordCount("bi_events", "bi|match_created"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
 
             // Fire MatchCreated notifications to both users
             if (_producer is not null)

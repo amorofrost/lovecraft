@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Helpers;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
@@ -26,6 +27,7 @@ public class AzureForumService : IForumService
     private readonly ILogger<AzureForumService> _logger;
     private readonly INotificationProducer? _producer;
     private readonly IForumSubscriptionService? _subscriptions;
+    private readonly IMetricsCollector? _metrics;
 
     public AzureForumService(
         TableServiceClient tableServiceClient,
@@ -33,13 +35,15 @@ public class AzureForumService : IForumService
         IEventService eventService,
         ILogger<AzureForumService> logger,
         INotificationProducer? producer = null,
-        IForumSubscriptionService? subscriptions = null)
+        IForumSubscriptionService? subscriptions = null,
+        IMetricsCollector? metrics = null)
     {
         _userService = userService;
         _eventService = eventService;
         _logger = logger;
         _producer = producer;
         _subscriptions = subscriptions;
+        _metrics = metrics;
         _sectionsTable = tableServiceClient.GetTableClient(TableNames.ForumSections);
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
         _topicIndexTable = tableServiceClient.GetTableClient(TableNames.ForumTopicIndex);
@@ -723,7 +727,11 @@ public class AzureForumService : IForumService
             }
         }
 
-        // 6. Return DTO
+        // 6. BI event
+        try { _metrics?.RecordCount("bi_events", $"bi|topic_created|{sectionId}"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
+
+        // 7. Return DTO
         return new ForumTopicDto
         {
             Id = topicId,

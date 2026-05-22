@@ -390,7 +390,16 @@ await UpsertAppConfigAsync("registration", "require_event_invite", "false");
 
 // features (client-visible kill switches)
 await UpsertAppConfigAsync("features", "feed_enabled", "true");
-Console.WriteLine("  [appconfig]     10 rank_thresholds + 12 permissions + 1 registration + 1 features");
+
+// metrics (monitoring toggles + retention windows)
+await UpsertAppConfigAsync("metrics", "request_timing",         "true");
+await UpsertAppConfigAsync("metrics", "bi_events",              "true");
+await UpsertAppConfigAsync("metrics", "container_stats",        "true");
+await UpsertAppConfigAsync("metrics", "frontend_perf",          "true");
+await UpsertAppConfigAsync("metrics", "retention_minute_hours", "24");
+await UpsertAppConfigAsync("metrics", "retention_hour_days",    "90");
+await UpsertAppConfigAsync("metrics", "retention_dau_days",     "30");
+Console.WriteLine("  [appconfig]     10 rank_thresholds + 12 permissions + 1 registration + 1 features + 7 metrics");
 
 // Likes + LikesReceived
 // Scenarios:

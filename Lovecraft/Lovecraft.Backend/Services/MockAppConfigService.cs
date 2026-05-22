@@ -13,6 +13,12 @@ public class MockAppConfigService : IAppConfigService
 
     public Task<MetricsConfig> GetMetricsConfigAsync(CancellationToken ct = default) => Task.FromResult(_config.Metrics);
 
+    public Task SetMetricsConfigAsync(MetricsConfig config, CancellationToken ct = default)
+    {
+        _config = _config with { Metrics = config };
+        return Task.CompletedTask;
+    }
+
     public Task InvalidateAsync() => Task.CompletedTask;
 
     // Test helper — allows overriding the metrics config returned by both getters.

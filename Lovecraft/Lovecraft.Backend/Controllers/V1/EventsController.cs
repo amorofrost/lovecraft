@@ -5,6 +5,7 @@ using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.Enums;
 using Lovecraft.Common.Models;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Metrics;
 
 namespace Lovecraft.Backend.Controllers.V1;
 
@@ -17,17 +18,20 @@ public class EventsController : ControllerBase
     private readonly IForumService _forumService;
     private readonly IEventInviteService _eventInvites;
     private readonly ILogger<EventsController> _logger;
+    private readonly IMetricsCollector _metrics;
 
     public EventsController(
         IEventService eventService,
         IForumService forumService,
         IEventInviteService eventInvites,
-        ILogger<EventsController> logger)
+        ILogger<EventsController> logger,
+        IMetricsCollector metrics)
     {
         _eventService = eventService;
         _forumService = forumService;
         _eventInvites = eventInvites;
         _logger = logger;
+        _metrics = metrics;
     }
 
     /// <summary>
@@ -192,6 +196,8 @@ public class EventsController : ControllerBase
                     await _eventInvites.IncrementEventAttendanceClaimCountAsync(body.InviteCode);
             }
 
+            try { _metrics.RecordCount("bi_events", "bi|event_registered"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<bool>.SuccessResponse(true));
         }
         catch (Exception ex)

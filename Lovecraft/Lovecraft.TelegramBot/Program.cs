@@ -1,7 +1,10 @@
+using Azure.Data.Tables;
 using Lovecraft.TelegramBot;
+using Lovecraft.TelegramBot.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
 
 // Explicit class avoids an implicit public `Program` type that conflicts with
 // Lovecraft.Backend's `public partial class Program` when both are referenced from UnitTests.
@@ -10,6 +13,14 @@ internal sealed class TelegramBotEntryPoint
     public static async Task Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+
+        builder.Services.AddSerilog((services, cfg) => cfg
+            .ReadFrom.Configuration(builder.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("service", "telegram-bot")
+            .Enrich.WithProperty("version", typeof(TelegramBotEntryPoint).Assembly.GetName().Version?.ToString() ?? "0.0.0")
+            .WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter()));
 
         var serviceToken = Environment.GetEnvironmentVariable("INTERNAL_SERVICE_TOKEN");
         var backendUrl = Environment.GetEnvironmentVariable("BACKEND_INTERNAL_URL") ?? "http://backend:8080";
@@ -21,6 +32,16 @@ internal sealed class TelegramBotEntryPoint
                 var client = new HttpClient { BaseAddress = new Uri(backendUrl) };
                 return new NotificationCallbackHandler(client, serviceToken, sp.GetRequiredService<ILogger<NotificationCallbackHandler>>());
             });
+        }
+
+        var storageConnectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
+        if (!string.IsNullOrEmpty(storageConnectionString))
+        {
+            builder.Services.AddSingleton(new TableServiceClient(storageConnectionString));
+            builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
+                sp.GetRequiredService<TableServiceClient>(),
+                sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+                "telegram-bot"));
         }
 
         builder.Services.AddHostedService<TelegramBotWorker>();
