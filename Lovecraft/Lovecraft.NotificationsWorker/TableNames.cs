@@ -17,4 +17,5 @@ public static class TableNames
     public static string EventAttendees          => Prefix + "eventattendees";
     public static string MetricsMinute           => Prefix + "metricsminute";
     public static string MetricsHour             => Prefix + "metricshour";
+    public static string DailyActiveUsers        => Prefix + "dailyactiveusers";
 }

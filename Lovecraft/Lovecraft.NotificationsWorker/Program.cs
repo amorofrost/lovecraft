@@ -1,5 +1,6 @@
 using Azure.Data.Tables;
 using Lovecraft.NotificationsWorker;
+using Lovecraft.NotificationsWorker.Configuration;
 using Lovecraft.NotificationsWorker.Dispatchers;
 using Lovecraft.NotificationsWorker.Renderers;
 using Lovecraft.NotificationsWorker.Services;
@@ -121,6 +122,11 @@ internal sealed class NotificationsWorkerEntryPoint
 
         builder.Services.AddSingleton<IOutboxJanitor>(sp =>
             new OutboxJanitor(outboxTable, notificationsTable, sp.GetRequiredService<ILogger<OutboxJanitor>>()));
+
+        // Metrics retention config reader — reads "metrics" partition of shared appconfig table.
+        var appConfigTable = serviceClient.GetTableClient(TableNames.Prefix + "appconfig");
+        builder.Services.AddSingleton(sp =>
+            new WorkerMetricsConfigReader(appConfigTable, sp.GetRequiredService<ILogger<WorkerMetricsConfigReader>>()));
 
         builder.Services.AddSingleton<IEventReminderProcessor>(sp =>
             new EventReminderProcessor(
