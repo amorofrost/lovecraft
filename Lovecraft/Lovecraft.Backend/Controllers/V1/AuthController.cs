@@ -6,6 +6,7 @@ using Lovecraft.Common.Models;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Metrics;
+using Lovecraft.Backend.Helpers;
 using System.Security.Claims;
 using Microsoft.Extensions.Options;
 
@@ -461,6 +462,14 @@ public class AuthController : ControllerBase
             try { _metrics.RecordCount("bi_events", "bi|user_registered|local"); }
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
+        }
+        catch (InvalidAccountNameException ex)
+        {
+            return BadRequest(ApiResponse<AuthResponseDto>.ErrorResponse("INVALID_ACCOUNT_NAME", $"Invalid account name: {ex.Reason}"));
+        }
+        catch (AccountNameTakenException)
+        {
+            return Conflict(ApiResponse<AuthResponseDto>.ErrorResponse("ACCOUNT_NAME_TAKEN", "Account name is already taken."));
         }
         catch (InvalidInviteCodeException)
         {

@@ -103,6 +103,15 @@ public class AzureAuthService : IAuthService
             return null;
         }
 
+        // Validate account name FIRST so we fail fast before any I/O.
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+
         var sourceEventId = await ResolveInviteSourceAsync(request.InviteCode);
 
         var emailLower = request.Email.ToLower();
@@ -119,13 +128,13 @@ public class AzureAuthService : IAuthService
             // Email not found — good, proceed
         }
 
-        var userId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
 
         var userEntity = new UserEntity
         {
             PartitionKey = UserEntity.GetPartitionKey(userId),
             RowKey = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = request.Email,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             Name = request.Name,
@@ -155,12 +164,21 @@ public class AzureAuthService : IAuthService
             UserId = userId
         };
 
+        // Users first — wins/loses the account-name race atomically.
         try
         {
-            await Task.WhenAll(
-                _usersTable.UpsertEntityAsync(userEntity),
-                _emailIndexTable.UpsertEntityAsync(emailIndexEntity)
-            );
+            await _usersTable.AddEntityAsync(userEntity);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            _logger.LogWarning("Registration failed: account name already taken {AccountName}", request.AccountName);
+            throw new AccountNameTakenException();
+        }
+
+        // Then email index — already pre-checked; 409 here would be a near-impossible race.
+        try
+        {
+            await _emailIndexTable.AddEntityAsync(emailIndexEntity);
             _userCache.Set(userEntity);
 
             if (sourceEventId is not null && !EventInviteHelpers.IsCampaignEventId(sourceEventId))
@@ -171,18 +189,10 @@ public class AzureAuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Registration failed after user row for {Email}", request.Email);
+            _logger.LogError(ex, "Registration failed after users-row write for {Email}", request.Email);
             _userCache.Remove(userId);
-            try
-            {
-                await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX");
-            }
-            catch { /* ignore */ }
-            try
-            {
-                await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId);
-            }
-            catch { /* ignore */ }
+            try { await _usersTable.DeleteEntityAsync(userEntity.PartitionKey, userId); } catch { /* ignore */ }
+            try { await _emailIndexTable.DeleteEntityAsync(emailLower, "INDEX"); } catch { /* ignore */ }
             throw;
         }
 
@@ -227,6 +237,7 @@ public class AzureAuthService : IAuthService
                 EmailVerified = false,
                 AuthMethods = new List<string> { "local" },
                 ProfileImage = string.Empty,
+                AccountName = userEntity.AccountNameDisplay,
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };

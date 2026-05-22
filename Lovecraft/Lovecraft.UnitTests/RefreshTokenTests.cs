@@ -217,6 +217,7 @@ public class RefreshTokenTests
         var otherUser = await _authService.RegisterAsync(new RegisterRequestDto
         {
             Email    = $"isolation-test-{Guid.NewGuid():N}@example.com",
+            AccountName = "isolationUser28",
             Password = "OtherPass9!",
             Name     = "Isolation User",
             Age      = 28,

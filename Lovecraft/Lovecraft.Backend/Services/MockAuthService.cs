@@ -97,11 +97,21 @@ public class MockAuthService : IAuthService
             return null;
         }
 
-        // Create new user
-        var userId = Guid.NewGuid().ToString();
+        // Validate account name first.
+        var nameValidation = AccountNameValidator.Validate(request.AccountName);
+        if (nameValidation == AccountNameValidationResult.InvalidFormat)
+            throw new InvalidAccountNameException("invalidFormat");
+        if (nameValidation == AccountNameValidationResult.Reserved)
+            throw new InvalidAccountNameException("reserved");
+
+        var userId = AccountNameValidator.Normalize(request.AccountName);
+        if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            throw new AccountNameTakenException();
+
         var user = new MockUser
         {
             Id = userId,
+            AccountNameDisplay = request.AccountName.Trim(),
             Email = request.Email,
             Name = request.Name,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
@@ -158,6 +168,7 @@ public class MockAuthService : IAuthService
                 EmailVerified = false,
                 AuthMethods = user.AuthMethods,
                 ProfileImage = user.ProfileImage,
+                AccountName = user.AccountNameDisplay,
             },
             ExpiresAt = DateTime.UtcNow.AddMinutes(15)
         };
@@ -917,6 +928,7 @@ public class MockAuthService : IAuthService
     private class MockUser
     {
         public string Id { get; set; } = string.Empty;
+        public string AccountNameDisplay { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;

@@ -83,6 +83,7 @@ public class MockAuthServiceEmailTests
         await authSvc.RegisterAsync(new Lovecraft.Common.DTOs.Auth.RegisterRequestDto
         {
             Email = "alice@example.com",
+            AccountName = "alice25",
             Password = "Password1!",
             Name = "Alice",
             Age = 25,
@@ -103,7 +104,7 @@ public class MockAuthServiceEmailTests
 
         await authSvc.RegisterAsync(new Lovecraft.Common.DTOs.Auth.RegisterRequestDto
         {
-            Email = "bob@example.com", Password = "Password1!", Name = "Bob",
+            Email = "bob@example.com", AccountName = "bob30", Password = "Password1!", Name = "Bob",
             Age = 30, Location = "Berlin", Gender = "male"
         });
         emailSvc.VerificationsSent.Clear();
@@ -136,7 +137,7 @@ public class MockAuthServiceEmailTests
 
         var result = await authSvc.RegisterAsync(new Lovecraft.Common.DTOs.Auth.RegisterRequestDto
         {
-            Email = "carol@example.com", Password = "Password1!", Name = "Carol",
+            Email = "carol@example.com", AccountName = "carol22", Password = "Password1!", Name = "Carol",
             Age = 22, Location = "Paris", Gender = "female"
         });
 

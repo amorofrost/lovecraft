@@ -111,6 +111,7 @@ public class TelegramPendingFlowTests
         var reg = await _authService.RegisterAsync(new RegisterRequestDto
         {
             Email = email, Password = pw,
+            AccountName = "tgLinkBob30",
             Name = "Bob", Age = 30, Location = "Berlin", Gender = "male", Bio = string.Empty,
         });
         Assert.NotNull(reg);

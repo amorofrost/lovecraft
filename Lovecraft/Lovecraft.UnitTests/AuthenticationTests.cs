@@ -58,6 +58,7 @@ public class AuthenticationTests
         var request = new RegisterRequestDto
         {
             Email = "newuser@example.com",
+            AccountName = "newUser25",
             Password = "Test123!@#",
             Name = "New User",
             Age = 25,
@@ -204,6 +205,7 @@ public class AuthenticationTests
         var registerRequest = new RegisterRequestDto
         {
             Email = "passwordtest@example.com",
+            AccountName = "passwordTest30",
             Password = "OldPass123!@#",
             Name = "Password Test",
             Age = 30,
@@ -276,6 +278,7 @@ public class AuthenticationTests
         var request = new RegisterRequestDto
         {
             Email = "open-reg@example.com", Password = "Test123!@#",
+            AccountName = "openUser25",
             Name = "Open User", Age = 25, Location = "City", Gender = "Male", Bio = "",
             InviteCode = null
         };
@@ -358,5 +361,58 @@ public class AccountNameAvailabilityTests : IClassFixture<AclTests.TestAppFactor
         Assert.True(dto!.Success);
         Assert.False(dto.Data!.Available);
         Assert.Equal("reserved", dto.Data.Reason);
+    }
+
+    [Fact]
+    public async Task Register_UsesAccountNameAsUserId()
+    {
+        using var client = _factory.CreateClient();
+        var body = new {
+            email = "newalice@example.com",
+            password = "Test123!@#",
+            accountName = "newAlice99",
+            name = "Alice",
+            age = 22,
+            country = "RU",
+            gender = "female",
+        };
+        var resp = await client.PostAsJsonAsync("/api/v1/auth/register", body);
+        var dto = await resp.Content.ReadFromJsonAsync<ApiResponse<AuthResponseDto>>();
+        Assert.True(dto!.Success, dto.Error?.Message);
+        Assert.Equal("newalice99", dto.Data!.User.Id);
+        Assert.Equal("newAlice99", dto.Data.User.AccountName);
+    }
+
+    [Fact]
+    public async Task Register_RejectsInvalidAccountName()
+    {
+        using var client = _factory.CreateClient();
+        var body = new {
+            email = "invalidacc@example.com", password = "Test123!@#",
+            accountName = "ab", name = "X", age = 22, country = "RU", gender = "male",
+        };
+        var resp = await client.PostAsJsonAsync("/api/v1/auth/register", body);
+        var dto = await resp.Content.ReadFromJsonAsync<ApiResponse<AuthResponseDto>>();
+        Assert.False(dto!.Success);
+        Assert.Equal("INVALID_ACCOUNT_NAME", dto.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Register_RejectsTakenAccountName()
+    {
+        using var client = _factory.CreateClient();
+        // First registration — claims "duplicateClaim".
+        await client.PostAsJsonAsync("/api/v1/auth/register", new {
+            email = "first@example.com", password = "Test123!@#",
+            accountName = "duplicateClaim", name = "First", age = 22, country = "RU", gender = "male",
+        });
+        // Second attempt with the same account name.
+        var resp = await client.PostAsJsonAsync("/api/v1/auth/register", new {
+            email = "second@example.com", password = "Test123!@#",
+            accountName = "duplicateClaim", name = "Second", age = 22, country = "RU", gender = "female",
+        });
+        var dto = await resp.Content.ReadFromJsonAsync<ApiResponse<AuthResponseDto>>();
+        Assert.False(dto!.Success);
+        Assert.Equal("ACCOUNT_NAME_TAKEN", dto.Error!.Code);
     }
 }
