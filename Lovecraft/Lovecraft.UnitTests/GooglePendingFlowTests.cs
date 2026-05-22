@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -58,31 +59,26 @@ public class GoogleRegisterAccountNameTests : IClassFixture<AclTests.TestAppFact
 {
     private readonly AclTests.TestAppFactory _factory;
 
-    // Must match AssemblyInfo.cs TestAssemblyInit seed value (or env override).
-    private static readonly IJwtService _jwt = new JwtService(
-        new JwtSettings
-        {
-            SecretKey = "test-jwt-secret-key-minimum-32-characters-long-for-hs256-tests",
-            Issuer = "AloeVeraAPI",
-            Audience = "AloeVeraClients",
-            AccessTokenLifetimeMinutes = 15,
-            RefreshTokenLifetimeDays = 7
-        },
-        NullLogger<JwtService>.Instance);
-
     public GoogleRegisterAccountNameTests(AclTests.TestAppFactory factory)
     {
         _factory = factory;
     }
 
-    private static string MintGoogleTicket(string sub, string email, string name) =>
-        _jwt.GenerateGooglePendingTicket(new GoogleUserInfoDto
+    // Resolve the backend's IJwtService from the factory's DI so we always mint with
+    // the same signing key the backend will validate with, regardless of any env-var
+    // mutations in earlier test classes (e.g. NotificationsControllerTests).
+    private string MintGoogleTicket(string sub, string email, string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
+        return jwt.GenerateGooglePendingTicket(new GoogleUserInfoDto
         {
             Sub = sub,
             Email = email,
             EmailVerified = true,
             Name = name,
         });
+    }
 
     [Fact]
     public async Task GoogleRegister_UsesAccountNameAsUserId()
