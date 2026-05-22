@@ -283,7 +283,8 @@ else
         sp.GetRequiredService<IChatService>(),
         sp.GetRequiredService<IUserService>(),
         sp.GetRequiredService<INotificationProducer>(),
-        sp.GetRequiredService<IMetricsCollector>()));
+        sp.GetRequiredService<IMetricsCollector>(),
+        sp.GetRequiredService<ILogger<MockMatchingService>>()));
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
     builder.Services.AddSingleton<IForumService>(sp =>
@@ -291,7 +292,8 @@ else
             sp.GetRequiredService<IUserService>(),
             sp.GetRequiredService<IEventService>(),
             sp.GetRequiredService<INotificationProducer>(),
-            sp.GetRequiredService<IMetricsCollector>()));
+            sp.GetRequiredService<IMetricsCollector>(),
+            sp.GetRequiredService<ILogger<MockForumService>>()));
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();

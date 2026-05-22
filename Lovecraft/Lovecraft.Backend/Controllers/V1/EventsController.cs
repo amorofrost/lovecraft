@@ -196,7 +196,7 @@ public class EventsController : ControllerBase
                     await _eventInvites.IncrementEventAttendanceClaimCountAsync(body.InviteCode);
             }
 
-            try { _metrics.RecordCount("bi_events", $"bi|event_registered|{id}"); }
+            try { _metrics.RecordCount("bi_events", "bi|event_registered"); }
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<bool>.SuccessResponse(true));
         }

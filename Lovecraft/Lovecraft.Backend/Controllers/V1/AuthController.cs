@@ -169,7 +169,7 @@ public class AuthController : ControllerBase
             if (result.Status == "signedIn" && result.Auth is not null)
             {
                 SetRefreshTokenCookie(result.Auth.RefreshToken);
-                try { _metrics.RecordCount("bi_events", "bi|user_login|telegram"); }
+                try { _metrics.RecordCount("bi_events", "bi|user_login|telegram_widget"); }
                 catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             }
 
@@ -201,7 +201,7 @@ public class AuthController : ControllerBase
             }
 
             SetRefreshTokenCookie(result.RefreshToken);
-            try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram"); }
+            try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram_widget"); }
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }
@@ -307,7 +307,7 @@ public class AuthController : ControllerBase
             if (result.Status == "signedIn" && result.Auth is not null)
             {
                 SetRefreshTokenCookie(result.Auth.RefreshToken);
-                try { _metrics.RecordCount("bi_events", "bi|user_login|telegram"); }
+                try { _metrics.RecordCount("bi_events", "bi|user_login|telegram_miniapp"); }
                 catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             }
 
@@ -344,7 +344,7 @@ public class AuthController : ControllerBase
             }
 
             SetRefreshTokenCookie(result.RefreshToken);
-            try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram"); }
+            try { _metrics.RecordCount("bi_events", "bi|user_registered|telegram_miniapp"); }
             catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
             return Ok(ApiResponse<AuthResponseDto>.SuccessResponse(result));
         }

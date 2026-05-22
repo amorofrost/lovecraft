@@ -13,13 +13,15 @@ public class MockMatchingService : IMatchingService
     private readonly IUserService _userService;
     private readonly INotificationProducer? _producer;
     private readonly IMetricsCollector? _metrics;
+    private readonly ILogger<MockMatchingService>? _logger;
 
-    public MockMatchingService(IChatService chatService, IUserService userService, INotificationProducer? producer = null, IMetricsCollector? metrics = null)
+    public MockMatchingService(IChatService chatService, IUserService userService, INotificationProducer? producer = null, IMetricsCollector? metrics = null, ILogger<MockMatchingService>? logger = null)
     {
         _chatService = chatService;
         _userService = userService;
         _producer = producer;
         _metrics = metrics;
+        _logger = logger;
     }
 
     public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
@@ -74,7 +76,7 @@ public class MockMatchingService : IMatchingService
             await _userService.IncrementCounterAsync(toUserId, UserCounter.MatchCount);
 
             try { _metrics?.RecordCount("bi_events", "bi|match_created"); }
-            catch { /* BI metric must never fail the operation */ }
+            catch (Exception ex) { _logger?.LogWarning(ex, "BI metric failed"); }
 
             // Fire MatchCreated notification to both users (skip self-action)
             if (_producer is not null && fromUserId != toUserId)

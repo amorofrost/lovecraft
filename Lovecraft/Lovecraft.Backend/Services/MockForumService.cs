@@ -17,13 +17,15 @@ public class MockForumService : IForumService
     private readonly IEventService _eventService;
     private readonly INotificationProducer? _producer;
     private readonly IMetricsCollector? _metrics;
+    private readonly ILogger<MockForumService>? _logger;
 
-    public MockForumService(IUserService userService, IEventService eventService, INotificationProducer? producer = null, IMetricsCollector? metrics = null)
+    public MockForumService(IUserService userService, IEventService eventService, INotificationProducer? producer = null, IMetricsCollector? metrics = null, ILogger<MockForumService>? logger = null)
     {
         _userService = userService;
         _eventService = eventService;
         _producer = producer;
         _metrics = metrics;
+        _logger = logger;
     }
 
     public Task<List<ForumSectionDto>> GetSectionsAsync()
@@ -291,7 +293,7 @@ public class MockForumService : IForumService
         MockDataStore.ForumTopics.Add(topic);
         section.TopicCount++;
         try { _metrics?.RecordCount("bi_events", $"bi|topic_created|{sectionId}"); }
-        catch { /* BI metric must never fail the operation */ }
+        catch (Exception ex) { _logger?.LogWarning(ex, "BI metric failed"); }
         return Task.FromResult(topic);
     }
 
