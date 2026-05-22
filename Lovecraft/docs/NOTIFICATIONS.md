@@ -1,7 +1,11 @@
 # Notifications (backend)
 
-**Last updated:** 2026-05-19
-**Phase:** A–H shipped — notifications subsystem feature-complete (MCF.4 resolved).
+**Last updated:** 2026-05-22
+**Phase:** A–H shipped — notifications subsystem feature-complete (MCF.4 resolved). Post-phase polish through 2026-05-22.
+
+> For a high-level architecture index spanning backend + frontend, see
+> `aloevera-harmony-meet/docs/NOTIFICATIONS_AND_FEED.md`. This file documents
+> each phase's scope, env vars, and per-phase follow-ups in detail.
 
 ## Architecture
 
@@ -288,3 +292,50 @@ NOTIFICATIONS_WORKER_REMINDER_SCAN_INTERVAL_MINUTES=5   # default 5
 - Renderers don't yet use `previousRank` — could render "🎉 Promoted from novice to activeMember!" but currently just "You're now activeMember".
 - No threshold-change UI in the admin panel yet (MCF.12 partial — covered separately from MCF.4).
 - Rank-down notifications aren't fired by design; could be added as a separate type if user feedback indicates it.
+
+---
+
+## Post-H polish (2026-05-20 → 2026-05-22)
+
+Behavioral fixes + extensions that landed after the 8 phases. Each is independent and small enough to not warrant a new phase tag.
+
+### Actor name resolution at read time (2026-05-21)
+
+`NotificationEntity` only stores `ActorId`. `NotificationDto.ActorName` + `ActorAvatar` were declared but never populated, so frontend templates like `"{actor} liked you"` rendered as `" liked you"`.
+
+Fix: `AzureNotificationService` + `MockNotificationService` accept a nullable optional `IUserService? users` ctor param and resolve actor display fields at read time:
+
+- `CreateAsync` populates the returned DTO (which is what gets pushed via SignalR for real-time bell updates).
+- `ListAsync` batch-resolves unique `ActorId`s after paginating (dedup means N rows from same actor = 1 lookup).
+- `IUserService.GetUserByIdAsync` is `UserCache`-backed in Azure mode → O(1) lookup.
+
+Existing rows benefit retroactively — no schema migration needed. Trade-off: if a user renames themselves later, their old notifications now show the new name (acceptable).
+
+### Conversation supersede (2026-05-22)
+
+When a new `MessageReceived` (or `ForumReplyToThread`) lands, the producer hard-deletes prior notifications for the same `(recipient, chatId)` / `(recipient, topicId)` so the feed shows only the latest one per conversation.
+
+- New `INotificationService.RemoveAsync(userId, notificationId)` — hard delete (distinct from `DismissAsync` which only sets `DismissedAtUtc`).
+- `NotificationProducer.SupersedeOlderAsync` runs after the canonical write. Uses `ExtractConversationKey(type, payloadJson)` to extract `chatId` / `topicId`; scans `ListAsync(userId, 200)`; calls `RemoveAsync` for matches. Failures logged at warning, never abort the produce.
+- Other notification types (likes, matches, broadcasts, events, etc.) are unaffected — each remains a discrete event.
+- Orphan outbox rows handled gracefully by `OutboxProcessor.ProcessChannelAsync` — `Notification not found → DEAD`. Net result: at most one Telegram/Email dispatch per chat per worker tick with the latest preview.
+
+### Forum topic subscriptions (2026-05-22)
+
+`ForumReplyToThread` fanout changed from implicit-participation ("topic author + every prior reply author") to explicit subscription.
+
+- New table `forumtopicsubscriptions` (PK=topicId, RK=userId, cols `SubscribedAtUtc` + `Source`).
+- `IForumSubscriptionService` (Mock + Azure): `SubscribeAsync` / `UnsubscribeAsync` / `IsSubscribedAsync` / `GetSubscribersAsync`. `SubscribeAsync` is idempotent via `UpsertEntityAsync`.
+- `AzureForumService.CreateTopicAsync` auto-subscribes the creator with `Source="create"`.
+- `AzureForumService.CreateReplyAsync` auto-subscribes the replier with `Source="reply"`, then fans out to current subscribers (minus the replier's own id). Same in `MockForumService`.
+- New endpoints `GET/POST/DELETE /api/v1/forum/topics/{id}/subscription|subscribe`.
+- Frontend: bell toggle button in `TopicDetail.tsx`; settings type label updated to "Replies in topics you follow".
+
+**Behavior change (no migration):** pre-existing forum participation is NOT backfilled into subscriptions. Users who once replied to a topic but never re-engaged won't keep getting notifications.
+
+### Feature flags (cross-cutting)
+
+`appconfig.features` partition holds client-visible flags; `FeatureFlagsConfig` loaded by `AzureAppConfigService` with the same 1-hour `IMemoryCache` as other appconfig sections. Public `GET /api/v1/features` endpoint exposes the snapshot.
+
+Current flags:
+- `feed_enabled` (default `true`) — when false, the frontend hides the 5th bottom-nav button + `/feed` route; bell "See all" routes to `/notifications` instead.
