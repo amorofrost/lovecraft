@@ -131,6 +131,8 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddHostedService<DigestWorker>();
         builder.Services.AddHostedService<JanitorWorker>();
         builder.Services.AddHostedService<EventReminderWorker>();
+        builder.Services.AddSingleton(serviceClient);
+        builder.Services.AddHostedService<MetricsRollupWorker>();
 
         var host = builder.Build();
         await host.RunAsync();
