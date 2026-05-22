@@ -10,8 +10,8 @@ public class MetricsRollupWorkerTests
     {
         var rows = new[]
         {
-            new MetricMinuteEntity { RowKey = "10#k", Count = 3, SumMs = 60, MinMs = 10, MaxMs = 30, B0 = 1, B1 = 2 },
-            new MetricMinuteEntity { RowKey = "11#k", Count = 2, SumMs = 200, MinMs = 90, MaxMs = 110, B1 = 1, B2 = 1 },
+            new MetricMinuteEntity { RowKey = "10_k", Count = 3, SumMs = 60, MinMs = 10, MaxMs = 30, B0 = 1, B1 = 2 },
+            new MetricMinuteEntity { RowKey = "11_k", Count = 2, SumMs = 200, MinMs = 90, MaxMs = 110, B1 = 1, B2 = 1 },
         };
         var hour = MetricsRollupWorker.AggregateGroup("k", rows);
         Assert.Equal(5, hour.Count);

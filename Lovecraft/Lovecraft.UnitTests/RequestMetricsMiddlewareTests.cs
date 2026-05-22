@@ -48,7 +48,7 @@ public class RequestMetricsMiddlewareTests
         Assert.Single(collector.Snapshot());
         var row = collector.Snapshot()[0];
         Assert.Equal("request_timing", row.Category);
-        Assert.Contains("backend|POST|/api/v1/auth/login|200", row.DimensionKey);
+        Assert.Contains("backend|POST|api~v1~auth~login|200", row.DimensionKey);
     }
 
     [Fact]

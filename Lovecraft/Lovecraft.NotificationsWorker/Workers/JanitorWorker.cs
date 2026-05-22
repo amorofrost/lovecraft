@@ -118,15 +118,15 @@ public class JanitorWorker : BackgroundService
     // ── Public static helpers (tested directly) ──────────────────────────────
 
     /// <summary>
-    /// Returns true if a <c>metricsminute</c> partition key (format <c>yyyy-MM-dd'T'HH#category</c>)
+    /// Returns true if a <c>metricsminute</c> partition key (format <c>yyyy-MM-dd'T'HH_category</c>)
     /// represents an hour older than <paramref name="retentionHours"/> ago.
     /// </summary>
     public static bool ShouldDeleteMinutePartition(string pk, DateTime nowUtc, int retentionHours)
     {
-        var hashIdx = pk.IndexOf('#');
-        if (hashIdx < 0) return false;
+        var underscoreIdx = pk.IndexOf('_');
+        if (underscoreIdx < 0) return false;
         if (!DateTime.TryParseExact(
-                pk[..hashIdx],
+                pk[..underscoreIdx],
                 "yyyy-MM-dd'T'HH",
                 null,
                 System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
@@ -136,15 +136,15 @@ public class JanitorWorker : BackgroundService
     }
 
     /// <summary>
-    /// Returns true if a <c>metricshour</c> partition key (format <c>yyyy-MM-dd#category</c>)
+    /// Returns true if a <c>metricshour</c> partition key (format <c>yyyy-MM-dd_category</c>)
     /// represents a date older than <paramref name="retentionDays"/> days ago.
     /// </summary>
     public static bool ShouldDeleteHourPartition(string pk, DateTime nowUtc, int retentionDays)
     {
-        var hashIdx = pk.IndexOf('#');
-        if (hashIdx < 0) return false;
+        var underscoreIdx = pk.IndexOf('_');
+        if (underscoreIdx < 0) return false;
         if (!DateTime.TryParseExact(
-                pk[..hashIdx],
+                pk[..underscoreIdx],
                 "yyyy-MM-dd",
                 null,
                 System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,

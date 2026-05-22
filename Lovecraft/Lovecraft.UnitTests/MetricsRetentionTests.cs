@@ -10,7 +10,7 @@ public class MetricsRetentionTests
     {
         var now = new DateTime(2026, 5, 21, 12, 0, 0, DateTimeKind.Utc);
         // 2026-05-20T11 is 25 hours before now — older than 24h retention
-        Assert.True(JanitorWorker.ShouldDeleteMinutePartition("2026-05-20T11#request_timing", now, retentionHours: 24));
+        Assert.True(JanitorWorker.ShouldDeleteMinutePartition("2026-05-20T11_request_timing", now, retentionHours: 24));
     }
 
     [Fact]
@@ -18,7 +18,7 @@ public class MetricsRetentionTests
     {
         var now = new DateTime(2026, 5, 21, 12, 0, 0, DateTimeKind.Utc);
         // 2026-05-21T01 is 11 hours before now — within 24h retention
-        Assert.False(JanitorWorker.ShouldDeleteMinutePartition("2026-05-21T01#request_timing", now, retentionHours: 24));
+        Assert.False(JanitorWorker.ShouldDeleteMinutePartition("2026-05-21T01_request_timing", now, retentionHours: 24));
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public class MetricsRetentionTests
     {
         var now = new DateTime(2026, 5, 21, 12, 0, 0, DateTimeKind.Utc);
         // 2026-02-15 is >90 days before 2026-05-21 — older than 90d retention
-        Assert.True(JanitorWorker.ShouldDeleteHourPartition("2026-02-15#request_timing", now, retentionDays: 90));
+        Assert.True(JanitorWorker.ShouldDeleteHourPartition("2026-02-15_request_timing", now, retentionDays: 90));
     }
 
     [Fact]

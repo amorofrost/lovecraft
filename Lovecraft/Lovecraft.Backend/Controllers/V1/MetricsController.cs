@@ -65,7 +65,7 @@ public class MetricsController : ControllerBase
             if (Guid.TryParse(seg, out _)) return "{id}";
             return seg;
         });
-        return string.Join('/', parts);
+        return string.Join('~', parts).TrimStart('~');
     }
 }
 

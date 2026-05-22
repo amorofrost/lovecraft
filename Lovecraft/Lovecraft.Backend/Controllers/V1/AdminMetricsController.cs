@@ -354,18 +354,18 @@ public class AdminMetricsController : ControllerBase
         long totalRequests = 0;
         long[] combinedBuckets = new long[HistogramBuckets.BucketCount];
 
-        // Partition key format: "{yyyy-MM-dd'T'HH}#{category}"
+        // Partition key format: "{yyyy-MM-dd'T'HH}_{category}"
         // We need to scan the last 60 minutes, which may span up to 2 hour partitions.
         for (int h = 0; h <= 1; h++)
         {
             var hour = now.AddHours(-h);
-            var pk = $"{hour:yyyy-MM-dd'T'HH}#request_timing";
+            var pk = $"{hour:yyyy-MM-dd'T'HH}_request_timing";
 
             await foreach (var entity in table.QueryAsync<MetricMinuteEntity>(
                 filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
             {
-                // Row key: "{mm}#{dimensionKey}" — parse minute from first segment
-                var mmStr = entity.RowKey.Split('#')[0];
+                // Row key: "{mm}_{dimensionKey}" — parse minute from first segment
+                var mmStr = entity.RowKey.Split('_')[0];
                 if (!int.TryParse(mmStr, out var minute)) continue;
 
                 // Reconstruct the timestamp for this row
@@ -397,18 +397,18 @@ public class AdminMetricsController : ControllerBase
         DateTime to,
         CancellationToken ct)
     {
-        // Partition key: "{yyyy-MM-ddTHH}#{category}"
+        // Partition key: "{yyyy-MM-ddTHH}_{category}"
         // We collect all relevant hour partitions in the [from, to] range.
         var byMinute = new Dictionary<DateTime, (long count, long[] buckets)>();
 
         var cursor = new DateTime(from.Year, from.Month, from.Day, from.Hour, 0, 0, DateTimeKind.Utc);
         while (cursor <= to)
         {
-            var pk = $"{cursor:yyyy-MM-dd'T'HH}#{category}";
+            var pk = $"{cursor:yyyy-MM-dd'T'HH}_{category}";
             await foreach (var entity in table.QueryAsync<MetricMinuteEntity>(
                 filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
             {
-                var parts = entity.RowKey.Split('#', 2);
+                var parts = entity.RowKey.Split('_', 2);
                 if (parts.Length < 2) continue;
                 var mmStr = parts[0];
                 var dimKey = parts[1];
@@ -457,17 +457,17 @@ public class AdminMetricsController : ControllerBase
         DateTime to,
         CancellationToken ct)
     {
-        // Partition key: "{yyyy-MM-dd}#{category}"
+        // Partition key: "{yyyy-MM-dd}_{category}"
         var byHour = new Dictionary<DateTime, (long count, long[] buckets)>();
 
         var cursor = new DateTime(from.Year, from.Month, from.Day, 0, 0, 0, DateTimeKind.Utc);
         while (cursor <= to)
         {
-            var pk = $"{cursor:yyyy-MM-dd}#{category}";
+            var pk = $"{cursor:yyyy-MM-dd}_{category}";
             await foreach (var entity in table.QueryAsync<MetricHourEntity>(
                 filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
             {
-                var parts = entity.RowKey.Split('#', 2);
+                var parts = entity.RowKey.Split('_', 2);
                 if (parts.Length < 2) continue;
                 var hhStr = parts[0];
                 var dimKey = parts[1];

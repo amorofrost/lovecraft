@@ -61,8 +61,8 @@ public sealed class AzureMetricsCollector : IMetricsCollector
 
         return samples
             .GroupBy(s => (
-                Pk: $"{s.CapturedAtUtc:yyyy-MM-dd'T'HH}#{s.Category}",
-                Rk: $"{s.CapturedAtUtc:mm}#{s.DimensionKey}"))
+                Pk: $"{s.CapturedAtUtc:yyyy-MM-dd'T'HH}_{s.Category}",
+                Rk: $"{s.CapturedAtUtc:mm}_{s.DimensionKey}"))
             .Select(g => Aggregate(g.Key.Pk, g.Key.Rk, g.ToList()))
             .ToList();
     }

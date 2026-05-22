@@ -5,8 +5,8 @@ namespace Lovecraft.Backend.Storage.Entities;
 
 public class MetricMinuteEntity : ITableEntity
 {
-    public string PartitionKey { get; set; } = string.Empty;  // "{yyyy-MM-ddTHH}#{category}"
-    public string RowKey { get; set; } = string.Empty;        // "{mm}#{dimensionKey}"
+    public string PartitionKey { get; set; } = string.Empty;  // "{yyyy-MM-ddTHH}_{category}"
+    public string RowKey { get; set; } = string.Empty;        // "{mm}_{dimensionKey}"
     public DateTimeOffset? Timestamp { get; set; }
     public ETag ETag { get; set; }
 

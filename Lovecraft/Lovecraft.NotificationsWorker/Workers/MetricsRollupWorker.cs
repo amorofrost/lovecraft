@@ -60,16 +60,16 @@ public sealed class MetricsRollupWorker : BackgroundService
 
     private async Task RollupHourAsync(TableClient minute, TableClient hour, DateTime hourUtc, string category, bool force, CancellationToken ct)
     {
-        var pkMinute = $"{hourUtc:yyyy-MM-dd'T'HH}#{category}";
+        var pkMinute = $"{hourUtc:yyyy-MM-dd'T'HH}_{category}";
         var rows = new List<MetricMinuteEntity>();
         await foreach (var r in minute.QueryAsync<MetricMinuteEntity>(filter: $"PartitionKey eq '{pkMinute}'", cancellationToken: ct))
             rows.Add(r);
         if (rows.Count == 0) return;
 
-        var pkHour = $"{hourUtc:yyyy-MM-dd}#{category}";
+        var pkHour = $"{hourUtc:yyyy-MM-dd}_{category}";
         foreach (var group in rows.GroupBy(r => DimensionFromRowKey(r.RowKey)))
         {
-            var rk = $"{hourUtc:HH}#{group.Key}";
+            var rk = $"{hourUtc:HH}_{group.Key}";
             if (!force)
             {
                 try
@@ -89,7 +89,7 @@ public sealed class MetricsRollupWorker : BackgroundService
 
     private static string DimensionFromRowKey(string rowKey)
     {
-        var idx = rowKey.IndexOf('#');
+        var idx = rowKey.IndexOf('_');
         return idx < 0 ? rowKey : rowKey[(idx + 1)..];
     }
 

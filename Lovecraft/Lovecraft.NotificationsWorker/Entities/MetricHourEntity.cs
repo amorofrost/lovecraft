@@ -5,8 +5,8 @@ namespace Lovecraft.NotificationsWorker.Entities;
 
 public class MetricHourEntity : ITableEntity
 {
-    public string PartitionKey { get; set; } = string.Empty;  // "{yyyy-MM-dd}#{category}"
-    public string RowKey { get; set; } = string.Empty;        // "{HH}#{dimensionKey}"
+    public string PartitionKey { get; set; } = string.Empty;  // "{yyyy-MM-dd}_{category}"
+    public string RowKey { get; set; } = string.Empty;        // "{HH}_{dimensionKey}"
     public DateTimeOffset? Timestamp { get; set; }
     public ETag ETag { get; set; }
 
