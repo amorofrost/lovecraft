@@ -1,6 +1,7 @@
 using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Hubs;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Metrics;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Enums;
@@ -21,12 +22,16 @@ public class ChatsController : ControllerBase
     private readonly IChatService _chatService;
     private readonly IHubContext<ChatHub> _hubContext;
     private readonly INotificationProducer _producer;
+    private readonly IMetricsCollector _metrics;
+    private readonly ILogger<ChatsController> _logger;
 
-    public ChatsController(IChatService chatService, IHubContext<ChatHub> hubContext, INotificationProducer producer)
+    public ChatsController(IChatService chatService, IHubContext<ChatHub> hubContext, INotificationProducer producer, IMetricsCollector metrics, ILogger<ChatsController> logger)
     {
         _chatService = chatService;
         _hubContext = hubContext;
         _producer = producer;
+        _metrics = metrics;
+        _logger = logger;
     }
 
     private string CurrentUserId =>
@@ -75,6 +80,9 @@ public class ChatsController : ControllerBase
             return Forbid();
 
         var message = await _chatService.SendMessageAsync(id, CurrentUserId, request.Content, request.ImageUrls);
+
+        try { _metrics.RecordCount("bi_events", "bi|message_sent"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
 
         // Push to all connected members of this chat group in real time.
         // The sender receives it too; the frontend deduplicates by message ID.
