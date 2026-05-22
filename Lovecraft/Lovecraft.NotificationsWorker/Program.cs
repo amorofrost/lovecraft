@@ -139,6 +139,10 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddHostedService<EventReminderWorker>();
         builder.Services.AddSingleton(serviceClient);
         builder.Services.AddHostedService<MetricsRollupWorker>();
+        builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+            "notifications-worker"));
 
         var host = builder.Build();
         await host.RunAsync();
