@@ -9,7 +9,7 @@ public class RequestMetricsMiddlewareTests
 {
     [Theory]
     [InlineData("/health")]
-    [InlineData("/metrics/config")]
+    [InlineData("/api/v1/metrics/config")]
     [InlineData("/swagger/index.html")]
     public async Task SkippedPaths_DoNotRecord(string path)
     {

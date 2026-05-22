@@ -13,7 +13,7 @@ public sealed class RequestMetricsMiddleware
     private readonly DailyActiveUserCoalescer _dau;
 
     private static readonly string[] SkippedPathPrefixes =
-        { "/health", "/metrics/config", "/metrics/frontend", "/swagger" };
+        { "/health", "/api/v1/metrics/config", "/api/v1/metrics/frontend", "/swagger" };
 
     public RequestMetricsMiddleware(RequestDelegate next, IMetricsCollector collector, DailyActiveUserCoalescer dau)
     {
