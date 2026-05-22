@@ -496,6 +496,18 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Check whether an account name is available for registration.
+    /// </summary>
+    [HttpGet("account-name-availability")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthRateLimit")]
+    public async Task<ActionResult<ApiResponse<AccountNameAvailabilityDto>>> CheckAccountNameAvailability([FromQuery] string name)
+    {
+        var result = await _authService.CheckAccountNameAvailabilityAsync(name ?? string.Empty);
+        return Ok(ApiResponse<AccountNameAvailabilityDto>.SuccessResponse(result));
+    }
+
+    /// <summary>
     /// Login with email/password
     /// </summary>
     [HttpPost("login")]
