@@ -344,8 +344,23 @@ builder.Services.AddSingleton(sp => new Lazy<INotificationProducer>(
     () => sp.GetRequiredService<INotificationProducer>()));
 builder.Services.AddScoped<IBroadcastAudienceResolver, BroadcastAudienceResolver>();
 
-// BI metrics — Task 15 will swap MockMetricsCollector for AzureMetricsCollector in Azure mode
-builder.Services.AddSingleton<IMetricsCollector, MockMetricsCollector>();
+// BI metrics — mode-aware: AzureMetricsCollector in production, MockMetricsCollector in mock/test.
+if (useAzure)
+{
+    builder.Services.AddSingleton<IMetricsCollector>(sp =>
+        new AzureMetricsCollector(
+            capacity: 1000,
+            tableService: sp.GetRequiredService<TableServiceClient>()));
+    builder.Services.AddSingleton(sp =>
+        new DailyActiveUserCoalescer(
+            windowSeconds: 60,
+            tableService: sp.GetRequiredService<TableServiceClient>()));
+}
+else
+{
+    builder.Services.AddSingleton<IMetricsCollector, MockMetricsCollector>();
+    builder.Services.AddSingleton(new DailyActiveUserCoalescer(windowSeconds: 60));
+}
 
 // MauCalculator: used by AdminMetricsController for DAU/MAU aggregation.
 // Registered with the TableServiceClient when Azure storage is available (may be null in mock mode).
@@ -355,6 +370,17 @@ builder.Services.AddSingleton(sp =>
     var cache = sp.GetRequiredService<IMemoryCache>();
     return new MauCalculator(tables, cache);
 });
+
+// Metrics background workers (all modes — workers are exception-safe and no-op in mock mode)
+builder.Services.AddHostedService<MetricsFlushWorker>();
+builder.Services.AddHostedService<MetricsConfigPoller>();
+builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
+    sp.GetRequiredService<IMetricsCollector>(),
+    sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+    "backend",
+    typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0"));
+builder.Services.AddHttpClient("frontend-probe");
+builder.Services.AddHostedService<FrontendProbeWorker>();
 
 var app = builder.Build();
 
@@ -405,6 +431,7 @@ app.UseHttpsRedirection();
 // Authentication & Authorization middleware (order matters!)
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<Lovecraft.Backend.Middleware.RequestMetricsMiddleware>();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
