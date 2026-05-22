@@ -274,7 +274,7 @@ dotnet test
 
 ### Done since the original plan
 - ✅ JWT authentication
-- ✅ Azure Table Storage (27 tables, 11 Azure services, `Lovecraft.Tools.Seeder`)
+- ✅ Azure Table Storage (32 tables, 11 Azure services + 4 metrics-specific, `Lovecraft.Tools.Seeder`)
 - ✅ Notifications Phase A: 4 Azure Tables, DTOs/enums, services (notifications, preferences, push subscriptions), helpers (NotificationPolicy, NotificationDeduper, IPresenceTracker), InAppDispatcher, NotificationProducer facade, NotificationsController endpoints. No producer call sites wired yet — Phase B.
 - ✅ Chat endpoints (REST + SignalR `/hubs/chat`)
 - ✅ Azure Blob Storage (`profile-images`, `content-images`, 1200px resize + JPEG 85%)
@@ -292,18 +292,20 @@ dotnet test
 - ✅ User-visible error handling, form validation, profile image upload, BB code, image attachments, SEO metadata
 - ✅ Structured `Country`/`Region` on user profiles + search filtering by country and region
 - ✅ Optional secondary `Country`/`Region` slot on user profiles; OR-match in `GetUsersAsync`
+- ✅ **Monitoring & instrumentation (2026-05-22)** — `IMetricsCollector` (Azure/Mock/NoOp), `RequestMetricsMiddleware`, 14 BI producer call sites, `ContainerHeartbeatWorker` + `FrontendProbeWorker` in backend, `MetricsRollupWorker` (hourly) + extended `JanitorWorker` (retention) in NotificationsWorker, `MauCalculator`, `MetricsController` + `AdminMetricsController` (6 endpoints), 4 new Azure Tables (`metricsminute`, `metricshour`, `dailyactiveusers`, `containerstatus`), per-category runtime toggles via `appconfig`/`metrics` partition, Serilog structured JSON to stdout in all 3 .NET containers with `service`/`version`/`traceId` enrichers. See [MONITORING.md](./MONITORING.md).
 
 ### Still open
-1. Notifications Phase B onwards (producer call-site wiring, frontend UI, worker, delivery channels)
-2. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
-3. Azure Blob SAS tokens for private blobs (currently public-read; profile blobs use `{userId}/{guid}.jpg` to avoid enumeration)
-4. Account lockout after failed logins
-5. SignalR enhancements: online presence, typing indicators, unread push updates
-6. Pagination on list views (server-side `PagedResult<T>` exists; client-side wiring pending)
-7. Application Insights / structured logging
-8. Admin panel content removal / moderation queue / user blocking
-9. Telegram Mini App polish (deep-link start params, command menu, full inline wizard)
-10. aloeband.ru scraper for events + store items
+1. Songs backend endpoint (frontend `songsApi.ts` still mock-only)
+2. Azure Blob SAS tokens for private blobs (currently public-read; profile blobs use `{userId}/{guid}.jpg` to avoid enumeration)
+3. Account lockout after failed logins
+4. SignalR enhancements: online presence, typing indicators, unread push updates
+5. Pagination on list views (server-side `PagedResult<T>` exists; client-side wiring pending)
+6. Log shipping (Application Insights / Loki / Seq) — stdout JSON shipped; sink config is one line per Program.cs when picked
+7. Frontend error tracking (Sentry — TD.5 frontend half)
+8. Alerting on metrics thresholds (dashboard is pull-only today)
+9. Admin panel content removal / moderation queue / user blocking
+10. Telegram Mini App polish (deep-link start params, command menu, full inline wizard)
+11. aloeband.ru scraper for events + store items
 
 ## Notes (Current State)
 

@@ -74,10 +74,12 @@ In `Lovecraft/docs/`:
 - **[AUTHENTICATION.md](./Lovecraft/docs/AUTHENTICATION.md)** — full auth surface (local + Google + Telegram)
 - **[TELEGRAM_AUTH.md](./Lovecraft/docs/TELEGRAM_AUTH.md)** — Telegram Login Widget + Mini App + Bot worker
 - **[GOOGLE_OAUTH_SETUP.md](./Lovecraft/docs/GOOGLE_OAUTH_SETUP.md)** — Google Cloud Console setup
-- **[AZURE_STORAGE.md](./Lovecraft/docs/AZURE_STORAGE.md)** — 23-table schema + blob containers
+- **[AZURE_STORAGE.md](./Lovecraft/docs/AZURE_STORAGE.md)** — 32-table schema + blob containers + Azure PK/RK constraint
 - **[CHAT_ARCHITECTURE.md](./Lovecraft/docs/CHAT_ARCHITECTURE.md)** — REST + SignalR chat design
 - **[EVENTS.md](./Lovecraft/docs/EVENTS.md)** — event visibility, registration, forum-topic access
 - **[INVITES.md](./Lovecraft/docs/INVITES.md)** — event + campaign invite codes
+- **[NOTIFICATIONS.md](./Lovecraft/docs/NOTIFICATIONS.md)** — 9 notification types × 4 delivery channels
+- **[MONITORING.md](./Lovecraft/docs/MONITORING.md)** — metrics + Serilog (backend operator notes)
 - **[API_TESTING.md](./Lovecraft/docs/API_TESTING.md)** — curl reference
 
 ---
@@ -242,14 +244,17 @@ git push origin feature/add-user-search
 - All C# enums serialize as camelCase strings
 - Swagger UI at `/swagger`; health check at `/health`
 - CORS for localhost dev + production origin
-- xUnit tests (~25 test classes); integration tests via `WebApplicationFactory<Program>`
+- xUnit tests (~30 test classes incl. ~30 metrics-specific tests); integration tests via `WebApplicationFactory<Program>`
+- **Monitoring & instrumentation** (2026-05-22) — admin dashboard at `/admin/metrics` (container status, request volume + latency, DAU/MAU, BI counters), `IMetricsCollector` with Azure/Mock/NoOp variants, 4 new Azure Tables (`metricsminute`, `metricshour`, `dailyactiveusers`, `containerstatus`), hourly rollup + retention janitor, per-category runtime toggles via `appconfig`. Serilog structured JSON to stdout in all 3 .NET containers with `traceId` correlation. See [docs/MONITORING.md](./Lovecraft/docs/MONITORING.md).
 
 ### 📋 Open
 - Songs backend endpoint (frontend `songsApi.ts` still returns mock)
 - Azure Blob SAS tokens (containers currently public-read)
 - Account lockout after failed logins
-- Online presence / typing indicators / notifications
-- Application Insights / structured logging
+- Online presence / typing indicators
+- Log shipping (Application Insights / Loki / Seq) — stdout JSON shipped, sink TBD
+- Frontend error tracking (Sentry)
+- Alerting on metrics thresholds (dashboard is pull-only today)
 - Admin moderation queue, user blocking, content removal
 - Telegram Mini App polish (deep-link start params, command menu)
 

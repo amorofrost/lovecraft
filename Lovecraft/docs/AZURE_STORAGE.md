@@ -10,7 +10,7 @@
 
 ## Overview
 
-27 tables under `TableNames.Prefix + name`. The optional `AZURE_TABLE_PREFIX` env var (e.g. `dev_`, `test_`) lets staging and integration tests share an Azure Storage account without colliding. Both the backend and the `Lovecraft.Tools.Seeder` CLI respect the prefix.
+32 tables under `TableNames.Prefix + name`. The optional `AZURE_TABLE_PREFIX` env var (e.g. `dev_`, `test_`) lets staging and integration tests share an Azure Storage account without colliding. Both the backend and the `Lovecraft.Tools.Seeder` CLI respect the prefix.
 
 Design principles:
 - **Denormalisation over joins** — Table Storage has no JOIN; reverse-lookup indexes are separate tables
@@ -19,7 +19,15 @@ Design principles:
 
 ---
 
-## Tables (27)
+## ⚠️ Critical PK/RK constraint
+
+**Forbidden characters in PartitionKey and RowKey:** `/`, `\`, `#`, `?`, and control chars (U+0000–U+001F, U+007F–U+009F). Length ≤ 1024 chars. Cannot be empty.
+
+This bit us during initial monitoring deploy — original PK format `{date}#{category}` silently failed every write with `RequestFailedException: 'PartitionKey' parameter ... is out of range`. Tests using in-memory mock collectors accepted invalid keys; the bug only surfaced in production. We now use `_` separator and `~` to encode `/` in URL-path segments before they reach the RowKey.
+
+**Rule of thumb:** never embed user-controllable strings (URLs, IDs that could contain reserved chars) directly into PK/RK without sanitizing. Use ASCII-safe substitutions (`_`, `:`, `~`, `-`) for separators and path segments.
+
+## Tables (32)
 
 ### Identity & auth
 
@@ -187,6 +195,31 @@ PK `userId` · RK `INDEX`. Fields: `MatrixJson`, `FrequencyJson`, `DailyDigestHo
 PK `userId` · RK `deviceId`. Fields: `Endpoint`, `P256dh`, `Auth`, `UserAgent`,
 `CreatedAtUtc`, `LastSeenAtUtc`. No consumer wired until Phase E.
 
+### Monitoring & metrics
+
+#### `metricsminute`
+PK `{yyyy-MM-ddTHH}_{category}` (e.g. `2026-05-22T14_request_timing`)
+RK `{mm}_{dimensionKey}` (e.g. `23_backend|GET|~api~v1~users|200`)
+
+Per-minute bucketed counter + histogram. Columns: `Count`, `SumMs?`, `MinMs?`, `MaxMs?`, `B0..B8` (9 non-cumulative histogram buckets at boundaries `[25, 50, 100, 250, 500, 1000, 2500, 5000, ∞]` ms), `LabelsJson`. Written by `AzureMetricsCollector.FlushAsync` every 10s. Retention: 24h (configurable via `appconfig`/`metrics`/`retention_minute_hours`).
+
+#### `metricshour`
+PK `{yyyy-MM-dd}_{category}` · RK `{HH}_{dimensionKey}`
+
+Same shape as `metricsminute` plus `SourceMinuteRowCount` (for idempotent re-aggregation). Written by `MetricsRollupWorker` hourly at `:05` with 6h lookback. Retention: 90d.
+
+#### `dailyactiveusers`
+PK `{yyyy-MM-dd}` · RK `userId`. Fields: `FirstSeenUtc`, `LastSeenUtc`, `RequestCount`.
+
+Set semantics — one row per (day, user). Written by `DailyActiveUserCoalescer` from `RequestMetricsMiddleware` (coalesced to 1 write per user per 60s). DAU = partition row count. MAU = union of 30 partitions (5-min `IMemoryCache`). Retention: 31d.
+
+#### `containerstatus`
+PK `"STATUS"` · RK `{containerName}` (`backend` | `telegram-bot` | `notifications-worker` | `frontend`)
+
+Current latest snapshot per container. Fields: `LastHeartbeatUtc`, `StartedAtUtc`, `Version`, `GcHeapMb?`, `WorkingSetMb?`, `ThreadCount?`, `CpuSecondsTotal?`, `RequestsServed?`, `Note?`. Each .NET container writes its own row every 30s via `ContainerHeartbeatWorker`. The `frontend` row is written by `FrontendProbeWorker` (backend HTTPing the frontend container's `/health`). Constant size (4 rows).
+
+See [MONITORING.md](./MONITORING.md) for the full operator guide.
+
 ---
 
 ## Blob Storage
@@ -288,7 +321,7 @@ GUI for browsing tables and blobs: <https://azure.microsoft.com/features/storage
 dotnet run --project Lovecraft.Tools.Seeder
 ```
 
-Populates all 23 tables from `MockDataStore`. Set `AZURE_TABLE_PREFIX` to seed into an isolated namespace.
+Populates the seed tables from `MockDataStore` and writes the `appconfig` rows (rank thresholds, permissions, registration, feature flags, metrics). Set `AZURE_TABLE_PREFIX` to seed into an isolated namespace.
 
 ---
 
