@@ -25,18 +25,21 @@ public class AzureForumService : IForumService
     private readonly IEventService _eventService;
     private readonly ILogger<AzureForumService> _logger;
     private readonly INotificationProducer? _producer;
+    private readonly IForumSubscriptionService? _subscriptions;
 
     public AzureForumService(
         TableServiceClient tableServiceClient,
         IUserService userService,
         IEventService eventService,
         ILogger<AzureForumService> logger,
-        INotificationProducer? producer = null)
+        INotificationProducer? producer = null,
+        IForumSubscriptionService? subscriptions = null)
     {
         _userService = userService;
         _eventService = eventService;
         _logger = logger;
         _producer = producer;
+        _subscriptions = subscriptions;
         _sectionsTable = tableServiceClient.GetTableClient(TableNames.ForumSections);
         _topicsTable = tableServiceClient.GetTableClient(TableNames.ForumTopics);
         _topicIndexTable = tableServiceClient.GetTableClient(TableNames.ForumTopicIndex);
@@ -298,23 +301,32 @@ public class AzureForumService : IForumService
                 UserCounter.ReplyCount, authorId);
         }
 
-        if (_producer is not null && topicDto is not null)
+        // Auto-subscribe the replier so they receive future replies to this thread.
+        // Best-effort — subscription failures must not break reply creation.
+        if (_subscriptions is not null)
         {
             try
             {
-                var participants = new HashSet<string>();
-                participants.Add(topicDto.AuthorId);
-                var priorReplies = await GetRepliesAsync(topicId);
-                foreach (var r in priorReplies)
-                    if (!string.IsNullOrEmpty(r.AuthorId) && r.Id != replyId)
-                        participants.Add(r.AuthorId);
-                participants.Remove(authorId);
+                await _subscriptions.SubscribeAsync(authorId, topicId, "reply");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to auto-subscribe replier {AuthorId} to topic {TopicId}", authorId, topicId);
+            }
+        }
 
+        if (_producer is not null && _subscriptions is not null && topicDto is not null)
+        {
+            try
+            {
+                var subscribers = await _subscriptions.GetSubscribersAsync(topicId);
                 var payloadJson = JsonSerializer.Serialize(new { topicId, replyId });
-                foreach (var participantId in participants)
+                foreach (var subscriberId in subscribers)
                 {
+                    if (string.Equals(subscriberId, authorId, StringComparison.Ordinal))
+                        continue; // never notify the replier about their own reply
                     await _producer.ProduceAsync(
-                        recipientUserId: participantId,
+                        recipientUserId: subscriberId,
                         type: NotificationType.ForumReplyToThread,
                         actorId: authorId,
                         payloadJson: payloadJson,
@@ -697,7 +709,21 @@ public class AzureForumService : IForumService
         sectionEntity.TopicCount++;
         await _sectionsTable.UpdateEntityAsync(sectionEntity, sectionEntity.ETag, TableUpdateMode.Merge);
 
-        // 5. Return DTO
+        // 5. Auto-subscribe the creator so they receive reply notifications. Best-effort —
+        // a subscription failure must not block topic creation.
+        if (_subscriptions is not null)
+        {
+            try
+            {
+                await _subscriptions.SubscribeAsync(authorId, topicId, "create");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to auto-subscribe creator {AuthorId} to topic {TopicId}", authorId, topicId);
+            }
+        }
+
+        // 6. Return DTO
         return new ForumTopicDto
         {
             Id = topicId,

@@ -15,12 +15,18 @@ public class MockForumService : IForumService
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
     private readonly INotificationProducer? _producer;
+    private readonly IForumSubscriptionService? _subscriptions;
 
-    public MockForumService(IUserService userService, IEventService eventService, INotificationProducer? producer = null)
+    public MockForumService(
+        IUserService userService,
+        IEventService eventService,
+        INotificationProducer? producer = null,
+        IForumSubscriptionService? subscriptions = null)
     {
         _userService = userService;
         _eventService = eventService;
         _producer = producer;
+        _subscriptions = subscriptions;
     }
 
     public Task<List<ForumSectionDto>> GetSectionsAsync()
@@ -177,27 +183,43 @@ public class MockForumService : IForumService
 
         await _userService.IncrementCounterAsync(authorId, UserCounter.ReplyCount);
 
-        if (_producer is not null)
+        // Auto-subscribe the replier (best-effort).
+        if (_subscriptions is not null)
+        {
+            try
+            {
+                await _subscriptions.SubscribeAsync(authorId, topicId, "reply");
+            }
+            catch
+            {
+                // never break reply creation on a subscription failure
+            }
+        }
+
+        if (_producer is not null && _subscriptions is not null)
         {
             var topicForNotify = MockDataStore.ForumTopics.FirstOrDefault(t => t.Id == topicId);
             if (topicForNotify is not null)
             {
-                var participants = new HashSet<string>();
-                participants.Add(topicForNotify.AuthorId);
-                foreach (var r in MockDataStore.ForumReplies.Where(r => r.TopicId == topicId))
-                    if (!string.IsNullOrEmpty(r.AuthorId))
-                        participants.Add(r.AuthorId);
-                participants.Remove(authorId);
-
-                var payloadJson = JsonSerializer.Serialize(new { topicId, replyId = reply.Id });
-                foreach (var participantId in participants)
+                try
                 {
-                    await _producer.ProduceAsync(
-                        recipientUserId: participantId,
-                        type: NotificationType.ForumReplyToThread,
-                        actorId: authorId,
-                        payloadJson: payloadJson,
-                        sourceEventId: reply.Id);
+                    var subscribers = await _subscriptions.GetSubscribersAsync(topicId);
+                    var payloadJson = JsonSerializer.Serialize(new { topicId, replyId = reply.Id });
+                    foreach (var subscriberId in subscribers)
+                    {
+                        if (string.Equals(subscriberId, authorId, StringComparison.Ordinal))
+                            continue; // never notify the replier about their own reply
+                        await _producer.ProduceAsync(
+                            recipientUserId: subscriberId,
+                            type: NotificationType.ForumReplyToThread,
+                            actorId: authorId,
+                            payloadJson: payloadJson,
+                            sourceEventId: reply.Id);
+                    }
+                }
+                catch
+                {
+                    // notification failures must never break reply creation
                 }
             }
         }
@@ -258,7 +280,7 @@ public class MockForumService : IForumService
         };
     }
 
-    public Task<ForumTopicDto> CreateTopicAsync(
+    public async Task<ForumTopicDto> CreateTopicAsync(
         string sectionId, string authorId, string authorName, string title, string content,
         bool? noviceVisible = null, bool? noviceCanReply = null)
     {
@@ -287,7 +309,21 @@ public class MockForumService : IForumService
 
         MockDataStore.ForumTopics.Add(topic);
         section.TopicCount++;
-        return Task.FromResult(topic);
+
+        // Auto-subscribe creator (best-effort).
+        if (_subscriptions is not null)
+        {
+            try
+            {
+                await _subscriptions.SubscribeAsync(authorId, topic.Id, "create");
+            }
+            catch
+            {
+                // never break topic creation on a subscription failure
+            }
+        }
+
+        return topic;
     }
 
     public Task<ForumTopicDto?> UpdateTopicAsync(string topicId, UpdateTopicRequestDto update)

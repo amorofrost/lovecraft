@@ -457,6 +457,10 @@ public static class MockDataStore
     // Current user ID for mock authentication
     public const string CurrentUserId = "current-user";
 
+    // ---- Forum subscriptions ----
+    /// <summary>Map topicId → set of subscribed userIds. Lock the inner HashSet for mutation.</summary>
+    public static System.Collections.Concurrent.ConcurrentDictionary<string, HashSet<string>> ForumSubscriptions { get; } = new();
+
     // ---- Notifications ----
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lovecraft.Common.DTOs.Notifications.NotificationPreferencesDto> NotificationPreferences = new();
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<Lovecraft.Common.DTOs.Notifications.NotificationDto>> Notifications = new();

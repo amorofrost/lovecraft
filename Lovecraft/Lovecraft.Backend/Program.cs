@@ -226,13 +226,18 @@ if (useAzure)
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<ILogger<AzureBlogService>>()),
         sp.GetRequiredService<IMemoryCache>()));
+    builder.Services.AddSingleton<IForumSubscriptionService>(sp =>
+        new AzureForumSubscriptionService(
+            sp.GetRequiredService<TableServiceClient>(),
+            sp.GetRequiredService<ILogger<AzureForumSubscriptionService>>()));
     builder.Services.AddSingleton<IForumService>(sp => new CachingForumService(
         new AzureForumService(
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<IUserService>(),
             sp.GetRequiredService<IEventService>(),
             sp.GetRequiredService<ILogger<AzureForumService>>(),
-            sp.GetRequiredService<INotificationProducer>()),
+            sp.GetRequiredService<INotificationProducer>(),
+            sp.GetRequiredService<IForumSubscriptionService>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IChatService, AzureChatService>();
 
@@ -282,11 +287,13 @@ else
         sp.GetRequiredService<INotificationProducer>()));
     builder.Services.AddSingleton<IStoreService, MockStoreService>();
     builder.Services.AddSingleton<IBlogService, MockBlogService>();
+    builder.Services.AddSingleton<IForumSubscriptionService, MockForumSubscriptionService>();
     builder.Services.AddSingleton<IForumService>(sp =>
         new MockForumService(
             sp.GetRequiredService<IUserService>(),
             sp.GetRequiredService<IEventService>(),
-            sp.GetRequiredService<INotificationProducer>()));
+            sp.GetRequiredService<INotificationProducer>(),
+            sp.GetRequiredService<IForumSubscriptionService>()));
     builder.Services.AddSingleton<IChatService, MockChatService>();
     builder.Services.AddSingleton<IImageService, MockImageService>();
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();

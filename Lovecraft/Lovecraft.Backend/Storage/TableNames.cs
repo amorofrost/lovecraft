@@ -25,6 +25,7 @@ public static class TableNames
     public static string ForumTopics     => Prefix + "forumtopics";
     public static string ForumTopicIndex => Prefix + "forumtopicindex";
     public static string ForumReplies    => Prefix + "forumreplies";
+    public static string ForumTopicSubscriptions => Prefix + "forumtopicsubscriptions";
     public static string Chats           => Prefix + "chats";
     public static string UserChats       => Prefix + "userchats";
     public static string Messages        => Prefix + "messages";
