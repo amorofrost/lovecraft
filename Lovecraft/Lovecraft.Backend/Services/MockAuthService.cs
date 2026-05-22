@@ -3,6 +3,7 @@ using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.MockData;
 using Microsoft.Extensions.Options;
 
@@ -594,6 +595,21 @@ public class MockAuthService : IAuthService
         }
         if (cfg.Registration.RequireEventInvite) throw new InviteRequiredException();
         return null;
+    }
+
+    public Task<AccountNameAvailabilityDto> CheckAccountNameAvailabilityAsync(string name)
+    {
+        var validation = AccountNameValidator.Validate(name);
+        if (validation == AccountNameValidationResult.InvalidFormat)
+            return Task.FromResult(new AccountNameAvailabilityDto { Available = false, Reason = "invalidFormat" });
+        if (validation == AccountNameValidationResult.Reserved)
+            return Task.FromResult(new AccountNameAvailabilityDto { Available = false, Reason = "reserved" });
+
+        var canonical = AccountNameValidator.Normalize(name);
+        var taken = _users.Values.Any(u => string.Equals(u.Id, canonical, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(taken
+            ? new AccountNameAvailabilityDto { Available = false, Reason = "taken" }
+            : new AccountNameAvailabilityDto { Available = true });
     }
 
     public async Task<AuthResponseDto?> LoginAsync(LoginRequestDto request)

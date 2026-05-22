@@ -5,6 +5,7 @@ using Azure;
 using Azure.Data.Tables;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
@@ -1004,6 +1005,27 @@ public class AzureAuthService : IAuthService
             },
             ExpiresAt = now.AddMinutes(_jwtSettings.AccessTokenLifetimeMinutes)
         };
+    }
+
+    public async Task<AccountNameAvailabilityDto> CheckAccountNameAvailabilityAsync(string name)
+    {
+        var validation = AccountNameValidator.Validate(name);
+        if (validation == AccountNameValidationResult.InvalidFormat)
+            return new AccountNameAvailabilityDto { Available = false, Reason = "invalidFormat" };
+        if (validation == AccountNameValidationResult.Reserved)
+            return new AccountNameAvailabilityDto { Available = false, Reason = "reserved" };
+
+        var canonical = AccountNameValidator.Normalize(name);
+        var partitionKey = UserEntity.GetPartitionKey(canonical);
+        try
+        {
+            await _usersTable.GetEntityAsync<UserEntity>(partitionKey, canonical);
+            return new AccountNameAvailabilityDto { Available = false, Reason = "taken" };
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return new AccountNameAvailabilityDto { Available = true };
+        }
     }
 
     public async Task<AuthResponseDto?> LoginAsync(LoginRequestDto request)

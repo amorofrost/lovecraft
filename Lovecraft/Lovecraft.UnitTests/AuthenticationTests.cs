@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Xunit;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.MockData;
@@ -5,6 +6,7 @@ using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Configuration;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
+using Lovecraft.Common.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -308,5 +310,53 @@ public class AuthenticationTests
             if (original.HasValue) MockDataStore.UserStaffRoles[userId] = original.Value;
             else MockDataStore.UserStaffRoles.Remove(userId);
         }
+    }
+}
+
+/// <summary>
+/// Integration tests for GET /api/v1/auth/account-name-availability.
+/// These will return 404 until Task 4 adds the controller route.
+/// </summary>
+[Collection("AccountNameAvailabilityTests")]
+public class AccountNameAvailabilityTests : IClassFixture<AclTests.TestAppFactory>
+{
+    private readonly AclTests.TestAppFactory _factory;
+
+    public AccountNameAvailabilityTests(AclTests.TestAppFactory factory)
+    {
+        _factory = factory;
+    }
+
+    [Fact]
+    public async Task CheckAccountName_AvailableForFreshName()
+    {
+        using var client = _factory.CreateClient();
+        var resp = await client.GetAsync("/api/v1/auth/account-name-availability?name=fresh_user_001");
+        var dto = await resp.Content.ReadFromJsonAsync<ApiResponse<AccountNameAvailabilityDto>>();
+        Assert.True(dto!.Success);
+        Assert.True(dto.Data!.Available);
+        Assert.Null(dto.Data.Reason);
+    }
+
+    [Fact]
+    public async Task CheckAccountName_RejectsInvalidFormat()
+    {
+        using var client = _factory.CreateClient();
+        var resp = await client.GetAsync("/api/v1/auth/account-name-availability?name=ab");
+        var dto = await resp.Content.ReadFromJsonAsync<ApiResponse<AccountNameAvailabilityDto>>();
+        Assert.True(dto!.Success);
+        Assert.False(dto.Data!.Available);
+        Assert.Equal("invalidFormat", dto.Data.Reason);
+    }
+
+    [Fact]
+    public async Task CheckAccountName_RejectsReserved()
+    {
+        using var client = _factory.CreateClient();
+        var resp = await client.GetAsync("/api/v1/auth/account-name-availability?name=admin");
+        var dto = await resp.Content.ReadFromJsonAsync<ApiResponse<AccountNameAvailabilityDto>>();
+        Assert.True(dto!.Success);
+        Assert.False(dto.Data!.Available);
+        Assert.Equal("reserved", dto.Data.Reason);
     }
 }
