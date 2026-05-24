@@ -57,6 +57,16 @@ public sealed record AdminMetricsConfigDto(
     int RetentionHourDays,
     int RetentionDauDays);
 
+public sealed record EndpointStatDto(
+    string DimensionKey,
+    string Method,
+    string Route,
+    int? StatusCode,
+    long Count,
+    double? P50,
+    double? P95,
+    double? P99);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Controller
 // ──────────────────────────────────────────────────────────────────────────────
@@ -301,6 +311,80 @@ public class AdminMetricsController : ControllerBase
             new BiTimeseriesDto(dayLabels, registered, dau, mau)));
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /admin/metrics/endpoint-stats
+    // Query params: from (ISO), to (ISO), resolution=minute|hour, limit (default 20)
+    // Returns per-endpoint totals aggregated across the time range, sorted by count desc.
+    // ─────────────────────────────────────────────────────────────────────────
+    [HttpGet("endpoint-stats")]
+    public async Task<ActionResult<ApiResponse<List<EndpointStatDto>>>> GetEndpointStats(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string resolution = "minute",
+        [FromQuery] int limit = 20,
+        CancellationToken ct = default)
+    {
+        if (_tables is null)
+            return Ok(ApiResponse<List<EndpointStatDto>>.SuccessResponse(new List<EndpointStatDto>()));
+
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
+        var useMinute = !string.Equals(resolution, "hour", StringComparison.OrdinalIgnoreCase);
+        var table = _tables.GetTableClient(useMinute ? TableNames.MetricsMinute : TableNames.MetricsHour);
+        await table.CreateIfNotExistsAsync(ct);
+
+        var byDim = new Dictionary<string, (long count, long[] buckets)>();
+
+        if (useMinute)
+        {
+            var cursor = new DateTime(fromUtc.Year, fromUtc.Month, fromUtc.Day, fromUtc.Hour, 0, 0, DateTimeKind.Utc);
+            while (cursor <= toUtc)
+            {
+                var pk = $"{cursor:yyyy-MM-dd'T'HH}_request_timing";
+                await foreach (var entity in table.QueryAsync<MetricMinuteEntity>(
+                    filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
+                {
+                    var rk = entity.RowKey.Split('_', 2);
+                    if (rk.Length < 2 || !int.TryParse(rk[0], out var min)) continue;
+                    var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, cursor.Hour, min, 0, DateTimeKind.Utc);
+                    if (ts < fromUtc || ts > toUtc) continue;
+                    AccumulateDim(byDim, rk[1], entity.Count,
+                        entity.B0, entity.B1, entity.B2, entity.B3, entity.B4,
+                        entity.B5, entity.B6, entity.B7, entity.B8);
+                }
+                cursor = cursor.AddHours(1);
+            }
+        }
+        else
+        {
+            var cursor = new DateTime(fromUtc.Year, fromUtc.Month, fromUtc.Day, 0, 0, 0, DateTimeKind.Utc);
+            while (cursor <= toUtc)
+            {
+                var pk = $"{cursor:yyyy-MM-dd}_request_timing";
+                await foreach (var entity in table.QueryAsync<MetricHourEntity>(
+                    filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
+                {
+                    var rk = entity.RowKey.Split('_', 2);
+                    if (rk.Length < 2 || !int.TryParse(rk[0], out var hr)) continue;
+                    var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, hr, 0, 0, DateTimeKind.Utc);
+                    if (ts < fromUtc || ts > toUtc) continue;
+                    AccumulateDim(byDim, rk[1], entity.Count,
+                        entity.B0, entity.B1, entity.B2, entity.B3, entity.B4,
+                        entity.B5, entity.B6, entity.B7, entity.B8);
+                }
+                cursor = cursor.AddDays(1);
+            }
+        }
+
+        var results = byDim
+            .Select(kv => ParseEndpointStat(kv.Key, kv.Value.count, kv.Value.buckets))
+            .OrderByDescending(x => x.Count)
+            .Take(limit)
+            .ToList();
+
+        return Ok(ApiResponse<List<EndpointStatDto>>.SuccessResponse(results));
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Percentile interpolation helper
     // ──────────────────────────────────────────────────────────────────────────
@@ -447,6 +531,45 @@ public class AdminMetricsController : ControllerBase
                 P95: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 95),
                 P99: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 99)))
             .ToList();
+    }
+
+    private static void AccumulateDim(
+        Dictionary<string, (long count, long[] buckets)> dict, string dimKey,
+        long count, long? b0, long? b1, long? b2, long? b3, long? b4,
+        long? b5, long? b6, long? b7, long? b8)
+    {
+        if (!dict.TryGetValue(dimKey, out var acc))
+            acc = (0, new long[HistogramBuckets.BucketCount]);
+        acc.count += count;
+        acc.buckets[0] += b0 ?? 0;
+        acc.buckets[1] += b1 ?? 0;
+        acc.buckets[2] += b2 ?? 0;
+        acc.buckets[3] += b3 ?? 0;
+        acc.buckets[4] += b4 ?? 0;
+        acc.buckets[5] += b5 ?? 0;
+        acc.buckets[6] += b6 ?? 0;
+        acc.buckets[7] += b7 ?? 0;
+        acc.buckets[8] += b8 ?? 0;
+        dict[dimKey] = acc;
+    }
+
+    private static EndpointStatDto ParseEndpointStat(string dimKey, long count, long[] buckets)
+    {
+        // Dimension key format: "backend|METHOD|route~path|statusCode"
+        var parts = dimKey.Split('|');
+        var method     = parts.Length > 1 ? parts[1] : "?";
+        var route      = parts.Length > 2 ? "/" + parts[2].Replace('~', '/') : dimKey;
+        var statusCode = parts.Length > 3 && int.TryParse(parts[3], out var sc) ? (int?)sc : null;
+
+        return new EndpointStatDto(
+            DimensionKey: dimKey,
+            Method:       method,
+            Route:        route,
+            StatusCode:   statusCode,
+            Count:        count,
+            P50: InterpolatePercentile(buckets, HistogramBuckets.Boundaries, 50),
+            P95: InterpolatePercentile(buckets, HistogramBuckets.Boundaries, 95),
+            P99: InterpolatePercentile(buckets, HistogramBuckets.Boundaries, 99));
     }
 
     private async Task<List<TimeseriesPointDto>> QueryHourTimeseriesAsync(
