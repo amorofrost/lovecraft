@@ -141,12 +141,15 @@ public class EventServiceNotificationTests
     {
         var eventsTable = new Mock<TableClient>();
         var attendeesTable = new Mock<TableClient>();
+        var userAttendedEventsTable = new Mock<TableClient>();
         var interestedTable = new Mock<TableClient>();
 
         var emptyTableItem = Response.FromValue<TableItem>(null!, Mock.Of<Response>());
         eventsTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(emptyTableItem);
         attendeesTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(emptyTableItem);
+        userAttendedEventsTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(emptyTableItem);
         interestedTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(emptyTableItem);
@@ -158,6 +161,7 @@ public class EventServiceNotificationTests
         var tsc = new Mock<TableServiceClient>();
         tsc.Setup(x => x.GetTableClient(TableNames.Events)).Returns(eventsTable.Object);
         tsc.Setup(x => x.GetTableClient(TableNames.EventAttendees)).Returns(attendeesTable.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.UserAttendedEvents)).Returns(userAttendedEventsTable.Object);
         tsc.Setup(x => x.GetTableClient(TableNames.EventInterested)).Returns(interestedTable.Object);
 
         return new AzureEventService(

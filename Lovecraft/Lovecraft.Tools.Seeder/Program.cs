@@ -47,6 +47,7 @@ var allTables = new[]
     TableNames.AuthTokens,
     TableNames.Events,
     TableNames.EventAttendees,
+    TableNames.UserAttendedEvents,
     TableNames.Likes,
     TableNames.LikesReceived,
     TableNames.Matches,
@@ -139,6 +140,7 @@ Console.WriteLine($"  [users]         {seededUsers.Count} users + {seededUsers.C
 // Events + attendees
 var eventsTable    = service.GetTableClient(TableNames.Events);
 var attendeesTable = service.GetTableClient(TableNames.EventAttendees);
+var userAttendedEventsTable = service.GetTableClient(TableNames.UserAttendedEvents);
 int attendeeCount  = 0;
 
 foreach (var ev in MockDataStore.Events)
@@ -167,13 +169,25 @@ foreach (var ev in MockDataStore.Events)
 
     foreach (var attendeeId in ev.Attendees)
     {
+        var registeredAt = DateTime.UtcNow;
         var att = new EventAttendeeEntity
         {
             PartitionKey = ev.Id,
             RowKey       = attendeeId,
-            RegisteredAt = DateTime.UtcNow,
+            RegisteredAt = registeredAt,
         };
         await attendeesTable.UpsertEntityAsync(att);
+
+        // Reverse index (PK=userId, RK=eventId) — keeps "events attended by user"
+        // a single-partition lookup; backend dual-writes here at runtime too.
+        var mirror = new UserAttendedEventEntity
+        {
+            PartitionKey = attendeeId,
+            RowKey       = ev.Id,
+            RegisteredAt = registeredAt,
+        };
+        await userAttendedEventsTable.UpsertEntityAsync(mirror);
+
         attendeeCount++;
     }
 }

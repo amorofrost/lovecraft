@@ -13,10 +13,12 @@ public class AzureEventService : IEventService
 {
     private readonly TableClient _eventsTable;
     private readonly TableClient _attendeesTable;
+    private readonly TableClient _userAttendedEventsTable;
     private readonly TableClient _interestedTable;
     private readonly IUserService _userService;
     private readonly ILogger<AzureEventService> _logger;
     private readonly INotificationProducer? _producer;
+    private readonly Task _reverseIndexBackfill;
 
     public AzureEventService(
         TableServiceClient tableServiceClient,
@@ -29,13 +31,51 @@ public class AzureEventService : IEventService
         _producer = producer;
         _eventsTable = tableServiceClient.GetTableClient(TableNames.Events);
         _attendeesTable = tableServiceClient.GetTableClient(TableNames.EventAttendees);
+        _userAttendedEventsTable = tableServiceClient.GetTableClient(TableNames.UserAttendedEvents);
         _interestedTable = tableServiceClient.GetTableClient(TableNames.EventInterested);
 
         Task.WhenAll(
             _eventsTable.CreateIfNotExistsAsync(),
             _attendeesTable.CreateIfNotExistsAsync(),
+            _userAttendedEventsTable.CreateIfNotExistsAsync(),
             _interestedTable.CreateIfNotExistsAsync()
         ).GetAwaiter().GetResult();
+
+        // Existing rows in eventattendees (e.g. seeded data) need to be mirrored into the
+        // user-partitioned reverse index. Run once in the background so startup isn't blocked;
+        // GetEventsAttendedByUserAsync awaits this task before reading the reverse index so
+        // results are correct even on the first request after deploy.
+        _reverseIndexBackfill = Task.Run(BackfillUserAttendedEventsAsync);
+    }
+
+    private async Task BackfillUserAttendedEventsAsync()
+    {
+        try
+        {
+            await foreach (var att in _attendeesTable.QueryAsync<EventAttendeeEntity>())
+            {
+                var mirror = new UserAttendedEventEntity
+                {
+                    PartitionKey = att.RowKey,        // userId
+                    RowKey = att.PartitionKey,        // eventId
+                    RegisteredAt = att.RegisteredAt,
+                };
+                try
+                {
+                    await _userAttendedEventsTable.UpsertEntityAsync(mirror, TableUpdateMode.Replace);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Backfill: failed to mirror attendance user={UserId} event={EventId}",
+                        att.RowKey, att.PartitionKey);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UserAttendedEvents reverse-index backfill failed");
+        }
     }
 
     public async Task<List<EventDto>> GetEventsAsync()
@@ -196,6 +236,15 @@ public class AzureEventService : IEventService
             {
                 // ignore
             }
+            // Mirror deletion into the user-partitioned reverse index.
+            try
+            {
+                await _userAttendedEventsTable.DeleteEntityAsync(row.RowKey, row.PartitionKey);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // ignore
+            }
         }
 
         await foreach (var row in _interestedTable.QueryAsync<EventInterestedEntity>(
@@ -263,6 +312,15 @@ public class AzureEventService : IEventService
 
         try
         {
+            await _userAttendedEventsTable.DeleteEntityAsync(userId, eventId);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // reverse-index row already gone — fine
+        }
+
+        try
+        {
             await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended, -1);
         }
         catch (Exception ex)
@@ -287,11 +345,12 @@ public class AzureEventService : IEventService
             return false;
         }
 
+        var now = DateTime.UtcNow;
         var entity = new EventAttendeeEntity
         {
             PartitionKey = eventId,
             RowKey = userId,
-            RegisteredAt = DateTime.UtcNow
+            RegisteredAt = now
         };
 
         try
@@ -302,6 +361,25 @@ public class AzureEventService : IEventService
         {
             // Already registered — idempotent no-op, do not bump counter.
             return false;
+        }
+
+        // Mirror into the user-partitioned reverse index so "events attended by this user"
+        // is a single-partition scan. Upsert is safe — if the row already exists from a
+        // prior backfill or retry, we just refresh RegisteredAt.
+        try
+        {
+            await _userAttendedEventsTable.UpsertEntityAsync(new UserAttendedEventEntity
+            {
+                PartitionKey = userId,
+                RowKey = eventId,
+                RegisteredAt = now,
+            }, TableUpdateMode.Replace);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to mirror attendance into reverse index user={UserId} event={EventId}",
+                userId, eventId);
         }
 
         try
@@ -375,15 +453,29 @@ public class AzureEventService : IEventService
 
     public async Task<bool> UnregisterFromEventAsync(string userId, string eventId)
     {
+        bool removed;
         try
         {
             await _attendeesTable.DeleteEntityAsync(eventId, userId);
-            return true;
+            removed = true;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            return false;
+            removed = false;
         }
+
+        // Always clean up the reverse-index row to keep it consistent, even when the
+        // primary row was missing.
+        try
+        {
+            await _userAttendedEventsTable.DeleteEntityAsync(userId, eventId);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // already gone
+        }
+
+        return removed;
     }
 
     public async Task SetForumTopicIdAsync(string eventId, string forumTopicId)
@@ -427,11 +519,16 @@ public class AzureEventService : IEventService
 
     public async Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId)
     {
+        // Wait for the startup backfill to complete so the reverse index is authoritative.
+        // After the first session this is effectively a no-op.
+        try { await _reverseIndexBackfill.ConfigureAwait(false); }
+        catch { /* logged in BackfillUserAttendedEventsAsync */ }
+
         var escaped = userId.Replace("'", "''");
         var eventIds = new List<string>();
-        await foreach (var row in _attendeesTable.QueryAsync<EventAttendeeEntity>(
-                     filter: $"RowKey eq '{escaped}'"))
-            eventIds.Add(row.PartitionKey);
+        await foreach (var row in _userAttendedEventsTable.QueryAsync<UserAttendedEventEntity>(
+                     filter: $"PartitionKey eq '{escaped}'"))
+            eventIds.Add(row.RowKey);
 
         var result = new List<EventDto>();
         foreach (var eventId in eventIds)

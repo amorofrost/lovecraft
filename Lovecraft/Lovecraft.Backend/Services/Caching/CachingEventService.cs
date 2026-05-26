@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Primitives;
 using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Events;
 
@@ -10,6 +11,10 @@ namespace Lovecraft.Backend.Services.Caching;
 ///
 /// TTL: 30 seconds — short enough to reflect registration changes promptly.
 /// Invalidation: RegisterForEvent / UnregisterFromEvent remove the affected keys immediately.
+///
+/// Per-user badge previews (GetUserEventBadgePreviewAsync) are cached with a longer
+/// 5-minute TTL because each cache miss triggers a cross-partition attendees scan plus
+/// N event point-reads, and the forum replies endpoint hits this once per distinct author.
 /// </summary>
 public class CachingEventService : IEventService
 {
@@ -17,13 +22,27 @@ public class CachingEventService : IEventService
     private readonly IMemoryCache _cache;
 
     private static readonly TimeSpan Ttl = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BadgePreviewTtl = TimeSpan.FromMinutes(5);
     private const string AllKey = "events:all";
     private static string EventKey(string id) => $"events:{id}";
+    private static string BadgePreviewKey(string userId) => $"events:badge-preview:{userId}";
+
+    // Swap-on-write token used to invalidate every cached badge preview at once when an
+    // admin-side change to an event could affect any user's preview (badge URL changed,
+    // event archived/deleted). Per-user changes invalidate just that user's key.
+    private CancellationTokenSource _badgePreviewReset = new();
 
     public CachingEventService(IEventService inner, IMemoryCache cache)
     {
         _inner = inner;
         _cache = cache;
+    }
+
+    private void InvalidateAllBadgePreviews()
+    {
+        var old = Interlocked.Exchange(ref _badgePreviewReset, new CancellationTokenSource());
+        old.Cancel();
+        old.Dispose();
     }
 
     public async Task<List<EventDto>> GetEventsAsync()
@@ -55,6 +74,7 @@ public class CachingEventService : IEventService
         {
             _cache.Remove(AllKey);
             _cache.Remove(EventKey(eventId));
+            _cache.Remove(BadgePreviewKey(userId));
         }
         return result;
     }
@@ -66,6 +86,7 @@ public class CachingEventService : IEventService
         // the list cache may reflect a stale attendee count.
         _cache.Remove(AllKey);
         _cache.Remove(EventKey(eventId));
+        _cache.Remove(BadgePreviewKey(userId));
         return result;
     }
 
@@ -111,6 +132,8 @@ public class CachingEventService : IEventService
         var result = await _inner.UpdateEventAsync(eventId, dto);
         _cache.Remove(AllKey);
         _cache.Remove(EventKey(eventId));
+        // BadgeImageUrl may have changed — wipe all per-user badge previews.
+        InvalidateAllBadgePreviews();
         return result;
     }
 
@@ -121,6 +144,7 @@ public class CachingEventService : IEventService
         {
             _cache.Remove(AllKey);
             _cache.Remove(EventKey(eventId));
+            InvalidateAllBadgePreviews();
         }
         return ok;
     }
@@ -132,6 +156,7 @@ public class CachingEventService : IEventService
         {
             _cache.Remove(AllKey);
             _cache.Remove(EventKey(eventId));
+            InvalidateAllBadgePreviews();
         }
         return ok;
     }
@@ -146,6 +171,7 @@ public class CachingEventService : IEventService
         {
             _cache.Remove(AllKey);
             _cache.Remove(EventKey(eventId));
+            _cache.Remove(BadgePreviewKey(userId));
         }
         return ok;
     }
@@ -153,6 +179,22 @@ public class CachingEventService : IEventService
     public Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId) =>
         _inner.GetEventsAttendedByUserAsync(userId);
 
-    public Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId) =>
-        _inner.GetUserEventBadgePreviewAsync(userId);
+    public async Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId)
+    {
+        var key = BadgePreviewKey(userId);
+        if (_cache.TryGetValue<(List<string> PreviewUrls, int TotalCount)>(key, out var cached))
+            return cached;
+
+        var result = await _inner.GetUserEventBadgePreviewAsync(userId);
+
+        var options = new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = BadgePreviewTtl,
+        };
+        // Tie this entry to the global reset token so admin-side event changes can wipe
+        // every per-user preview in O(1).
+        options.AddExpirationToken(new CancellationChangeToken(_badgePreviewReset.Token));
+        _cache.Set(key, result, options);
+        return result;
+    }
 }
