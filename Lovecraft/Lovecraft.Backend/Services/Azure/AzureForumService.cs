@@ -228,28 +228,32 @@ public class AzureForumService : IForumService
             entities.Add(entity);
         }
 
-        // Fetch current avatar for each unique author so stale cached URLs don't persist
-        // after a user updates their profile picture.
-        var authorIds = entities.Select(e => e.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
-        var avatars = new Dictionary<string, string?>();
-        var userInfo = new Dictionary<string, UserDto?>();
-        foreach (var authorId in authorIds)
-        {
-            avatars[authorId] = await GetAuthorAvatarAsync(authorId);
-            userInfo[authorId] = await _userService.GetUserByIdAsync(authorId);
-        }
+        var authorIds = entities
+            .Select(e => e.AuthorId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
-        var ordered = entities.OrderBy(e => e.CreatedAt).ToList();
-        var results = new List<ForumReplyDto>();
-        foreach (var e in ordered)
-        {
-            results.Add(await ToReplyDtoAsync(
-                e,
-                avatars.GetValueOrDefault(e.AuthorId),
-                userInfo.GetValueOrDefault(e.AuthorId)));
-        }
+        // Fan out user + badge-preview lookups in parallel, one round-trip per unique author
+        // rather than per reply. UserCache hits are synchronous; badge previews now read
+        // from AttendanceCache + parallel event fetches inside AzureEventService.
+        var userTasks = authorIds.ToDictionary(id => id, id => _userService.GetUserByIdAsync(id));
+        var badgeTasks = authorIds.ToDictionary(id => id, id => _eventService.GetUserEventBadgePreviewAsync(id));
+        await Task.WhenAll(userTasks.Values.Cast<Task>().Concat(badgeTasks.Values));
 
-        return results;
+        var userInfo = userTasks.ToDictionary(kv => kv.Key, kv => kv.Value.Result);
+        var badges = badgeTasks.ToDictionary(kv => kv.Key, kv => kv.Value.Result);
+
+        // Compose DTOs synchronously — every external lookup is already resolved above.
+        return entities
+            .OrderBy(e => e.CreatedAt)
+            .Select(e =>
+            {
+                var author = userInfo.GetValueOrDefault(e.AuthorId);
+                var (urls, total) = badges.TryGetValue(e.AuthorId, out var b) ? b : (new List<string>(), 0);
+                return ToReplyDto(e, author, urls, total);
+            })
+            .ToList();
     }
 
     public async Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null)
@@ -343,8 +347,11 @@ public class AzureForumService : IForumService
             }
         }
 
-        var author = await _userService.GetUserByIdAsync(authorId);
-        return await ToReplyDtoAsync(replyEntity, authorAvatar, author);
+        var authorTask = _userService.GetUserByIdAsync(authorId);
+        var badgeTask = _eventService.GetUserEventBadgePreviewAsync(authorId);
+        await Task.WhenAll(authorTask, badgeTask);
+        var (urls, total) = badgeTask.Result;
+        return ToReplyDto(replyEntity, authorTask.Result, urls, total);
     }
 
     public async Task<ForumReplyDto?> UpdateReplyAsync(string topicId, string replyId, string content, string editorUserId, string editorUserName)
@@ -376,9 +383,11 @@ public class AzureForumService : IForumService
             return null;
         }
 
-        var author = await _userService.GetUserByIdAsync(entity.AuthorId);
-        var authorAvatar = await GetAuthorAvatarAsync(entity.AuthorId);
-        return await ToReplyDtoAsync(entity, authorAvatar, author);
+        var authorTask = _userService.GetUserByIdAsync(entity.AuthorId);
+        var badgeTask = _eventService.GetUserEventBadgePreviewAsync(entity.AuthorId);
+        await Task.WhenAll(authorTask, badgeTask);
+        var (urls, total) = badgeTask.Result;
+        return ToReplyDto(entity, authorTask.Result, urls, total);
     }
 
     private static ForumSectionDto ToSectionDto(ForumSectionEntity entity) => new ForumSectionDto
@@ -943,15 +952,26 @@ public class AzureForumService : IForumService
         };
     }
 
-    private async Task<ForumReplyDto> ToReplyDtoAsync(ForumReplyEntity entity, string? currentAvatar = null, UserDto? author = null)
+    /// <summary>
+    /// Build a reply DTO from precomputed pieces — no external lookups happen inside.
+    /// Callers fan out user + badge fetches up-front (parallel, deduplicated by authorId)
+    /// and feed them here. Avatar comes from <see cref="UserDto.ProfileImage"/> on the
+    /// cached user record, which avoids a redundant per-reply read of the users table.
+    /// </summary>
+    private static ForumReplyDto ToReplyDto(
+        ForumReplyEntity entity,
+        UserDto? author,
+        List<string> badgeUrls,
+        int badgeTotal)
     {
-        var dto = new ForumReplyDto
+        var avatar = author?.ProfileImage;
+        return new ForumReplyDto
         {
             Id = entity.ReplyId,
             TopicId = entity.TopicId,
             AuthorId = entity.AuthorId,
             AuthorName = entity.AuthorName,
-            AuthorAvatar = string.IsNullOrEmpty(currentAvatar) ? null : currentAvatar,
+            AuthorAvatar = string.IsNullOrEmpty(avatar) ? null : avatar,
             Content = entity.Content,
             CreatedAt = entity.CreatedAt,
             Likes = entity.Likes,
@@ -961,15 +981,8 @@ public class AzureForumService : IForumService
             EditedAt = entity.EditedAt,
             EditedById = string.IsNullOrEmpty(entity.EditedById) ? null : entity.EditedById,
             EditedByName = string.IsNullOrEmpty(entity.EditedByName) ? null : entity.EditedByName,
+            AuthorEventBadgeImageUrls = badgeUrls,
+            AuthorEventBadgeTotalCount = badgeTotal,
         };
-
-        if (!string.IsNullOrEmpty(entity.AuthorId))
-        {
-            var (urls, total) = await _eventService.GetUserEventBadgePreviewAsync(entity.AuthorId);
-            dto.AuthorEventBadgeImageUrls = urls;
-            dto.AuthorEventBadgeTotalCount = total;
-        }
-
-        return dto;
     }
 }

@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
@@ -17,16 +18,19 @@ public class AzureEventService : IEventService
     private readonly IUserService _userService;
     private readonly ILogger<AzureEventService> _logger;
     private readonly INotificationProducer? _producer;
+    private readonly AttendanceCache? _attendance;
 
     public AzureEventService(
         TableServiceClient tableServiceClient,
         IUserService userService,
         ILogger<AzureEventService> logger,
-        INotificationProducer? producer = null)
+        INotificationProducer? producer = null,
+        AttendanceCache? attendance = null)
     {
         _userService = userService;
         _logger = logger;
         _producer = producer;
+        _attendance = attendance;
         _eventsTable = tableServiceClient.GetTableClient(TableNames.Events);
         _attendeesTable = tableServiceClient.GetTableClient(TableNames.EventAttendees);
         _interestedTable = tableServiceClient.GetTableClient(TableNames.EventInterested);
@@ -214,6 +218,7 @@ public class AzureEventService : IEventService
         try
         {
             await _eventsTable.DeleteEntityAsync("EVENTS", eventId);
+            _attendance?.RemoveEvent(eventId);
             return true;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -261,6 +266,8 @@ public class AzureEventService : IEventService
             return false;
         }
 
+        _attendance?.RemoveAttendance(userId, eventId);
+
         try
         {
             await _userService.IncrementCounterAsync(userId, UserCounter.EventsAttended, -1);
@@ -303,6 +310,8 @@ public class AzureEventService : IEventService
             // Already registered — idempotent no-op, do not bump counter.
             return false;
         }
+
+        _attendance?.AddAttendance(userId, eventId);
 
         try
         {
@@ -378,6 +387,7 @@ public class AzureEventService : IEventService
         try
         {
             await _attendeesTable.DeleteEntityAsync(eventId, userId);
+            _attendance?.RemoveAttendance(userId, eventId);
             return true;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -427,21 +437,50 @@ public class AzureEventService : IEventService
 
     public async Task<List<EventDto>> GetEventsAttendedByUserAsync(string userId)
     {
-        var escaped = userId.Replace("'", "''");
-        var eventIds = new List<string>();
-        await foreach (var row in _attendeesTable.QueryAsync<EventAttendeeEntity>(
-                     filter: $"RowKey eq '{escaped}'"))
-            eventIds.Add(row.PartitionKey);
-
-        var result = new List<EventDto>();
-        foreach (var eventId in eventIds)
+        IReadOnlyList<string> eventIds;
+        if (_attendance is not null)
         {
-            var ev = await GetEventByIdAdminAsync(eventId);
-            if (ev != null)
-                result.Add(ev);
+            eventIds = _attendance.GetForUser(userId);
+        }
+        else
+        {
+            // Fallback path for tests / edge configurations that didn't wire the cache.
+            // Same RowKey-only filter as before (cross-partition scan).
+            var escaped = userId.Replace("'", "''");
+            var ids = new List<string>();
+            await foreach (var row in _attendeesTable.QueryAsync<EventAttendeeEntity>(
+                         filter: $"RowKey eq '{escaped}'"))
+                ids.Add(row.PartitionKey);
+            eventIds = ids;
         }
 
-        return result.OrderByDescending(e => e.Date).ToList();
+        if (eventIds.Count == 0)
+            return new List<EventDto>();
+
+        // Fetch event entities in parallel, skipping the attendee/interested subqueries —
+        // neither caller (UsersController.StripEventForProfile, GetUserEventBadgePreviewAsync)
+        // reads those collections, so populating them is wasted work here.
+        var fetchTasks = eventIds.Select(FetchEventLightweightAsync).ToList();
+        var fetched = await Task.WhenAll(fetchTasks);
+
+        return fetched
+            .Where(e => e is not null)
+            .Cast<EventDto>()
+            .OrderByDescending(e => e.Date)
+            .ToList();
+    }
+
+    private async Task<EventDto?> FetchEventLightweightAsync(string eventId)
+    {
+        try
+        {
+            var resp = await _eventsTable.GetEntityAsync<EventEntity>("EVENTS", eventId);
+            return ToDto(resp.Value, new List<string>(), new List<string>());
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
     }
 
     public async Task<(List<string> PreviewUrls, int TotalCount)> GetUserEventBadgePreviewAsync(string userId)

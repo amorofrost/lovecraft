@@ -219,6 +219,7 @@ if (useAzure)
     builder.Services.AddSingleton(serviceClient);
     builder.Services.AddSingleton(new BlobServiceClient(connectionString));
     builder.Services.AddSingleton<UserCache>();
+    builder.Services.AddSingleton<AttendanceCache>();
     builder.Services.AddSingleton<IAppConfigService, AzureAppConfigService>();
     builder.Services.AddSingleton<IImageService, AzureImageService>();
     builder.Services.AddSingleton<IEventInviteService>(sp => new AzureEventInviteService(
@@ -240,7 +241,8 @@ if (useAzure)
             sp.GetRequiredService<TableServiceClient>(),
             sp.GetRequiredService<IUserService>(),
             sp.GetRequiredService<ILogger<AzureEventService>>(),
-            sp.GetRequiredService<INotificationProducer>()),
+            sp.GetRequiredService<INotificationProducer>(),
+            sp.GetRequiredService<AttendanceCache>()),
         sp.GetRequiredService<IMemoryCache>()));
     builder.Services.AddSingleton<IStoreService>(sp => new CachingStoreService(
         new AzureStoreService(
@@ -404,9 +406,14 @@ var app = builder.Build();
 if (useAzure)
 {
     var userCache = app.Services.GetRequiredService<UserCache>();
-    var tableClient = app.Services.GetRequiredService<TableServiceClient>()
-        .GetTableClient(Lovecraft.Backend.Storage.TableNames.Users);
-    await userCache.LoadAsync(tableClient);
+    var tableService = app.Services.GetRequiredService<TableServiceClient>();
+    await userCache.LoadAsync(tableService.GetTableClient(Lovecraft.Backend.Storage.TableNames.Users));
+
+    // Pre-populate the per-user attendance index from eventattendees.
+    // One full scan, grouped in-process by userId; avoids the per-request RowKey
+    // cross-partition scan that previously dominated forum-reply + /users latency.
+    var attendanceCache = app.Services.GetRequiredService<AttendanceCache>();
+    await attendanceCache.LoadAsync(tableService.GetTableClient(Lovecraft.Backend.Storage.TableNames.EventAttendees));
 }
 
 // Mock storage: seed predictable attendance invite codes per event (dev / automated tests)
