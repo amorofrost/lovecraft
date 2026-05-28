@@ -230,11 +230,20 @@ public class AzureMatchingService : IMatchingService
 
     public async Task<List<LikeDto>> GetSentLikesAsync(string userId)
     {
+        // "Sent" = pending likes only: people I liked who have NOT liked me back.
+        // Mutual likes belong on the matches tab. The stored IsMatch flag is not
+        // reliable for this (the earlier liker's row is never back-filled), so we
+        // exclude against the authoritative "people who liked me" set instead.
+        var likedMe = new HashSet<string>();
+        await foreach (var e in _likesReceivedTable.QueryAsync<LikeEntity>(filter: $"PartitionKey eq '{userId}'"))
+            likedMe.Add(e.RowKey); // RK = sender who liked me
+
         var results = new List<LikeDto>();
         // likes table: PK = fromUserId, RK = toUserId
         await foreach (var entity in _likesTable.QueryAsync<LikeEntity>(
             filter: $"PartitionKey eq '{userId}'"))
         {
+            if (likedMe.Contains(entity.RowKey)) continue; // mutual → excluded
             results.Add(ToSentLikeDto(entity));
         }
         return results;
@@ -242,11 +251,18 @@ public class AzureMatchingService : IMatchingService
 
     public async Task<List<LikeDto>> GetReceivedLikesAsync(string userId)
     {
+        // "Received" = pending likes only: people who liked me whom I have NOT liked
+        // back. Mutual likes belong on the matches tab.
+        var iLiked = new HashSet<string>();
+        await foreach (var e in _likesTable.QueryAsync<LikeEntity>(filter: $"PartitionKey eq '{userId}'"))
+            iLiked.Add(e.RowKey); // RK = person I liked
+
         var results = new List<LikeDto>();
         // likesreceived table: PK = toUserId (recipient), RK = fromUserId (sender)
         await foreach (var entity in _likesReceivedTable.QueryAsync<LikeEntity>(
             filter: $"PartitionKey eq '{userId}'"))
         {
+            if (iLiked.Contains(entity.RowKey)) continue; // mutual → excluded
             results.Add(ToReceivedLikeDto(entity));
         }
         return results;

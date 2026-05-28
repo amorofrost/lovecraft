@@ -126,16 +126,28 @@ public class MockMatchingService : IMatchingService
 
     public Task<List<LikeDto>> GetSentLikesAsync(string userId)
     {
+        // "Sent" = pending only: people I liked who have NOT liked me back.
+        var likedMe = MockDataStore.Likes
+            .Where(l => l.ToUserId == userId)
+            .Select(l => l.FromUserId)
+            .ToHashSet();
+
         var likes = MockDataStore.Likes
-            .Where(l => l.FromUserId == userId)
+            .Where(l => l.FromUserId == userId && !likedMe.Contains(l.ToUserId))
             .ToList();
         return Task.FromResult(likes);
     }
 
     public Task<List<LikeDto>> GetReceivedLikesAsync(string userId)
     {
+        // "Received" = pending only: people who liked me whom I have NOT liked back.
+        var iLiked = MockDataStore.Likes
+            .Where(l => l.FromUserId == userId)
+            .Select(l => l.ToUserId)
+            .ToHashSet();
+
         var likes = MockDataStore.Likes
-            .Where(l => l.ToUserId == userId)
+            .Where(l => l.ToUserId == userId && !iLiked.Contains(l.FromUserId))
             .ToList();
         return Task.FromResult(likes);
     }

@@ -132,12 +132,26 @@ public class MatchingTests : IDisposable
         var (svc, _) = CreateServices();
         await svc.CreateLikeAsync("alice", "bob");
         await svc.CreateLikeAsync("alice", "carol");
-        await svc.CreateLikeAsync("bob", "alice");
 
         var sent = await svc.GetSentLikesAsync("alice");
 
         Assert.All(sent, l => Assert.Equal("alice", l.FromUserId));
         Assert.Equal(2, sent.Count);
+    }
+
+    [Fact]
+    public async Task GetSentLikes_ExcludesMutualLikes()
+    {
+        var (svc, _) = CreateServices();
+        await svc.CreateLikeAsync("alice", "bob");    // alice → bob
+        await svc.CreateLikeAsync("alice", "carol");  // alice → carol (still pending)
+        await svc.CreateLikeAsync("bob", "alice");    // bob → alice  ⇒ alice↔bob now mutual
+
+        var sent = await svc.GetSentLikesAsync("alice");
+
+        // bob is now a match, so only the pending like to carol remains on "sent".
+        Assert.Single(sent);
+        Assert.Equal("carol", sent[0].ToUserId);
     }
 
     // ── GetReceivedLikes ──────────────────────────────────────────────────────
@@ -148,12 +162,45 @@ public class MatchingTests : IDisposable
         var (svc, _) = CreateServices();
         await svc.CreateLikeAsync("bob", "alice");
         await svc.CreateLikeAsync("carol", "alice");
-        await svc.CreateLikeAsync("alice", "bob");
 
         var received = await svc.GetReceivedLikesAsync("alice");
 
         Assert.All(received, l => Assert.Equal("alice", l.ToUserId));
         Assert.Equal(2, received.Count);
+    }
+
+    [Fact]
+    public async Task GetReceivedLikes_ExcludesMutualLikes()
+    {
+        var (svc, _) = CreateServices();
+        await svc.CreateLikeAsync("bob", "alice");    // bob → alice
+        await svc.CreateLikeAsync("carol", "alice");  // carol → alice (still pending)
+        await svc.CreateLikeAsync("alice", "bob");    // alice → bob  ⇒ alice↔bob now mutual
+
+        var received = await svc.GetReceivedLikesAsync("alice");
+
+        // bob is now a match, so only the pending like from carol remains on "received".
+        Assert.Single(received);
+        Assert.Equal("carol", received[0].FromUserId);
+    }
+
+    [Fact]
+    public async Task SentReceivedAndMatches_AreDisjoint()
+    {
+        var (svc, _) = CreateServices();
+        await svc.CreateLikeAsync("alice", "bob");    // alice → bob
+        await svc.CreateLikeAsync("bob", "alice");    // mutual  ⇒ match
+        await svc.CreateLikeAsync("alice", "carol");  // pending sent
+        await svc.CreateLikeAsync("dave", "alice");   // pending received
+
+        var sent = await svc.GetSentLikesAsync("alice");
+        var received = await svc.GetReceivedLikesAsync("alice");
+        var matches = await svc.GetMatchesAsync("alice");
+
+        Assert.Equal(new[] { "carol" }, sent.Select(l => l.ToUserId));
+        Assert.Equal(new[] { "dave" }, received.Select(l => l.FromUserId));
+        Assert.Single(matches);
+        Assert.Contains(matches, m => m.Users.Contains("bob"));
     }
 
     // ── GetMatches ────────────────────────────────────────────────────────────
