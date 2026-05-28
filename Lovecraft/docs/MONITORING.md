@@ -102,6 +102,8 @@ Container heartbeats worked (no `#` in their keys — `PK="STATUS"`, `RK=contain
 
 **Going forward:** never put raw user-controllable strings (URL paths, opaque event IDs, etc.) directly into PK/RK. Always run them through a sanitizer. The unit tests using `MockMetricsCollector` (in-memory `ConcurrentDictionary`) accept any keys — this class of bug is invisible until real Azure Storage rejects the write. Consider adding integration tests with Azurite if you extend the metrics surface.
 
+**Route normalization (2026-05-27):** `MetricsRouteNormalizer` (`Services/Metrics/`) is the single source for collapsing request paths and route templates into Azure-safe dimension segments — GUID/integer segments and `{id:constraint}` templates become `{id}`/`{name}`, joined with `~`. `RequestMetricsMiddleware` now reads the matched `RouteEndpoint.RoutePattern.RawText` (the previous `Metadata.GetMetadata<RouteEndpoint>()` call always returned null, silently falling back to the raw GUID path). `MetricsController` reuses the same helper for `frontend_perf` ingest so both sources share one shape.
+
 ---
 
 ## Endpoints
@@ -115,6 +117,7 @@ All under `/api/v1/`. Admin endpoints are gated `[RequireStaffRole("admin")]`.
 | `GET` | `/admin/metrics/overview` | admin | KPI tiles |
 | `GET` | `/admin/metrics/containers` | admin | Status grid with green/amber/red |
 | `GET` | `/admin/metrics/timeseries` | admin | `?category=&dimensionKey?=&from=&to=&resolution=minute\|hour` |
+| `GET` | `/admin/metrics/endpoint-timeseries` | admin | Per-endpoint count+latency, summed across statuses (`?method=&route=&from=&to=&resolution=`) |
 | `GET` | `/admin/metrics/bi` | admin | `?range=24h\|7d\|30d` |
 | `GET` | `/admin/metrics/config` | admin | Read all 7 metrics appconfig rows |
 | `PUT` | `/admin/metrics/config` | admin | Write + invalidate cache |
