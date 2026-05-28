@@ -43,30 +43,13 @@ public class MetricsController : ControllerBase
 
         foreach (var s in batch.Samples)
         {
-            var endpoint = NormalizeEndpoint(s.Endpoint);
+            var endpoint = MetricsRouteNormalizer.Normalize(s.Endpoint);
             var dim = $"frontend|{s.Method}|{endpoint}|{s.Status}";
             _collector.RecordTiming("frontend_perf", dim, s.DurationMs);
         }
         return Task.FromResult<IActionResult>(NoContent());
     }
 
-    /// <summary>
-    /// Strips query strings and replaces numeric/GUID path segments with {id} to reduce
-    /// cardinality in the metrics store.
-    /// </summary>
-    public static string NormalizeEndpoint(string raw)
-    {
-        var q = raw.IndexOf('?');
-        var path = q < 0 ? raw : raw[..q];
-        var parts = path.Split('/').Select(seg =>
-        {
-            if (seg.Length == 0) return seg;
-            if (long.TryParse(seg, out _)) return "{id}";
-            if (Guid.TryParse(seg, out _)) return "{id}";
-            return seg;
-        });
-        return string.Join('~', parts).TrimStart('~');
-    }
 }
 
 public sealed record MetricsConfigDto(bool RequestTiming, bool BiEvents, bool ContainerStats, bool FrontendPerf);

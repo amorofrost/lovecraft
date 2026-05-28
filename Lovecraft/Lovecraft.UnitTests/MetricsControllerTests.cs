@@ -41,4 +41,21 @@ public class MetricsControllerTests
         Assert.Equal(2, rows.Count);
         Assert.All(rows, r => Assert.StartsWith("frontend|", r.DimensionKey));
     }
+
+    [Fact]
+    public async Task PostFrontend_NormalizesResourceIdsInDimensionKey()
+    {
+        var collector = new MockMetricsCollector();
+        var ctrl = new MetricsController(collector, new MockAppConfigService());
+        var batch = new FrontendMetricsBatchDto(new[]
+        {
+            new FrontendMetricSampleDto(
+                "/api/v1/users/55126c3e-21fd-457c-9953-dc66f83186b3", "GET", 200, 33),
+        });
+
+        await ctrl.PostFrontend(batch);
+
+        var row = Assert.Single(collector.Snapshot());
+        Assert.Equal("frontend|GET|api~v1~users~{id}|200", row.DimensionKey);
+    }
 }
