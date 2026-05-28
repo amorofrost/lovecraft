@@ -46,61 +46,50 @@ public class AzureUserService : IUserService
         string? name = null,
         int? minAge = null,
         int? maxAge = null,
-        Gender? gender = null)
+        Gender? gender = null,
+        IEnumerable<string>? excludeUserIds = null)
     {
         var config = await _appConfig.GetConfigAsync();
-        var all = _cache.GetAll();
 
         var hasCountry = !string.IsNullOrWhiteSpace(country);
         var hasRegion  = !string.IsNullOrWhiteSpace(region);
+        var hasAccount = !string.IsNullOrWhiteSpace(accountName);
+        var hasName    = !string.IsNullOrWhiteSpace(name);
+        var wantedGender = gender?.ToString();
+        var exclude = excludeUserIds is null ? null : new HashSet<string>(excludeUserIds, StringComparer.Ordinal);
 
-        if (hasCountry && hasRegion)
+        static bool Eq(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+        bool Match(UserEntity e)
         {
-            all = all.Where(e =>
-                (string.Equals(e.Country, country, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(e.Region,  region,  StringComparison.OrdinalIgnoreCase)) ||
-                (string.Equals(e.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(e.SecondaryRegion,  region,  StringComparison.OrdinalIgnoreCase))
-            ).ToList();
-        }
-        else if (hasCountry)
-        {
-            all = all.Where(e =>
-                string.Equals(e.Country, country, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(e.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase)
-            ).ToList();
-        }
-        else if (hasRegion)
-        {
-            all = all.Where(e =>
-                string.Equals(e.Region, region, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(e.SecondaryRegion, region, StringComparison.OrdinalIgnoreCase)
-            ).ToList();
-        }
+            if (exclude is not null && exclude.Contains(e.RowKey)) return false;
 
-        if (!string.IsNullOrWhiteSpace(accountName))
-            all = all.Where(e => string.Equals(e.AccountNameDisplay, accountName, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (hasCountry && hasRegion)
+            {
+                if (!((Eq(e.Country, country) && Eq(e.Region, region)) ||
+                      (Eq(e.SecondaryCountry, country) && Eq(e.SecondaryRegion, region)))) return false;
+            }
+            else if (hasCountry)
+            {
+                if (!(Eq(e.Country, country) || Eq(e.SecondaryCountry, country))) return false;
+            }
+            else if (hasRegion)
+            {
+                if (!(Eq(e.Region, region) || Eq(e.SecondaryRegion, region))) return false;
+            }
 
-        if (!string.IsNullOrWhiteSpace(name))
-            all = all.Where(e => (e.Name ?? string.Empty)
-                .Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        if (minAge is int lo) all = all.Where(e => e.Age >= lo).ToList();
-        if (maxAge is int hi) all = all.Where(e => e.Age <= hi).ToList();
-
-        if (gender is Gender g)
-        {
-            var wanted = g.ToString();
-            all = all.Where(e => string.Equals(e.Gender, wanted, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (hasAccount && !Eq(e.AccountNameDisplay, accountName)) return false;
+            if (hasName && !(e.Name ?? string.Empty).Contains(name!, StringComparison.OrdinalIgnoreCase)) return false;
+            if (minAge is int lo && e.Age < lo) return false;
+            if (maxAge is int hi && e.Age > hi) return false;
+            if (wantedGender is not null && !Eq(e.Gender, wantedGender)) return false;
+            return true;
         }
 
-        // Fisher-Yates shuffle so the swipe deck ordering is random per request
-        for (int i = all.Count - 1; i > 0; i--)
-        {
-            int j = Random.Shared.Next(i + 1);
-            (all[i], all[j]) = (all[j], all[i]);
-        }
-        return all.Skip(skip).Take(take).Select(e => ToDto(e, config.Ranks)).ToList();
+        // Sample directly off the live cache enumeration — no full copy, no full shuffle.
+        // Reservoir keeps at most (skip + take) candidates regardless of population size.
+        var sampled = ReservoirSampler.Sample(_cache.Enumerate().Where(Match), skip + take);
+        return sampled.Skip(skip).Take(take).Select(e => ToDto(e, config.Ranks)).ToList();
     }
 
     public async Task<UserDto?> GetUserByIdAsync(string userId)

@@ -236,4 +236,43 @@ public class AzureUserServiceFilterTests
         Assert.Single(result);
         Assert.Equal("u1", result[0].Id);
     }
+
+    [Fact]
+    public async Task GetUsersAsync_ExcludesProvidedUserIds()
+    {
+        var (svc, cache) = BuildService();
+        cache.Set(MakeUser("u1", "RU", "Москва"));
+        cache.Set(MakeUser("u2", "RU", "Москва"));
+        cache.Set(MakeUser("u3", "RU", "Москва"));
+
+        var result = await svc.GetUsersAsync(0, 100, excludeUserIds: new[] { "u1", "u3" });
+
+        Assert.Single(result);
+        Assert.Equal("u2", result[0].Id);
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_ExclusionBeatsOtherFilters()
+    {
+        // An excluded user must not surface even via an exact account-name match.
+        var (svc, cache) = BuildService();
+        cache.Set(MakeUser("u1", "RU", "Москва", accountName: "alice"));
+
+        var result = await svc.GetUsersAsync(0, 100, accountName: "alice", excludeUserIds: new[] { "u1" });
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_NeverReturnsMoreThanTake()
+    {
+        var (svc, cache) = BuildService();
+        for (var i = 0; i < 50; i++)
+            cache.Set(MakeUser($"u{i}", "RU", "Москва"));
+
+        var page = await svc.GetUsersAsync(0, 10);
+
+        Assert.Equal(10, page.Count);
+        Assert.Equal(10, page.Select(u => u.Id).Distinct().Count());
+    }
 }

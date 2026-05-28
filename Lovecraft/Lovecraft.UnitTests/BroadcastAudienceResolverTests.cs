@@ -24,7 +24,8 @@ public class BroadcastAudienceResolverTests
                 It.IsAny<string?>(), It.IsAny<string?>(),
                 It.IsAny<string?>(), It.IsAny<string?>(),
                 It.IsAny<int?>(), It.IsAny<int?>(),
-                It.IsAny<Lovecraft.Common.Enums.Gender?>()))
+                It.IsAny<Lovecraft.Common.Enums.Gender?>(),
+                It.IsAny<IEnumerable<string>?>()))
             .ReturnsAsync((users ?? Enumerable.Empty<UserDto>()).ToList());
         var e = new Mock<IEventService>();
         e.Setup(s => s.GetEventAttendeesAsync(It.IsAny<string>()))

@@ -29,7 +29,7 @@ public class EventServiceNotificationTests
         params UserDto[] users)
     {
         var userService = new Mock<IUserService>();
-        userService.Setup(u => u.GetUsersAsync(0, 10_000, null, null, null, null, null, null, null))
+        userService.Setup(u => u.GetUsersAsync(0, 10_000, null, null, null, null, null, null, null, null))
             .ReturnsAsync(users.ToList());
         return new MockEventService(
             userService.Object,
@@ -172,7 +172,7 @@ public class EventServiceNotificationTests
     {
         var producer = new Mock<INotificationProducer>();
         var userService = new Mock<IUserService>();
-        userService.Setup(u => u.GetUsersAsync(0, 10_000, null, null, null, null, null, null, null))
+        userService.Setup(u => u.GetUsersAsync(0, 10_000, null, null, null, null, null, null, null, null))
             .ReturnsAsync(new List<UserDto>
             {
                 new() { Id = "u1", Name = "One" },
@@ -203,7 +203,7 @@ public class EventServiceNotificationTests
     {
         var producer = new Mock<INotificationProducer>();
         var userService = new Mock<IUserService>();
-        userService.Setup(u => u.GetUsersAsync(0, 10_000, null, null, null, null, null, null, null))
+        userService.Setup(u => u.GetUsersAsync(0, 10_000, null, null, null, null, null, null, null, null))
             .ReturnsAsync(new List<UserDto> { new() { Id = "u1" } });
 
         var svc = BuildAzureService(userService, producer);

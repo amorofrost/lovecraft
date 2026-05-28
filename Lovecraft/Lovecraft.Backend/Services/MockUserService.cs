@@ -35,48 +35,48 @@ public class MockUserService : IUserService
         string? name = null,
         int? minAge = null,
         int? maxAge = null,
-        Gender? gender = null)
+        Gender? gender = null,
+        IEnumerable<string>? excludeUserIds = null)
     {
         var config = await _appConfig.GetConfigAsync();
-        var query = MockDataStore.Users.AsEnumerable();
 
         var hasCountry = !string.IsNullOrWhiteSpace(country);
         var hasRegion  = !string.IsNullOrWhiteSpace(region);
+        var hasAccount = !string.IsNullOrWhiteSpace(accountName);
+        var hasName    = !string.IsNullOrWhiteSpace(name);
+        var exclude = excludeUserIds is null ? null : new HashSet<string>(excludeUserIds, StringComparer.Ordinal);
 
-        if (hasCountry && hasRegion)
-            query = query.Where(u =>
-                (string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(u.Region,  region,  StringComparison.OrdinalIgnoreCase)) ||
-                (string.Equals(u.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(u.SecondaryRegion,  region,  StringComparison.OrdinalIgnoreCase)));
-        else if (hasCountry)
-            query = query.Where(u =>
-                string.Equals(u.Country, country, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(u.SecondaryCountry, country, StringComparison.OrdinalIgnoreCase));
-        else if (hasRegion)
-            query = query.Where(u =>
-                string.Equals(u.Region, region, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(u.SecondaryRegion, region, StringComparison.OrdinalIgnoreCase));
+        static bool Eq(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(accountName))
-            query = query.Where(u => string.Equals(u.AccountName, accountName, StringComparison.OrdinalIgnoreCase));
-
-        if (!string.IsNullOrWhiteSpace(name))
-            query = query.Where(u => (u.Name ?? string.Empty)
-                .Contains(name, StringComparison.OrdinalIgnoreCase));
-
-        if (minAge is int lo) query = query.Where(u => u.Age >= lo);
-        if (maxAge is int hi) query = query.Where(u => u.Age <= hi);
-
-        if (gender is Gender g) query = query.Where(u => u.Gender == g);
-
-        var all = query.ToList();
-        for (int i = all.Count - 1; i > 0; i--)
+        bool Match(UserDto u)
         {
-            int j = Random.Shared.Next(i + 1);
-            (all[i], all[j]) = (all[j], all[i]);
+            if (exclude is not null && exclude.Contains(u.Id)) return false;
+
+            if (hasCountry && hasRegion)
+            {
+                if (!((Eq(u.Country, country) && Eq(u.Region, region)) ||
+                      (Eq(u.SecondaryCountry, country) && Eq(u.SecondaryRegion, region)))) return false;
+            }
+            else if (hasCountry)
+            {
+                if (!(Eq(u.Country, country) || Eq(u.SecondaryCountry, country))) return false;
+            }
+            else if (hasRegion)
+            {
+                if (!(Eq(u.Region, region) || Eq(u.SecondaryRegion, region))) return false;
+            }
+
+            if (hasAccount && !Eq(u.AccountName, accountName)) return false;
+            if (hasName && !(u.Name ?? string.Empty).Contains(name!, StringComparison.OrdinalIgnoreCase)) return false;
+            if (minAge is int lo && u.Age < lo) return false;
+            if (maxAge is int hi && u.Age > hi) return false;
+            if (gender is Gender g && u.Gender != g) return false;
+            return true;
         }
-        return all.Skip(skip).Take(take).Select(dto => AugmentWithRank(dto, config.Ranks)).ToList();
+
+        // Reservoir-sample off the lazy filter — no full copy, no full shuffle.
+        var sampled = ReservoirSampler.Sample(MockDataStore.Users.Where(Match), skip + take);
+        return sampled.Skip(skip).Take(take).Select(dto => AugmentWithRank(dto, config.Ranks)).ToList();
     }
 
     public async Task<UserDto?> GetUserByIdAsync(string userId)

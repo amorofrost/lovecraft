@@ -30,7 +30,8 @@ public interface IUserService
         string? name = null,
         int? minAge = null,
         int? maxAge = null,
-        Gender? gender = null);
+        Gender? gender = null,
+        IEnumerable<string>? excludeUserIds = null);
     Task<UserDto?> GetUserByIdAsync(string userId);
     Task<UserDto> UpdateUserAsync(string userId, UserDto user);
     Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1);

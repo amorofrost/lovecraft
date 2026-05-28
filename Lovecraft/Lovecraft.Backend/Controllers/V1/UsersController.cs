@@ -19,17 +19,20 @@ public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
+    private readonly IMatchingService _matchingService;
     private readonly ILogger<UsersController> _logger;
     private readonly IImageService _imageService;
 
     public UsersController(
         IUserService userService,
         IEventService eventService,
+        IMatchingService matchingService,
         ILogger<UsersController> logger,
         IImageService imageService)
     {
         _userService = userService;
         _eventService = eventService;
+        _matchingService = matchingService;
         _logger = logger;
         _imageService = imageService;
     }
@@ -51,7 +54,19 @@ public class UsersController : ControllerBase
     {
         try
         {
-            var users = await _userService.GetUsersAsync(skip, take, country, region, accountName, name, minAge, maxAge, gender);
+            // Exclude the caller and anyone they've already liked (matches imply a prior like,
+            // so they're covered too) from the swipe deck. Done server-side so the deck never
+            // wastes slots on dropped users.
+            var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            HashSet<string>? exclude = null;
+            if (!string.IsNullOrEmpty(callerId))
+            {
+                exclude = new HashSet<string>(StringComparer.Ordinal) { callerId };
+                var sentLikes = await _matchingService.GetSentLikesAsync(callerId);
+                foreach (var like in sentLikes) exclude.Add(like.ToUserId);
+            }
+
+            var users = await _userService.GetUsersAsync(skip, take, country, region, accountName, name, minAge, maxAge, gender, exclude);
             await Task.WhenAll(users.Select(async u =>
             {
                 var attended = await _eventService.GetEventsAttendedByUserAsync(u.Id);

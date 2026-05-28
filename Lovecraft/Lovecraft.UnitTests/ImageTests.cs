@@ -35,10 +35,12 @@ public class ImageTests
     {
         var mockUserService = new Mock<IUserService>();
         var mockEventService = new Mock<IEventService>();
+        var mockMatchingService = new Mock<IMatchingService>();
         var mockImageService = new Mock<IImageService>();
         var controller = new UsersController(
             mockUserService.Object,
             mockEventService.Object,
+            mockMatchingService.Object,
             NullLogger<UsersController>.Instance,
             mockImageService.Object);
 
@@ -68,10 +70,12 @@ public class ImageTests
     {
         var mockUserService = new Mock<IUserService>();
         var mockEventService = new Mock<IEventService>();
+        var mockMatchingService = new Mock<IMatchingService>();
         var mockImageService = new Mock<IImageService>();
         var controller = new UsersController(
             mockUserService.Object,
             mockEventService.Object,
+            mockMatchingService.Object,
             NullLogger<UsersController>.Instance,
             mockImageService.Object);
 
