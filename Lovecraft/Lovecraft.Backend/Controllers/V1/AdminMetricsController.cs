@@ -244,9 +244,9 @@ public class AdminMetricsController : ControllerBase
 
         List<TimeseriesPointDto> points;
         if (useMinute)
-            points = await QueryMinuteTimeseriesAsync(table, category, dimensionKey, fromUtc, toUtc, ct);
+            points = await QueryMinuteTimeseriesAsync(table, category, dimensionKey, null, fromUtc, toUtc, ct);
         else
-            points = await QueryHourTimeseriesAsync(table, category, dimensionKey, fromUtc, toUtc, ct);
+            points = await QueryHourTimeseriesAsync(table, category, dimensionKey, null, fromUtc, toUtc, ct);
 
         return Ok(ApiResponse<List<TimeseriesPointDto>>.SuccessResponse(points));
     }
@@ -376,6 +376,42 @@ public class AdminMetricsController : ControllerBase
         return Ok(ApiResponse<List<EndpointStatDto>>.SuccessResponse(AggregateEndpointStats(rows)));
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /admin/metrics/endpoint-timeseries
+    // Query params: method, route, from (ISO), to (ISO), resolution=minute|hour
+    // Returns count + percentile timeseries for one endpoint, summed across statuses.
+    // ─────────────────────────────────────────────────────────────────────────
+    [HttpGet("endpoint-timeseries")]
+    public async Task<ActionResult<ApiResponse<List<TimeseriesPointDto>>>> GetEndpointTimeseries(
+        [FromQuery] string method,
+        [FromQuery] string route,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string resolution = "minute",
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(method) || string.IsNullOrWhiteSpace(route))
+            return BadRequest(ApiResponse<List<TimeseriesPointDto>>.ErrorResponse(
+                "MISSING_PARAM", "method and route are required"));
+
+        if (_tables is null)
+            return Ok(ApiResponse<List<TimeseriesPointDto>>.SuccessResponse(new List<TimeseriesPointDto>()));
+
+        var prefix = BuildEndpointDimPrefix(method, route);
+        var useMinute = !string.Equals(resolution, "hour", StringComparison.OrdinalIgnoreCase);
+        var table = _tables.GetTableClient(useMinute ? TableNames.MetricsMinute : TableNames.MetricsHour);
+        await table.CreateIfNotExistsAsync(ct);
+
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
+
+        var points = useMinute
+            ? await QueryMinuteTimeseriesAsync(table, "request_timing", null, prefix, fromUtc, toUtc, ct)
+            : await QueryHourTimeseriesAsync(table, "request_timing", null, prefix, fromUtc, toUtc, ct);
+
+        return Ok(ApiResponse<List<TimeseriesPointDto>>.SuccessResponse(points));
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Percentile interpolation helper
     // ──────────────────────────────────────────────────────────────────────────
@@ -468,6 +504,7 @@ public class AdminMetricsController : ControllerBase
         TableClient table,
         string category,
         string? dimensionKey,
+        string? dimensionKeyPrefix,
         DateTime from,
         DateTime to,
         CancellationToken ct)
@@ -489,6 +526,8 @@ public class AdminMetricsController : ControllerBase
                 var dimKey = parts[1];
 
                 if (dimensionKey is not null && !string.Equals(dimKey, dimensionKey, StringComparison.Ordinal))
+                    continue;
+                if (dimensionKeyPrefix is not null && !dimKey.StartsWith(dimensionKeyPrefix, StringComparison.Ordinal))
                     continue;
 
                 if (!int.TryParse(mmStr, out var minute)) continue;
@@ -524,10 +563,78 @@ public class AdminMetricsController : ControllerBase
             .ToList();
     }
 
+    private async Task<List<TimeseriesPointDto>> QueryHourTimeseriesAsync(
+        TableClient table,
+        string category,
+        string? dimensionKey,
+        string? dimensionKeyPrefix,
+        DateTime from,
+        DateTime to,
+        CancellationToken ct)
+    {
+        // Partition key: "{yyyy-MM-dd}_{category}"
+        var byHour = new Dictionary<DateTime, (long count, long[] buckets)>();
+
+        var cursor = new DateTime(from.Year, from.Month, from.Day, 0, 0, 0, DateTimeKind.Utc);
+        while (cursor <= to)
+        {
+            var pk = $"{cursor:yyyy-MM-dd}_{category}";
+            await foreach (var entity in table.QueryAsync<MetricHourEntity>(
+                filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
+            {
+                var parts = entity.RowKey.Split('_', 2);
+                if (parts.Length < 2) continue;
+                var hhStr = parts[0];
+                var dimKey = parts[1];
+
+                if (dimensionKey is not null && !string.Equals(dimKey, dimensionKey, StringComparison.Ordinal))
+                    continue;
+                if (dimensionKeyPrefix is not null && !dimKey.StartsWith(dimensionKeyPrefix, StringComparison.Ordinal))
+                    continue;
+
+                if (!int.TryParse(hhStr, out var hour)) continue;
+                var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, hour, 0, 0, DateTimeKind.Utc);
+                if (ts < from || ts > to) continue;
+
+                if (!byHour.TryGetValue(ts, out var acc))
+                    acc = (0, new long[HistogramBuckets.BucketCount]);
+
+                acc.count += entity.Count;
+                acc.buckets[0] += entity.B0 ?? 0;
+                acc.buckets[1] += entity.B1 ?? 0;
+                acc.buckets[2] += entity.B2 ?? 0;
+                acc.buckets[3] += entity.B3 ?? 0;
+                acc.buckets[4] += entity.B4 ?? 0;
+                acc.buckets[5] += entity.B5 ?? 0;
+                acc.buckets[6] += entity.B6 ?? 0;
+                acc.buckets[7] += entity.B7 ?? 0;
+                acc.buckets[8] += entity.B8 ?? 0;
+                byHour[ts] = acc;
+            }
+            cursor = cursor.AddDays(1);
+        }
+
+        return byHour
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new TimeseriesPointDto(
+                Ts: kv.Key,
+                Count: kv.Value.count,
+                P50: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 50),
+                P95: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 95),
+                P99: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 99)))
+            .ToList();
+    }
+
     private static string StripStatus(string dimKey)
     {
         var lastPipe = dimKey.LastIndexOf('|');
         return lastPipe > 0 ? dimKey[..lastPipe] : dimKey;
+    }
+
+    public static string BuildEndpointDimPrefix(string method, string route)
+    {
+        var encoded = route.TrimStart('/').Replace('/', '~');
+        return $"backend|{method}|{encoded}|";
     }
 
     /// <summary>
@@ -575,63 +682,4 @@ public class AdminMetricsController : ControllerBase
     private static long[] BucketsOf(long? b0, long? b1, long? b2, long? b3, long? b4,
                                     long? b5, long? b6, long? b7, long? b8) =>
         new[] { b0 ?? 0, b1 ?? 0, b2 ?? 0, b3 ?? 0, b4 ?? 0, b5 ?? 0, b6 ?? 0, b7 ?? 0, b8 ?? 0 };
-
-    private async Task<List<TimeseriesPointDto>> QueryHourTimeseriesAsync(
-        TableClient table,
-        string category,
-        string? dimensionKey,
-        DateTime from,
-        DateTime to,
-        CancellationToken ct)
-    {
-        // Partition key: "{yyyy-MM-dd}_{category}"
-        var byHour = new Dictionary<DateTime, (long count, long[] buckets)>();
-
-        var cursor = new DateTime(from.Year, from.Month, from.Day, 0, 0, 0, DateTimeKind.Utc);
-        while (cursor <= to)
-        {
-            var pk = $"{cursor:yyyy-MM-dd}_{category}";
-            await foreach (var entity in table.QueryAsync<MetricHourEntity>(
-                filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
-            {
-                var parts = entity.RowKey.Split('_', 2);
-                if (parts.Length < 2) continue;
-                var hhStr = parts[0];
-                var dimKey = parts[1];
-
-                if (dimensionKey is not null && !string.Equals(dimKey, dimensionKey, StringComparison.Ordinal))
-                    continue;
-
-                if (!int.TryParse(hhStr, out var hour)) continue;
-                var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, hour, 0, 0, DateTimeKind.Utc);
-                if (ts < from || ts > to) continue;
-
-                if (!byHour.TryGetValue(ts, out var acc))
-                    acc = (0, new long[HistogramBuckets.BucketCount]);
-
-                acc.count += entity.Count;
-                acc.buckets[0] += entity.B0 ?? 0;
-                acc.buckets[1] += entity.B1 ?? 0;
-                acc.buckets[2] += entity.B2 ?? 0;
-                acc.buckets[3] += entity.B3 ?? 0;
-                acc.buckets[4] += entity.B4 ?? 0;
-                acc.buckets[5] += entity.B5 ?? 0;
-                acc.buckets[6] += entity.B6 ?? 0;
-                acc.buckets[7] += entity.B7 ?? 0;
-                acc.buckets[8] += entity.B8 ?? 0;
-                byHour[ts] = acc;
-            }
-            cursor = cursor.AddDays(1);
-        }
-
-        return byHour
-            .OrderBy(kv => kv.Key)
-            .Select(kv => new TimeseriesPointDto(
-                Ts: kv.Key,
-                Count: kv.Value.count,
-                P50: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 50),
-                P95: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 95),
-                P99: InterpolatePercentile(kv.Value.buckets, HistogramBuckets.Boundaries, 99)))
-            .ToList();
-    }
 }

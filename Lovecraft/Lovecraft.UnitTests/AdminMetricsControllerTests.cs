@@ -289,4 +289,41 @@ public class AdminMetricsControllerTests : IClassFixture<AclTests.TestAppFactory
         Assert.Equal("GET|/api/v1/users/{id}", users.RouteKey);
         Assert.Equal("/api/v1/users/{id}", result[0].Route); // sorted by count desc
     }
+
+    [Fact]
+    public void BuildEndpointDimPrefix_MatchesAllStatusesForRoute()
+    {
+        var prefix = AdminMetricsController.BuildEndpointDimPrefix("GET", "/api/v1/users/{id}");
+        Assert.Equal("backend|GET|api~v1~users~{id}|", prefix);
+        Assert.StartsWith(prefix, "backend|GET|api~v1~users~{id}|200");
+        Assert.StartsWith(prefix, "backend|GET|api~v1~users~{id}|404");
+        Assert.False("backend|GET|api~v1~users|200".StartsWith(prefix, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EndpointTimeseries_ReturnsEmptyInMockMode()
+    {
+        using var client = _factory.CreateClientAsUser("admin-metrics-ep1", "admin");
+        var from = Uri.EscapeDataString(DateTime.UtcNow.AddHours(-2).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.ToString("o"));
+        var route = Uri.EscapeDataString("/api/v1/users/{id}");
+
+        var resp = await client.GetAsync(
+            $"/api/v1/admin/metrics/endpoint-timeseries?method=GET&route={route}&from={from}&to={to}&resolution=minute");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<List<TimeseriesPointDto>>>(JsonOpts);
+        Assert.True(body!.Success);
+        Assert.Empty(body.Data!);
+    }
+
+    [Fact]
+    public async Task EndpointTimeseries_MissingRoute_Returns400()
+    {
+        using var client = _factory.CreateClientAsUser("admin-metrics-ep2", "admin");
+        var from = Uri.EscapeDataString(DateTime.UtcNow.AddHours(-1).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.ToString("o"));
+        var resp = await client.GetAsync(
+            $"/api/v1/admin/metrics/endpoint-timeseries?method=GET&from={from}&to={to}");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }
