@@ -634,7 +634,7 @@ public class AdminMetricsController : ControllerBase
     public static string BuildEndpointDimPrefix(string method, string route)
     {
         var encoded = route.TrimStart('/').Replace('/', '~');
-        return $"backend|{method}|{encoded}|";
+        return $"backend|{method.ToUpperInvariant()}|{encoded}|";
     }
 
     /// <summary>
