@@ -19,7 +19,12 @@ public class BroadcastAudienceResolverTests
         IEnumerable<EventAttendeeAdminDto>? attendees = null)
     {
         var u = new Mock<IUserService>();
-        u.Setup(s => s.GetUsersAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string?>()))
+        u.Setup(s => s.GetUsersAsync(
+                It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<int?>(), It.IsAny<int?>(),
+                It.IsAny<Lovecraft.Common.Enums.Gender?>()))
             .ReturnsAsync((users ?? Enumerable.Empty<UserDto>()).ToList());
         var e = new Mock<IEventService>();
         e.Setup(s => s.GetEventAttendeesAsync(It.IsAny<string>()))

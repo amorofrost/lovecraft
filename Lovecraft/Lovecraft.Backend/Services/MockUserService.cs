@@ -26,7 +26,16 @@ public class MockUserService : IUserService
         _logger = logger ?? NullLogger<MockUserService>.Instance;
     }
 
-    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
+    public async Task<List<UserDto>> GetUsersAsync(
+        int skip = 0,
+        int take = 10,
+        string? country = null,
+        string? region = null,
+        string? accountName = null,
+        string? name = null,
+        int? minAge = null,
+        int? maxAge = null,
+        Gender? gender = null)
     {
         var config = await _appConfig.GetConfigAsync();
         var query = MockDataStore.Users.AsEnumerable();
@@ -48,6 +57,18 @@ public class MockUserService : IUserService
             query = query.Where(u =>
                 string.Equals(u.Region, region, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(u.SecondaryRegion, region, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(accountName))
+            query = query.Where(u => string.Equals(u.AccountName, accountName, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(name))
+            query = query.Where(u => (u.Name ?? string.Empty)
+                .Contains(name, StringComparison.OrdinalIgnoreCase));
+
+        if (minAge is int lo) query = query.Where(u => u.Age >= lo);
+        if (maxAge is int hi) query = query.Where(u => u.Age <= hi);
+
+        if (gender is Gender g) query = query.Where(u => u.Gender == g);
 
         var all = query.ToList();
         for (int i = all.Count - 1; i > 0; i--)

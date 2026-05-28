@@ -6,6 +6,8 @@ namespace Lovecraft.Common.DTOs.Users;
 public class UserDto
 {
     public string Id { get; set; } = string.Empty;
+    /// <summary>Original-case account name (handle). Empty for legacy GUID-userId rows.</summary>
+    public string AccountName { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
     public string Bio { get; set; } = string.Empty;

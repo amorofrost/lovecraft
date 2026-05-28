@@ -168,6 +168,7 @@ public static class MockDataStore
         new()
         {
             Id = "1",
+            AccountName = "anna",
             Name = "Backend Mock: Анна",
             Age = 25,
             Bio = "Обожаю музыку AloeVera и концерты под открытым небом ❤️",
@@ -200,6 +201,7 @@ public static class MockDataStore
         new()
         {
             Id = "2",
+            AccountName = "dmitry",
             Name = "Backend Mock: Дмитрий",
             Age = 28,
             Bio = "Музыкант, фанат AloeVera с первого альбома 🎸",
@@ -217,6 +219,7 @@ public static class MockDataStore
         new()
         {
             Id = "3",
+            AccountName = "elena",
             Name = "Backend Mock: Елена",
             Age = 22,
             Bio = "Танцую под AloeVera 💃",
@@ -235,6 +238,7 @@ public static class MockDataStore
         new()
         {
             Id = "4",
+            AccountName = "maria",
             Name = "Backend Mock: Мария",
             Age = 23,
             Bio = "Поэтесса и меломан",

@@ -21,7 +21,16 @@ public enum UserCounter
 
 public interface IUserService
 {
-    Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null);
+    Task<List<UserDto>> GetUsersAsync(
+        int skip = 0,
+        int take = 10,
+        string? country = null,
+        string? region = null,
+        string? accountName = null,
+        string? name = null,
+        int? minAge = null,
+        int? maxAge = null,
+        Gender? gender = null);
     Task<UserDto?> GetUserByIdAsync(string userId);
     Task<UserDto> UpdateUserAsync(string userId, UserDto user);
     Task IncrementCounterAsync(string userId, UserCounter counter, int delta = 1);

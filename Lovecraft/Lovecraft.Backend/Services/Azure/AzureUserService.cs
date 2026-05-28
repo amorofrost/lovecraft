@@ -37,7 +37,16 @@ public class AzureUserService : IUserService
         _telegramIndexTable.CreateIfNotExistsAsync().GetAwaiter().GetResult();
     }
 
-    public async Task<List<UserDto>> GetUsersAsync(int skip = 0, int take = 10, string? country = null, string? region = null)
+    public async Task<List<UserDto>> GetUsersAsync(
+        int skip = 0,
+        int take = 10,
+        string? country = null,
+        string? region = null,
+        string? accountName = null,
+        string? name = null,
+        int? minAge = null,
+        int? maxAge = null,
+        Gender? gender = null)
     {
         var config = await _appConfig.GetConfigAsync();
         var all = _cache.GetAll();
@@ -67,6 +76,22 @@ public class AzureUserService : IUserService
                 string.Equals(e.Region, region, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(e.SecondaryRegion, region, StringComparison.OrdinalIgnoreCase)
             ).ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(accountName))
+            all = all.Where(e => string.Equals(e.AccountNameDisplay, accountName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (!string.IsNullOrWhiteSpace(name))
+            all = all.Where(e => (e.Name ?? string.Empty)
+                .Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (minAge is int lo) all = all.Where(e => e.Age >= lo).ToList();
+        if (maxAge is int hi) all = all.Where(e => e.Age <= hi).ToList();
+
+        if (gender is Gender g)
+        {
+            var wanted = g.ToString();
+            all = all.Where(e => string.Equals(e.Gender, wanted, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
         // Fisher-Yates shuffle so the swipe deck ordering is random per request
@@ -362,6 +387,7 @@ public class AzureUserService : IUserService
         return new UserDto
         {
             Id = entity.RowKey,
+            AccountName = entity.AccountNameDisplay,
             Name = entity.Name,
             Age = entity.Age,
             Bio = entity.Bio,

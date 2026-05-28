@@ -42,11 +42,16 @@ public class UsersController : ControllerBase
         [FromQuery] int skip = 0,
         [FromQuery] int take = 10,
         [FromQuery] string? country = null,
-        [FromQuery] string? region = null)
+        [FromQuery] string? region = null,
+        [FromQuery] string? accountName = null,
+        [FromQuery] string? name = null,
+        [FromQuery] int? minAge = null,
+        [FromQuery] int? maxAge = null,
+        [FromQuery] Lovecraft.Common.Enums.Gender? gender = null)
     {
         try
         {
-            var users = await _userService.GetUsersAsync(skip, take, country, region);
+            var users = await _userService.GetUsersAsync(skip, take, country, region, accountName, name, minAge, maxAge, gender);
             await Task.WhenAll(users.Select(async u =>
             {
                 var attended = await _eventService.GetEventsAttendedByUserAsync(u.Id);
