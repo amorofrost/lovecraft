@@ -42,9 +42,10 @@ public sealed class RequestMetricsMiddleware
             sw.Stop();
             try
             {
-                var route = context.GetEndpoint()?.Metadata.GetMetadata<RouteEndpoint>()?.RoutePattern?.RawText;
-                var pathForMetric = !string.IsNullOrEmpty(route) ? route.TrimStart('/') : path.TrimStart('/');
-                pathForMetric = pathForMetric.Replace('/', '~');
+                var routeEndpoint = context.GetEndpoint() as RouteEndpoint;
+                var template = routeEndpoint?.RoutePattern.RawText;
+                var pathForMetric = MetricsRouteNormalizer.Normalize(
+                    !string.IsNullOrEmpty(template) ? template : path);
                 var dim = $"backend|{context.Request.Method}|{pathForMetric}|{context.Response.StatusCode}";
                 _collector.RecordTiming("request_timing", dim, sw.Elapsed.TotalMilliseconds);
 

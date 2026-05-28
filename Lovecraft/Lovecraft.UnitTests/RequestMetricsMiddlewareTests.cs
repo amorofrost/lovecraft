@@ -1,6 +1,8 @@
 using Lovecraft.Backend.Middleware;
 using Lovecraft.Backend.Services.Metrics;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -60,6 +62,31 @@ public class RequestMetricsMiddlewareTests
         ctx.Request.Method = "GET";
         ctx.Request.Path = "/api/v1/users";
         await mw.InvokeAsync(ctx);  // should not throw
+    }
+
+    [Fact]
+    public async Task MatchedRoute_RecordsTemplateNotRawId()
+    {
+        var collector = new MockMetricsCollector();
+        var mw = new RequestMetricsMiddleware(c => { c.Response.StatusCode = 200; return Task.CompletedTask; },
+                                              collector, new DailyActiveUserCoalescer());
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Method = "GET";
+        ctx.Request.Path = "/api/v1/users/55126c3e-21fd-457c-9953-dc66f83186b3";
+
+        // Simulate the matched endpoint carrying a route template with a GUID constraint.
+        var endpoint = new RouteEndpoint(
+            _ => Task.CompletedTask,
+            RoutePatternFactory.Parse("api/v1/users/{id:guid}"),
+            order: 0,
+            metadata: EndpointMetadataCollection.Empty,
+            displayName: "Users.Get");
+        ctx.SetEndpoint(endpoint);
+
+        await mw.InvokeAsync(ctx);
+
+        var row = Assert.Single(collector.Snapshot());
+        Assert.Equal("backend|GET|api~v1~users~{id}|200", row.DimensionKey);
     }
 
     private sealed class ThrowingCollector : IMetricsCollector
