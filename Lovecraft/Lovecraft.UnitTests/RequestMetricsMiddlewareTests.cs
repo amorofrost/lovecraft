@@ -89,6 +89,23 @@ public class RequestMetricsMiddlewareTests
         Assert.Equal("backend|GET|api~v1~users~{id}|200", row.DimensionKey);
     }
 
+    [Fact]
+    public async Task UnmatchedRoute_FallsBackToNormalizedRawPath()
+    {
+        var collector = new MockMetricsCollector();
+        var mw = new RequestMetricsMiddleware(c => { c.Response.StatusCode = 404; return Task.CompletedTask; },
+                                              collector, new DailyActiveUserCoalescer());
+        var ctx = new DefaultHttpContext();
+        ctx.Request.Method = "GET";
+        ctx.Request.Path = "/api/v1/users/55126c3e-21fd-457c-9953-dc66f83186b3";
+        // no ctx.SetEndpoint → null endpoint, so the middleware falls back to the raw path
+
+        await mw.InvokeAsync(ctx);
+
+        var row = Assert.Single(collector.Snapshot());
+        Assert.Equal("backend|GET|api~v1~users~{id}|404", row.DimensionKey);
+    }
+
     private sealed class ThrowingCollector : IMetricsCollector
     {
         public MetricsEnabledFlags CurrentFlags { get; } = MetricsEnabledFlags.AllEnabled;
