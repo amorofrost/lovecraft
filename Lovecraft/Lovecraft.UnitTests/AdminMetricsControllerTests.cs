@@ -266,4 +266,27 @@ public class AdminMetricsControllerTests : IClassFixture<AclTests.TestAppFactory
             Assert.Equal(expectedDays, dto.Mau.Length);
         }
     }
+
+    [Fact]
+    public void AggregateEndpointStats_MergesAcrossStatusCodes()
+    {
+        var b200 = new long[HistogramBuckets.BucketCount]; b200[0] = 10;
+        var b404 = new long[HistogramBuckets.BucketCount]; b404[1] = 5;
+        var bLikes = new long[HistogramBuckets.BucketCount]; bLikes[0] = 7;
+
+        var rows = new List<(string dimensionKey, long count, long[] buckets)>
+        {
+            ("backend|GET|api~v1~users~{id}|200", 10, b200),
+            ("backend|GET|api~v1~users~{id}|404", 5,  b404),
+            ("backend|POST|api~v1~matching~likes|200", 7, bLikes),
+        };
+
+        var result = AdminMetricsController.AggregateEndpointStats(rows);
+
+        var users = Assert.Single(result, r => r.Route == "/api/v1/users/{id}");
+        Assert.Equal("GET", users.Method);
+        Assert.Equal(15, users.Count);                       // 10 + 5 merged across statuses
+        Assert.Equal("GET|/api/v1/users/{id}", users.RouteKey);
+        Assert.Equal("/api/v1/users/{id}", result[0].Route); // sorted by count desc
+    }
 }

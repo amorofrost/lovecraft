@@ -58,10 +58,9 @@ public sealed record AdminMetricsConfigDto(
     int RetentionDauDays);
 
 public sealed record EndpointStatDto(
-    string DimensionKey,
+    string RouteKey,            // "{method}|{route}" e.g. "GET|/api/v1/users/{id}"
     string Method,
-    string Route,
-    int? StatusCode,
+    string Route,               // "/api/v1/users/{id}"
     long Count,
     double? P50,
     double? P95,
@@ -313,15 +312,15 @@ public class AdminMetricsController : ControllerBase
 
     // ─────────────────────────────────────────────────────────────────────────
     // GET /admin/metrics/endpoint-stats
-    // Query params: from (ISO), to (ISO), resolution=minute|hour, limit (default 20)
-    // Returns per-endpoint totals aggregated across the time range, sorted by count desc.
+    // Query params: from (ISO), to (ISO), resolution=minute|hour
+    // Returns per-endpoint totals aggregated across the time range and ALL status
+    // codes, sorted by count desc.
     // ─────────────────────────────────────────────────────────────────────────
     [HttpGet("endpoint-stats")]
     public async Task<ActionResult<ApiResponse<List<EndpointStatDto>>>> GetEndpointStats(
         [FromQuery] DateTime from,
         [FromQuery] DateTime to,
         [FromQuery] string resolution = "minute",
-        [FromQuery] int limit = 20,
         CancellationToken ct = default)
     {
         if (_tables is null)
@@ -333,7 +332,7 @@ public class AdminMetricsController : ControllerBase
         var table = _tables.GetTableClient(useMinute ? TableNames.MetricsMinute : TableNames.MetricsHour);
         await table.CreateIfNotExistsAsync(ct);
 
-        var byDim = new Dictionary<string, (long count, long[] buckets)>();
+        var rows = new List<(string dimensionKey, long count, long[] buckets)>();
 
         if (useMinute)
         {
@@ -348,9 +347,8 @@ public class AdminMetricsController : ControllerBase
                     if (rk.Length < 2 || !int.TryParse(rk[0], out var min)) continue;
                     var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, cursor.Hour, min, 0, DateTimeKind.Utc);
                     if (ts < fromUtc || ts > toUtc) continue;
-                    AccumulateDim(byDim, rk[1], entity.Count,
-                        entity.B0, entity.B1, entity.B2, entity.B3, entity.B4,
-                        entity.B5, entity.B6, entity.B7, entity.B8);
+                    rows.Add((rk[1], entity.Count, BucketsOf(entity.B0, entity.B1, entity.B2, entity.B3,
+                        entity.B4, entity.B5, entity.B6, entity.B7, entity.B8)));
                 }
                 cursor = cursor.AddHours(1);
             }
@@ -368,21 +366,14 @@ public class AdminMetricsController : ControllerBase
                     if (rk.Length < 2 || !int.TryParse(rk[0], out var hr)) continue;
                     var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, hr, 0, 0, DateTimeKind.Utc);
                     if (ts < fromUtc || ts > toUtc) continue;
-                    AccumulateDim(byDim, rk[1], entity.Count,
-                        entity.B0, entity.B1, entity.B2, entity.B3, entity.B4,
-                        entity.B5, entity.B6, entity.B7, entity.B8);
+                    rows.Add((rk[1], entity.Count, BucketsOf(entity.B0, entity.B1, entity.B2, entity.B3,
+                        entity.B4, entity.B5, entity.B6, entity.B7, entity.B8)));
                 }
                 cursor = cursor.AddDays(1);
             }
         }
 
-        var results = byDim
-            .Select(kv => ParseEndpointStat(kv.Key, kv.Value.count, kv.Value.buckets))
-            .OrderByDescending(x => x.Count)
-            .Take(limit)
-            .ToList();
-
-        return Ok(ApiResponse<List<EndpointStatDto>>.SuccessResponse(results));
+        return Ok(ApiResponse<List<EndpointStatDto>>.SuccessResponse(AggregateEndpointStats(rows)));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -533,44 +524,57 @@ public class AdminMetricsController : ControllerBase
             .ToList();
     }
 
-    private static void AccumulateDim(
-        Dictionary<string, (long count, long[] buckets)> dict, string dimKey,
-        long count, long? b0, long? b1, long? b2, long? b3, long? b4,
-        long? b5, long? b6, long? b7, long? b8)
+    private static string StripStatus(string dimKey)
     {
-        if (!dict.TryGetValue(dimKey, out var acc))
-            acc = (0, new long[HistogramBuckets.BucketCount]);
-        acc.count += count;
-        acc.buckets[0] += b0 ?? 0;
-        acc.buckets[1] += b1 ?? 0;
-        acc.buckets[2] += b2 ?? 0;
-        acc.buckets[3] += b3 ?? 0;
-        acc.buckets[4] += b4 ?? 0;
-        acc.buckets[5] += b5 ?? 0;
-        acc.buckets[6] += b6 ?? 0;
-        acc.buckets[7] += b7 ?? 0;
-        acc.buckets[8] += b8 ?? 0;
-        dict[dimKey] = acc;
+        var lastPipe = dimKey.LastIndexOf('|');
+        return lastPipe > 0 ? dimKey[..lastPipe] : dimKey;
     }
 
-    private static EndpointStatDto ParseEndpointStat(string dimKey, long count, long[] buckets)
+    /// <summary>
+    /// Groups raw metric rows by (method, route) — dropping the status-code suffix —
+    /// summing counts and merging histogram buckets. Sorted by count descending.
+    /// </summary>
+    public static List<EndpointStatDto> AggregateEndpointStats(
+        IEnumerable<(string dimensionKey, long count, long[] buckets)> rows)
     {
-        // Dimension key format: "backend|METHOD|route~path|statusCode"
-        var parts = dimKey.Split('|');
-        var method     = parts.Length > 1 ? parts[1] : "?";
-        var route      = parts.Length > 2 ? "/" + parts[2].Replace('~', '/') : dimKey;
-        var statusCode = parts.Length > 3 && int.TryParse(parts[3], out var sc) ? (int?)sc : null;
+        var byRoute = new Dictionary<string, (long count, long[] buckets)>();
+        foreach (var (dimKey, count, buckets) in rows)
+        {
+            var routeDim = StripStatus(dimKey);
+            if (!byRoute.TryGetValue(routeDim, out var acc))
+                acc = (0, new long[HistogramBuckets.BucketCount]);
+            acc.count += count;
+            for (int i = 0; i < HistogramBuckets.BucketCount; i++)
+                acc.buckets[i] += buckets[i];
+            byRoute[routeDim] = acc;
+        }
+
+        return byRoute
+            .Select(kv => ParseEndpointStat(kv.Key, kv.Value.count, kv.Value.buckets))
+            .OrderByDescending(x => x.Count)
+            .ToList();
+    }
+
+    private static EndpointStatDto ParseEndpointStat(string routeDim, long count, long[] buckets)
+    {
+        // routeDim format: "backend|METHOD|route~path"  (status already stripped)
+        var parts = routeDim.Split('|');
+        var method = parts.Length > 1 ? parts[1] : "?";
+        var route  = parts.Length > 2 ? "/" + parts[2].Replace('~', '/') : routeDim;
 
         return new EndpointStatDto(
-            DimensionKey: dimKey,
-            Method:       method,
-            Route:        route,
-            StatusCode:   statusCode,
-            Count:        count,
+            RouteKey: $"{method}|{route}",
+            Method:   method,
+            Route:    route,
+            Count:    count,
             P50: InterpolatePercentile(buckets, HistogramBuckets.Boundaries, 50),
             P95: InterpolatePercentile(buckets, HistogramBuckets.Boundaries, 95),
             P99: InterpolatePercentile(buckets, HistogramBuckets.Boundaries, 99));
     }
+
+    private static long[] BucketsOf(long? b0, long? b1, long? b2, long? b3, long? b4,
+                                    long? b5, long? b6, long? b7, long? b8) =>
+        new[] { b0 ?? 0, b1 ?? 0, b2 ?? 0, b3 ?? 0, b4 ?? 0, b5 ?? 0, b6 ?? 0, b7 ?? 0, b8 ?? 0 };
 
     private async Task<List<TimeseriesPointDto>> QueryHourTimeseriesAsync(
         TableClient table,
