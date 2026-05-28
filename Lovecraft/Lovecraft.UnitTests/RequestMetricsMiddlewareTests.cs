@@ -13,6 +13,8 @@ public class RequestMetricsMiddlewareTests
     [InlineData("/health")]
     [InlineData("/api/v1/metrics/config")]
     [InlineData("/swagger/index.html")]
+    [InlineData("/hubs/chat")]
+    [InlineData("/hubs/chat/negotiate")]
     public async Task SkippedPaths_DoNotRecord(string path)
     {
         var collector = new MockMetricsCollector();

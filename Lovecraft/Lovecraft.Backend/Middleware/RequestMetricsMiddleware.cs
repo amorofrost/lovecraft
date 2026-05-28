@@ -12,8 +12,12 @@ public sealed class RequestMetricsMiddleware
     private readonly IMetricsCollector _collector;
     private readonly DailyActiveUserCoalescer _dau;
 
+    // "/hubs" = SignalR. The transport request (WebSocket upgrade, or a long-poll/SSE
+    // cycle) stays open for the lifetime of the connection, so timing it with the
+    // request stopwatch records the *connection duration*, not processing latency —
+    // which showed up as a misleading multi-second p50/p95 on the dashboard.
     private static readonly string[] SkippedPathPrefixes =
-        { "/health", "/api/v1/metrics/config", "/api/v1/metrics/frontend", "/swagger" };
+        { "/health", "/api/v1/metrics/config", "/api/v1/metrics/frontend", "/swagger", "/hubs" };
 
     public RequestMetricsMiddleware(RequestDelegate next, IMetricsCollector collector, DailyActiveUserCoalescer dau)
     {
