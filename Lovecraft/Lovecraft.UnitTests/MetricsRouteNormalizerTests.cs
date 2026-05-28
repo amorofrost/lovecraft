@@ -14,6 +14,10 @@ public class MetricsRouteNormalizerTests
     [InlineData("/api/v1/forum/event-discussions/summary", "api~v1~forum~event-discussions~summary")]
     [InlineData("/api/v1/users/42/images", "api~v1~users~{id}~images")]
     [InlineData("/api/v1/events?code=ABC", "api~v1~events")]
+    [InlineData("/api/v1/events/-1", "api~v1~events~{id}")]
+    [InlineData("", "")]
+    [InlineData("/", "")]
+    [InlineData("api/v1/x/{}", "api~v1~x~{id}")]
     public void Normalize_ProducesExpectedShape(string input, string expected)
     {
         Assert.Equal(expected, MetricsRouteNormalizer.Normalize(input));

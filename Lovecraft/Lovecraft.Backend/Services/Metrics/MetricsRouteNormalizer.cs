@@ -8,7 +8,9 @@ namespace Lovecraft.Backend.Services.Metrics;
 /// </summary>
 public static class MetricsRouteNormalizer
 {
-    public static string Normalize(string path)
+    private static readonly char[] ConstraintChars = { ':', '=' };
+
+    public static string Normalize(string? path)
     {
         if (string.IsNullOrEmpty(path)) return string.Empty;
 
@@ -28,12 +30,14 @@ public static class MetricsRouteNormalizer
         if (seg.Length >= 2 && seg[0] == '{' && seg[^1] == '}')
         {
             var inner = seg[1..^1].TrimStart('*');         // catch-all {*x}/{**x}
-            var cut = inner.IndexOfAny(new[] { ':', '=' });
+            var cut = inner.IndexOfAny(ConstraintChars);
             if (cut >= 0) inner = inner[..cut];            // strip constraint/default
-            return "{" + inner + "}";
+            // Defensive: a malformed/empty token must never leak a bare "{}" into the key.
+            return inner.Length == 0 ? "{id}" : "{" + inner + "}";
         }
 
-        // Heuristic for non-templated paths (404s, unmatched routes)
+        // Heuristic for non-templated paths (404s, unmatched routes).
+        // Negative ints (e.g. campaign event id -1) intentionally collapse too.
         if (Guid.TryParse(seg, out _)) return "{id}";
         if (long.TryParse(seg, out _)) return "{id}";
         return seg;
