@@ -82,6 +82,37 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Resolve a specific set of users by id (comma-separated). Used by the likes,
+    /// matches and chats views to fetch exactly the people they reference. Unlike
+    /// GET /users this applies no random sampling and no deck exclusions, so liked
+    /// and matched users still resolve here.
+    /// </summary>
+    [HttpGet("by-ids")]
+    public async Task<ActionResult<ApiResponse<List<UserDto>>>> GetUsersByIds([FromQuery] string? ids)
+    {
+        var idList = (ids ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .Take(500)
+            .ToList();
+
+        if (idList.Count == 0)
+            return Ok(ApiResponse<List<UserDto>>.SuccessResponse(new List<UserDto>()));
+
+        try
+        {
+            var resolved = await Task.WhenAll(idList.Select(id => _userService.GetUserByIdAsync(id)));
+            var users = resolved.Where(u => u is not null).Select(u => u!).ToList();
+            return Ok(ApiResponse<List<UserDto>>.SuccessResponse(users));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resolving users by ids");
+            return StatusCode(500, ApiResponse<List<UserDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to resolve users"));
+        }
+    }
+
+    /// <summary>
     /// Get user by account name (e.g. /users/by-account-name/alice99).
     /// Returns 404 for unknown names and for legacy GUID-userId rows.
     /// </summary>
