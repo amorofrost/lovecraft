@@ -157,10 +157,11 @@ public class AdminMetricsController : ControllerBase
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        var registered = _userCache.GetAll().Count;
+        var allUsers = _userCache.GetAll();
+        var registered = allUsers.Count;
 
         var activeThreshold = DateTime.UtcNow.AddMinutes(-5);
-        var currentlyActive = _userCache.GetAll().Count(u => u.LastSeen >= activeThreshold);
+        var currentlyActive = allUsers.Count(u => u.LastSeen >= activeThreshold);
 
         var dauTask = _mau.GetDauAsync(today, ct);
         var mauTask = _mau.GetMauAsync(today, ct);
