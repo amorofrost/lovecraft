@@ -17,6 +17,7 @@ public class ContainerStatusEntity : ITableEntity
     public long? WorkingSetMb { get; set; }
     public int? ThreadCount { get; set; }
     public double? CpuSecondsTotal { get; set; }
+    public double? CpuPercent { get; set; }
     public long? RequestsServed { get; set; }
     public string? Note { get; set; }
 }

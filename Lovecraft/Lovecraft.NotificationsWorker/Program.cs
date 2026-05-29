@@ -146,10 +146,23 @@ internal sealed class NotificationsWorkerEntryPoint
         builder.Services.AddHostedService<EventReminderWorker>();
         builder.Services.AddSingleton(serviceClient);
         builder.Services.AddHostedService<MetricsRollupWorker>();
-        builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
-            sp.GetRequiredService<TableServiceClient>(),
-            sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
-            "notifications-worker"));
+        var serviceToken = Environment.GetEnvironmentVariable("INTERNAL_SERVICE_TOKEN");
+        var backendUrl = Environment.GetEnvironmentVariable("BACKEND_INTERNAL_URL") ?? "http://backend:8080";
+        builder.Services.AddHostedService(sp =>
+        {
+            ContainerMetricsReporter? reporter = null;
+            if (!string.IsNullOrEmpty(serviceToken))
+            {
+                var client = new HttpClient { BaseAddress = new Uri(backendUrl), Timeout = TimeSpan.FromSeconds(10) };
+                reporter = new ContainerMetricsReporter(client, serviceToken,
+                    sp.GetRequiredService<ILogger<ContainerMetricsReporter>>());
+            }
+            return new ContainerHeartbeatWorker(
+                sp.GetRequiredService<TableServiceClient>(),
+                sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+                "notifications-worker",
+                reporter);
+        });
 
         var host = builder.Build();
         await host.RunAsync();
