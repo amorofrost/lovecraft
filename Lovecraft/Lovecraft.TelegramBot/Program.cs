@@ -38,10 +38,21 @@ internal sealed class TelegramBotEntryPoint
         if (!string.IsNullOrEmpty(storageConnectionString))
         {
             builder.Services.AddSingleton(new TableServiceClient(storageConnectionString));
-            builder.Services.AddHostedService(sp => new ContainerHeartbeatWorker(
-                sp.GetRequiredService<TableServiceClient>(),
-                sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
-                "telegram-bot"));
+            builder.Services.AddHostedService(sp =>
+            {
+                ContainerMetricsReporter? reporter = null;
+                if (!string.IsNullOrEmpty(serviceToken))
+                {
+                    var client = new HttpClient { BaseAddress = new Uri(backendUrl) };
+                    reporter = new ContainerMetricsReporter(client, serviceToken,
+                        sp.GetRequiredService<ILogger<ContainerMetricsReporter>>());
+                }
+                return new ContainerHeartbeatWorker(
+                    sp.GetRequiredService<TableServiceClient>(),
+                    sp.GetRequiredService<ILogger<ContainerHeartbeatWorker>>(),
+                    "telegram-bot",
+                    reporter);
+            });
         }
 
         builder.Services.AddHostedService<TelegramBotWorker>();
