@@ -453,11 +453,17 @@ public class AdminMetricsController : ControllerBase
             return AggregateGaugeSeries(rows);
         }
 
+        var heapTask   = SeriesAsync("gc_heap_mb");
+        var wsTask     = SeriesAsync("working_set_mb");
+        var threadTask = SeriesAsync("thread_count");
+        var cpuTask    = SeriesAsync("cpu_percent");
+        await Task.WhenAll(heapTask, wsTask, threadTask, cpuTask);
+
         var dto = new ContainerTimeseriesDto(
-            HeapMb:       await SeriesAsync("gc_heap_mb"),
-            WorkingSetMb: await SeriesAsync("working_set_mb"),
-            ThreadCount:  await SeriesAsync("thread_count"),
-            CpuPercent:   await SeriesAsync("cpu_percent"));
+            HeapMb:       heapTask.Result,
+            WorkingSetMb: wsTask.Result,
+            ThreadCount:  threadTask.Result,
+            CpuPercent:   cpuTask.Result);
 
         return Ok(ApiResponse<ContainerTimeseriesDto>.SuccessResponse(dto));
     }
