@@ -4,6 +4,7 @@ using Lovecraft.Backend.Controllers.V1;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Metrics;
+using Lovecraft.Common.DTOs.Metrics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq;
@@ -118,7 +119,7 @@ public class InternalControllerTests : IClassFixture<AclTests.TestAppFactory>
         var collector = new MockMetricsCollector();
         var ctrl = new InternalController(null!, null!, collector);
         ctrl.ContainerStats(new ContainerStatsIngestDto { Container = "x", GcHeapMb = 10 });
-        Assert.Single(collector.Snapshot().Where(r => r.Category == "container_stats"));
+        Assert.Single(collector.Snapshot(), r => r.Category == "container_stats");
     }
 
     [Fact]

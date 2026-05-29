@@ -1,6 +1,7 @@
 using Lovecraft.Backend.Attributes;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Metrics;
+using Lovecraft.Common.DTOs.Metrics;
 using Lovecraft.Common.DTOs.Notifications;
 using Microsoft.AspNetCore.Mvc;
 
@@ -39,7 +40,7 @@ public class InternalController : ControllerBase
     [HttpPost("metrics/container-stats")]
     public IActionResult ContainerStats([FromBody] ContainerStatsIngestDto request)
     {
-        if (string.IsNullOrWhiteSpace(request.Container)) return BadRequest();
+        if (string.IsNullOrWhiteSpace(request.Container) || request.Container.Contains('|')) return BadRequest();
 
         if (request.GcHeapMb is not null)
             _metrics.RecordTiming("container_stats", $"{request.Container}|gc_heap_mb", request.GcHeapMb.Value);
@@ -52,13 +53,4 @@ public class InternalController : ControllerBase
 
         return NoContent();
     }
-}
-
-public sealed class ContainerStatsIngestDto
-{
-    public string Container { get; set; } = string.Empty;
-    public long? GcHeapMb { get; set; }
-    public long? WorkingSetMb { get; set; }
-    public int? ThreadCount { get; set; }
-    public double? CpuPercent { get; set; }
 }
