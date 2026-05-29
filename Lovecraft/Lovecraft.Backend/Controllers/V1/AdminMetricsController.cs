@@ -16,13 +16,15 @@ namespace Lovecraft.Backend.Controllers.V1;
 // DTOs
 // ──────────────────────────────────────────────────────────────────────────────
 
-public sealed record MetricsOverviewDto(
+public sealed record TechnicalOverviewDto(
+    long RequestsLastHour,
+    double? P95LastHourMs);
+
+public sealed record BiOverviewDto(
     int Registered,
     int Dau,
     int Mau,
-    int CurrentlyActive,
-    long RequestsLastHour,
-    double? P95LastHourMs);
+    int CurrentlyActive);
 
 public sealed record ContainerStatusDto(
     string Name,
@@ -137,40 +139,35 @@ public class AdminMetricsController : ControllerBase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // GET /admin/metrics/overview
+    // GET /admin/metrics/overview — technical KPIs (requests/hr + p95)
     // ─────────────────────────────────────────────────────────────────────────
     [HttpGet("overview")]
-    public async Task<ActionResult<ApiResponse<MetricsOverviewDto>>> GetOverview(CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<TechnicalOverviewDto>>> GetOverview(CancellationToken ct)
+    {
+        var (requestsLastHour, p95) = await GetLastHourRequestStatsAsync(ct);
+        return Ok(ApiResponse<TechnicalOverviewDto>.SuccessResponse(
+            new TechnicalOverviewDto(requestsLastHour, p95)));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /admin/metrics/bi-overview — business KPIs (registered/DAU/MAU/online)
+    // ─────────────────────────────────────────────────────────────────────────
+    [HttpGet("bi-overview")]
+    public async Task<ActionResult<ApiResponse<BiOverviewDto>>> GetBiOverview(CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // registered: count from in-memory user cache (avoids a full table scan)
         var registered = _userCache.GetAll().Count;
 
-        // currently active: users with LastSeen within the last 5 minutes
         var activeThreshold = DateTime.UtcNow.AddMinutes(-5);
-        var currentlyActive = _userCache.GetAll()
-            .Count(u => u.LastSeen >= activeThreshold);
+        var currentlyActive = _userCache.GetAll().Count(u => u.LastSeen >= activeThreshold);
 
-        // DAU / MAU from the dailyactiveusers table (returns 0 in mock mode)
         var dauTask = _mau.GetDauAsync(today, ct);
         var mauTask = _mau.GetMauAsync(today, ct);
         await Task.WhenAll(dauTask, mauTask);
-        var dau = dauTask.Result;
-        var mau = mauTask.Result;
 
-        // requestsLastHour + P95 from metricsminute table
-        var (requestsLastHour, p95) = await GetLastHourRequestStatsAsync(ct);
-
-        var dto = new MetricsOverviewDto(
-            Registered: registered,
-            Dau: dau,
-            Mau: mau,
-            CurrentlyActive: currentlyActive,
-            RequestsLastHour: requestsLastHour,
-            P95LastHourMs: p95);
-
-        return Ok(ApiResponse<MetricsOverviewDto>.SuccessResponse(dto));
+        return Ok(ApiResponse<BiOverviewDto>.SuccessResponse(
+            new BiOverviewDto(registered, dauTask.Result, mauTask.Result, currentlyActive)));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

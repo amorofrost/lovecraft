@@ -135,26 +135,46 @@ public class AdminMetricsControllerTests : IClassFixture<AclTests.TestAppFactory
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. GET /admin/metrics/overview — aggregates from multiple sources
+    // 4. GET /admin/metrics/overview — technical KPIs only
+    //    GET /admin/metrics/bi-overview — business KPIs only
     // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetOverview_AggregatesFromMultipleSources()
+    public async Task GetOverview_ReturnsTechnicalKpis()
     {
-        // Use the integration test factory; mock storage, no real Azure.
-        using var client = _factory.CreateClientAsUser("admin-metrics-2", "admin");
+        using var client = _factory.CreateClientAsUser("admin-ovr-tech", "admin");
         var resp = await client.GetAsync("/api/v1/admin/metrics/overview");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<MetricsOverviewDto>>(JsonOpts);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<TechnicalOverviewDto>>(JsonOpts);
         Assert.True(body!.Success);
         var dto = body.Data!;
-        // In mock mode: Registered >= 0, DAU/MAU = 0 (no Azure tables), requests = 0
+        Assert.Equal(0, dto.RequestsLastHour);  // mock mode: no metricsminute table
+        Assert.Null(dto.P95LastHourMs);
+    }
+
+    [Fact]
+    public async Task GetBiOverview_ReturnsBiKpis()
+    {
+        using var client = _factory.CreateClientAsUser("admin-ovr-bi", "admin");
+        var resp = await client.GetAsync("/api/v1/admin/metrics/bi-overview");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<BiOverviewDto>>(JsonOpts);
+        Assert.True(body!.Success);
+        var dto = body.Data!;
         Assert.True(dto.Registered >= 0);
-        Assert.Equal(0, dto.Dau);
+        Assert.Equal(0, dto.Dau);   // mock mode: no dailyactiveusers table
         Assert.Equal(0, dto.Mau);
         Assert.True(dto.CurrentlyActive >= 0);
-        Assert.Equal(0, dto.RequestsLastHour);
+    }
+
+    [Fact]
+    public async Task GetBiOverview_AsNonAdmin_Returns403()
+    {
+        using var client = _factory.CreateClientAsUser("regular-bi", "none");
+        var resp = await client.GetAsync("/api/v1/admin/metrics/bi-overview");
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
