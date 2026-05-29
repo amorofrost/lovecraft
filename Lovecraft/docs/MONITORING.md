@@ -116,7 +116,8 @@ All under `/api/v1/`. Admin endpoints are gated `[RequireStaffRole("admin")]`.
 |---|---|---|---|
 | `GET` | `/metrics/config` | `[Authorize]` | Returns `{ requestTiming, biEvents, containerStats, frontendPerf }` — frontend interceptor polls every 5min |
 | `POST` | `/metrics/frontend` | `[Authorize]` + per-user `MetricsFrontendRateLimit` (10/min) | Browser batch ingest |
-| `GET` | `/admin/metrics/overview` | admin | KPI tiles |
+| `GET` | `/admin/metrics/overview` | admin | Technical KPI tiles (req/hr + p95) |
+| `GET` | `/admin/metrics/bi-overview` | admin | BI KPI tiles (registered, DAU, MAU, online now) |
 | `GET` | `/admin/metrics/containers` | admin | Status grid with green/amber/red |
 | `GET` | `/admin/metrics/timeseries` | admin | `?category=&dimensionKey?=&from=&to=&resolution=minute\|hour` |
 | `GET` | `/admin/metrics/endpoint-timeseries` | admin | Per-endpoint count+latency, summed across statuses (`?method=&route=&from=&to=&resolution=`) |
