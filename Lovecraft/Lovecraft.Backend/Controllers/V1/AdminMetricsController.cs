@@ -31,6 +31,7 @@ public sealed record ContainerStatusDto(
     long? GcHeapMb,
     long? WorkingSetMb,
     int? ThreadCount,
+    double? CpuPercent,
     string? Note,
     DateTime? StartedAtUtc,
     string? Version);
@@ -67,6 +68,12 @@ public sealed record EndpointStatDto(
     double? P99);
 
 public sealed record GaugeTimeseriesPointDto(DateTime Ts, double? Avg, double? Min, double? Max);
+
+public sealed record ContainerTimeseriesDto(
+    List<GaugeTimeseriesPointDto> HeapMb,
+    List<GaugeTimeseriesPointDto> WorkingSetMb,
+    List<GaugeTimeseriesPointDto> ThreadCount,
+    List<GaugeTimeseriesPointDto> CpuPercent);
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Controller
@@ -209,6 +216,7 @@ public class AdminMetricsController : ControllerBase
                 GcHeapMb: entity.GcHeapMb,
                 WorkingSetMb: entity.WorkingSetMb,
                 ThreadCount: entity.ThreadCount,
+                CpuPercent: entity.CpuPercent,
                 Note: entity.Note,
                 StartedAtUtc: entity.StartedAtUtc == default ? null : entity.StartedAtUtc,
                 Version: string.IsNullOrEmpty(entity.Version) ? null : entity.Version));
@@ -412,6 +420,91 @@ public class AdminMetricsController : ControllerBase
             : await QueryHourTimeseriesAsync(table, "request_timing", null, prefix, fromUtc, toUtc, ct);
 
         return Ok(ApiResponse<List<TimeseriesPointDto>>.SuccessResponse(points));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /admin/metrics/container-timeseries?container=&from=&to=&resolution=minute|hour
+    // ─────────────────────────────────────────────────────────────────────────
+    [HttpGet("container-timeseries")]
+    public async Task<ActionResult<ApiResponse<ContainerTimeseriesDto>>> GetContainerTimeseries(
+        [FromQuery] string container,
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to,
+        [FromQuery] string resolution = "minute",
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(container))
+            return BadRequest(ApiResponse<ContainerTimeseriesDto>.ErrorResponse("MISSING_PARAM", "container is required"));
+
+        var empty = new ContainerTimeseriesDto(new(), new(), new(), new());
+        if (_tables is null)
+            return Ok(ApiResponse<ContainerTimeseriesDto>.SuccessResponse(empty));
+
+        var useMinute = !string.Equals(resolution, "hour", StringComparison.OrdinalIgnoreCase);
+        var table = _tables.GetTableClient(useMinute ? TableNames.MetricsMinute : TableNames.MetricsHour);
+        await table.CreateIfNotExistsAsync(ct);
+
+        var fromUtc = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+        var toUtc   = DateTime.SpecifyKind(to,   DateTimeKind.Utc);
+
+        async Task<List<GaugeTimeseriesPointDto>> SeriesAsync(string metric)
+        {
+            var rows = await ScanGaugeRowsAsync(table, useMinute, $"{container}|{metric}", fromUtc, toUtc, ct);
+            return AggregateGaugeSeries(rows);
+        }
+
+        var dto = new ContainerTimeseriesDto(
+            HeapMb:       await SeriesAsync("gc_heap_mb"),
+            WorkingSetMb: await SeriesAsync("working_set_mb"),
+            ThreadCount:  await SeriesAsync("thread_count"),
+            CpuPercent:   await SeriesAsync("cpu_percent"));
+
+        return Ok(ApiResponse<ContainerTimeseriesDto>.SuccessResponse(dto));
+    }
+
+    private async Task<List<(DateTime ts, long count, long? sumMs, long? minMs, long? maxMs)>> ScanGaugeRowsAsync(
+        TableClient table, bool useMinute, string dimensionKey, DateTime from, DateTime to, CancellationToken ct)
+    {
+        var rows = new List<(DateTime, long, long?, long?, long?)>();
+
+        if (useMinute)
+        {
+            var cursor = new DateTime(from.Year, from.Month, from.Day, from.Hour, 0, 0, DateTimeKind.Utc);
+            while (cursor <= to)
+            {
+                var pk = $"{cursor:yyyy-MM-dd'T'HH}_container_stats";
+                await foreach (var e in table.QueryAsync<MetricMinuteEntity>(
+                    filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
+                {
+                    var parts = e.RowKey.Split('_', 2);
+                    if (parts.Length < 2 || parts[1] != dimensionKey || !int.TryParse(parts[0], out var min)) continue;
+                    var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, cursor.Hour, min, 0, DateTimeKind.Utc);
+                    if (ts < from || ts > to) continue;
+                    rows.Add((ts, e.Count, e.SumMs, e.MinMs, e.MaxMs));
+                }
+                cursor = cursor.AddHours(1);
+            }
+        }
+        else
+        {
+            var cursor = new DateTime(from.Year, from.Month, from.Day, 0, 0, 0, DateTimeKind.Utc);
+            while (cursor <= to)
+            {
+                var pk = $"{cursor:yyyy-MM-dd}_container_stats";
+                await foreach (var e in table.QueryAsync<MetricHourEntity>(
+                    filter: $"PartitionKey eq '{pk}'", cancellationToken: ct))
+                {
+                    var parts = e.RowKey.Split('_', 2);
+                    if (parts.Length < 2 || parts[1] != dimensionKey || !int.TryParse(parts[0], out var hr)) continue;
+                    var ts = new DateTime(cursor.Year, cursor.Month, cursor.Day, hr, 0, 0, DateTimeKind.Utc);
+                    if (ts < from || ts > to) continue;
+                    rows.Add((ts, e.Count, e.SumMs, e.MinMs, e.MaxMs));
+                }
+                cursor = cursor.AddDays(1);
+            }
+        }
+
+        return rows;
     }
 
     // ──────────────────────────────────────────────────────────────────────────

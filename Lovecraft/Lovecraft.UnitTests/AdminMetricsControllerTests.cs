@@ -351,4 +351,31 @@ public class AdminMetricsControllerTests : IClassFixture<AclTests.TestAppFactory
         Assert.Equal(100, p1.Min!.Value, 3);
         Assert.Equal(140, p1.Max!.Value, 3);
     }
+
+    [Fact]
+    public async Task ContainerTimeseries_ReturnsEmptyFourSeriesInMockMode()
+    {
+        using var client = _factory.CreateClientAsUser("admin-ct-1", "admin");
+        var from = Uri.EscapeDataString(DateTime.UtcNow.AddHours(-2).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.ToString("o"));
+        var resp = await client.GetAsync(
+            $"/api/v1/admin/metrics/container-timeseries?container=backend&from={from}&to={to}&resolution=minute");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ApiResponse<ContainerTimeseriesDto>>(JsonOpts);
+        Assert.True(body!.Success);
+        Assert.Empty(body.Data!.HeapMb);
+        Assert.Empty(body.Data.WorkingSetMb);
+        Assert.Empty(body.Data.ThreadCount);
+        Assert.Empty(body.Data.CpuPercent);
+    }
+
+    [Fact]
+    public async Task ContainerTimeseries_MissingContainer_Returns400()
+    {
+        using var client = _factory.CreateClientAsUser("admin-ct-2", "admin");
+        var from = Uri.EscapeDataString(DateTime.UtcNow.AddHours(-1).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.ToString("o"));
+        var resp = await client.GetAsync($"/api/v1/admin/metrics/container-timeseries?from={from}&to={to}");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }
