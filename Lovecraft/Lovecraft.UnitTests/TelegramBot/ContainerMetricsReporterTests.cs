@@ -54,4 +54,21 @@ public class ContainerMetricsReporterTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
             => throw new HttpRequestException("boom");
     }
+
+    [Fact]
+    public async Task ReportAsync_SwallowsNonSuccessStatus()
+    {
+        var http = new HttpClient(new StatusHandler(System.Net.HttpStatusCode.InternalServerError))
+            { BaseAddress = new Uri("http://backend:8080") };
+        var reporter = new ContainerMetricsReporter(http, "tok", NullLogger<ContainerMetricsReporter>.Instance);
+        await reporter.ReportAsync("x", 1, 1, 1, 1, default);  // must not throw
+    }
+
+    private sealed class StatusHandler : HttpMessageHandler
+    {
+        private readonly System.Net.HttpStatusCode _code;
+        public StatusHandler(System.Net.HttpStatusCode code) => _code = code;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(_code));
+    }
 }

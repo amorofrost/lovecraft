@@ -43,7 +43,7 @@ internal sealed class TelegramBotEntryPoint
                 ContainerMetricsReporter? reporter = null;
                 if (!string.IsNullOrEmpty(serviceToken))
                 {
-                    var client = new HttpClient { BaseAddress = new Uri(backendUrl) };
+                    var client = new HttpClient { BaseAddress = new Uri(backendUrl), Timeout = TimeSpan.FromSeconds(10) };
                     reporter = new ContainerMetricsReporter(client, serviceToken,
                         sp.GetRequiredService<ILogger<ContainerMetricsReporter>>());
                 }
