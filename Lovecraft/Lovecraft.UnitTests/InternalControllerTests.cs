@@ -1,8 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using Lovecraft.Backend.Controllers.V1;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
+using Lovecraft.Backend.Services.Metrics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using System.Linq;
 using Xunit;
 
 namespace Lovecraft.UnitTests;
@@ -85,5 +89,42 @@ public class InternalControllerTests : IClassFixture<AclTests.TestAppFactory>
 
         var after = await prefSvc.GetPreferencesAsync(userId);
         Assert.False(after.Matrix["messageReceived"]["telegram"]);
+    }
+
+    [Fact]
+    public void ContainerStats_RecordsOneTimingPerNonNullField()
+    {
+        var collector = new MockMetricsCollector();
+        // users + prefs are unused by this action; safe to pass null in a direct unit call.
+        var ctrl = new InternalController(null!, null!, collector);
+
+        var result = ctrl.ContainerStats(new ContainerStatsIngestDto
+        {
+            Container = "telegram-bot", GcHeapMb = 22, WorkingSetMb = 98, ThreadCount = 14, CpuPercent = 3.5
+        });
+
+        Assert.IsType<NoContentResult>(result);
+        var rows = collector.Snapshot().Where(r => r.Category == "container_stats").ToList();
+        Assert.Equal(4, rows.Count);
+        Assert.Contains(rows, r => r.DimensionKey == "telegram-bot|gc_heap_mb");
+        Assert.Contains(rows, r => r.DimensionKey == "telegram-bot|working_set_mb");
+        Assert.Contains(rows, r => r.DimensionKey == "telegram-bot|thread_count");
+        Assert.Contains(rows, r => r.DimensionKey == "telegram-bot|cpu_percent");
+    }
+
+    [Fact]
+    public void ContainerStats_SkipsNullFields()
+    {
+        var collector = new MockMetricsCollector();
+        var ctrl = new InternalController(null!, null!, collector);
+        ctrl.ContainerStats(new ContainerStatsIngestDto { Container = "x", GcHeapMb = 10 });
+        Assert.Single(collector.Snapshot().Where(r => r.Category == "container_stats"));
+    }
+
+    [Fact]
+    public void ContainerStats_BlankContainer_Returns400()
+    {
+        var ctrl = new InternalController(null!, null!, new MockMetricsCollector());
+        Assert.IsType<BadRequestResult>(ctrl.ContainerStats(new ContainerStatsIngestDto { Container = "" }));
     }
 }
