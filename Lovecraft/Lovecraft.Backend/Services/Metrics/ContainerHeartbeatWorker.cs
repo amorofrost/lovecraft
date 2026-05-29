@@ -13,6 +13,9 @@ public sealed class ContainerHeartbeatWorker : BackgroundService
     private readonly DateTime _startedAtUtc = DateTime.UtcNow;
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(30);
 
+    private double? _lastCpuSeconds;
+    private DateTime? _lastSampleUtc;
+
     public ContainerHeartbeatWorker(IMetricsCollector collector, ILogger<ContainerHeartbeatWorker> logger,
                                     string containerName, string version)
     {
@@ -29,10 +32,21 @@ public sealed class ContainerHeartbeatWorker : BackgroundService
             try
             {
                 var snap = CaptureSnapshot(_containerName, _startedAtUtc, _version);
+
+                var now = snap.LastHeartbeatUtc;
+                var elapsed = _lastSampleUtc is null ? 0 : (now - _lastSampleUtc.Value).TotalSeconds;
+                var cpuPercent = ContainerCpuMath.ComputeCpuPercent(
+                    snap.CpuSecondsTotal ?? 0, _lastCpuSeconds, elapsed, Environment.ProcessorCount);
+                _lastCpuSeconds = snap.CpuSecondsTotal;
+                _lastSampleUtc = now;
+                snap = snap with { CpuPercent = cpuPercent };
+
                 await _collector.RecordContainerStatusAsync(snap, stoppingToken);
                 _collector.RecordTiming("container_stats", $"{_containerName}|working_set_mb", snap.WorkingSetMb ?? 0);
                 _collector.RecordTiming("container_stats", $"{_containerName}|gc_heap_mb", snap.GcHeapMb ?? 0);
                 _collector.RecordTiming("container_stats", $"{_containerName}|thread_count", snap.ThreadCount ?? 0);
+                if (cpuPercent is not null)
+                    _collector.RecordTiming("container_stats", $"{_containerName}|cpu_percent", cpuPercent.Value);
             }
             catch (Exception ex) { _logger.LogWarning(ex, "Heartbeat failed for {Container}", _containerName); }
             await Task.Delay(TickInterval, stoppingToken);
@@ -51,6 +65,7 @@ public sealed class ContainerHeartbeatWorker : BackgroundService
             WorkingSetMb: proc.WorkingSet64 / (1024 * 1024),
             ThreadCount: proc.Threads.Count,
             CpuSecondsTotal: proc.TotalProcessorTime.TotalSeconds,
+            CpuPercent: null,
             RequestsServed: null,
             Note: null);
     }

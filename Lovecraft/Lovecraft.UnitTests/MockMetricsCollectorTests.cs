@@ -55,7 +55,7 @@ public class MockMetricsCollectorTests
     public async Task RecordContainerStatus_StoresLatest()
     {
         var c = new MockMetricsCollector();
-        var snap = new ContainerStatusSnapshot("backend", DateTime.UtcNow, DateTime.UtcNow, "1.0", 100, 200, 8, 1.5, 42, null);
+        var snap = new ContainerStatusSnapshot("backend", DateTime.UtcNow, DateTime.UtcNow, "1.0", 100, 200, 8, 1.5, null, 42, null);
         await c.RecordContainerStatusAsync(snap);
         var status = c.GetContainerStatus("backend");
         Assert.NotNull(status);

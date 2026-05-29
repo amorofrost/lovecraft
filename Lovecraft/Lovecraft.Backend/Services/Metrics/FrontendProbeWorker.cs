@@ -46,7 +46,7 @@ public sealed class FrontendProbeWorker : BackgroundService
             StartedAtUtc: DateTime.UtcNow,
             Version: "nginx",
             GcHeapMb: null, WorkingSetMb: null, ThreadCount: null, CpuSecondsTotal: null,
-            RequestsServed: null,
+            CpuPercent: null, RequestsServed: null,
             Note: $"HTTP {status}");
         try { await _collector.RecordContainerStatusAsync(snap, ct); } catch { }
     }

@@ -179,6 +179,7 @@ internal sealed class ContainerStatusUpserter
             WorkingSetMb = s.WorkingSetMb,
             ThreadCount = s.ThreadCount,
             CpuSecondsTotal = s.CpuSecondsTotal,
+            CpuPercent = s.CpuPercent,
             RequestsServed = s.RequestsServed,
             Note = s.Note,
         };

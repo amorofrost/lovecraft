@@ -9,5 +9,6 @@ public sealed record ContainerStatusSnapshot(
     long? WorkingSetMb,
     int? ThreadCount,
     double? CpuSecondsTotal,
+    double? CpuPercent,
     long? RequestsServed,
     string? Note);
