@@ -66,6 +66,8 @@ public sealed record EndpointStatDto(
     double? P95,
     double? P99);
 
+public sealed record GaugeTimeseriesPointDto(DateTime Ts, double? Avg, double? Min, double? Max);
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Controller
 // ──────────────────────────────────────────────────────────────────────────────
@@ -659,6 +661,36 @@ public class AdminMetricsController : ControllerBase
         return byRoute
             .Select(kv => ParseEndpointStat(kv.Key, kv.Value.count, kv.Value.buckets))
             .OrderByDescending(x => x.Count)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Groups raw gauge rows by timestamp bucket, computing avg (Sum/Count), min, max.
+    /// For gauges the histogram percentiles are meaningless (latency-tuned buckets), so we
+    /// use the Sum/Count/Min/Max columns instead. Sorted chronologically.
+    /// </summary>
+    public static List<GaugeTimeseriesPointDto> AggregateGaugeSeries(
+        IEnumerable<(DateTime ts, long count, long? sumMs, long? minMs, long? maxMs)> rows)
+    {
+        var byBucket = new Dictionary<DateTime, (long count, long sum, long? min, long? max)>();
+        foreach (var (ts, count, sumMs, minMs, maxMs) in rows)
+        {
+            if (!byBucket.TryGetValue(ts, out var acc))
+                acc = (0, 0, null, null);
+            acc.count += count;
+            acc.sum += sumMs ?? 0;
+            if (minMs is not null) acc.min = acc.min is null ? minMs : Math.Min(acc.min.Value, minMs.Value);
+            if (maxMs is not null) acc.max = acc.max is null ? maxMs : Math.Max(acc.max.Value, maxMs.Value);
+            byBucket[ts] = acc;
+        }
+
+        return byBucket
+            .OrderBy(kv => kv.Key)
+            .Select(kv => new GaugeTimeseriesPointDto(
+                Ts: kv.Key,
+                Avg: kv.Value.count > 0 ? (double)kv.Value.sum / kv.Value.count : null,
+                Min: kv.Value.min,
+                Max: kv.Value.max))
             .ToList();
     }
 

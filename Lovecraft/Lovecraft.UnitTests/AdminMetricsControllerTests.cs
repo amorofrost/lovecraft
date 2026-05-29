@@ -326,4 +326,29 @@ public class AdminMetricsControllerTests : IClassFixture<AclTests.TestAppFactory
             $"/api/v1/admin/metrics/endpoint-timeseries?method=GET&from={from}&to={to}");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
+
+    [Fact]
+    public void AggregateGaugeSeries_ComputesAvgMinMaxPerBucket()
+    {
+        var t0 = new DateTime(2026, 5, 28, 10, 0, 0, DateTimeKind.Utc);
+        var t1 = t0.AddMinutes(1);
+        var rows = new List<(DateTime ts, long count, long? sumMs, long? minMs, long? maxMs)>
+        {
+            (t0, 2, 100, 40, 60),    // avg 50
+            (t1, 0, 0, null, null),  // count 0 contributes nothing
+            (t1, 4, 480, 100, 140),  // t1 totals: count 4, sum 480 => avg 120
+        };
+
+        var points = AdminMetricsController.AggregateGaugeSeries(rows);
+
+        Assert.Equal(2, points.Count);
+        var p0 = points.Single(p => p.Ts == t0);
+        Assert.Equal(50, p0.Avg!.Value, 3);
+        Assert.Equal(40, p0.Min!.Value, 3);
+        Assert.Equal(60, p0.Max!.Value, 3);
+        var p1 = points.Single(p => p.Ts == t1);
+        Assert.Equal(120, p1.Avg!.Value, 3);
+        Assert.Equal(100, p1.Min!.Value, 3);
+        Assert.Equal(140, p1.Max!.Value, 3);
+    }
 }
