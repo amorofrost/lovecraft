@@ -361,7 +361,9 @@ public class AzureAuthService : IAuthService
             PasswordHash = _passwordHasher.HashPassword(
                 Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
             Name = displayName,
-            Age = request.Age > 0 ? request.Age : 18,
+            // Age is optional in the Mini App / Login Widget register flows; preserve the
+            // caller's value (0 = unset) instead of silently defaulting to 18.
+            Age = request.Age,
             Country = request.Country ?? string.Empty,
             Region = request.Region ?? string.Empty,
             SecondaryCountry = request.SecondaryCountry ?? string.Empty,
