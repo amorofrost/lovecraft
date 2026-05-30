@@ -371,6 +371,13 @@ public class AzureAuthService : IAuthService
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             ProfileImage = profileImage,
+            // Seed the gallery with the profile photo so ImagesJson and ProfileImage stay
+            // consistent from the very first row. Otherwise the Photos section on the
+            // Settings page (which reads from Images) renders empty for fresh Telegram users.
+            ImagesJson = JsonSerializer.Serialize(
+                !string.IsNullOrEmpty(profileImage)
+                    ? new List<string> { profileImage }
+                    : new List<string>()),
             EmailVerified = true,
             AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "telegram" }),
             TelegramUserId = tgKey,
@@ -826,6 +833,13 @@ public class AzureAuthService : IAuthService
             Gender = NormalizeGender(request.Gender),
             Bio = request.Bio ?? string.Empty,
             ProfileImage = profileImage,
+            // Seed the gallery with the profile photo so ImagesJson and ProfileImage stay
+            // consistent from the very first row. Otherwise the Photos section on the
+            // Settings page (which reads from Images) renders empty for fresh Google users.
+            ImagesJson = JsonSerializer.Serialize(
+                !string.IsNullOrEmpty(profileImage)
+                    ? new List<string> { profileImage }
+                    : new List<string>()),
             EmailVerified = gInfo.EmailVerified,
             GoogleUserId = gInfo.Sub,
             AuthMethodsJson = JsonSerializer.Serialize(new List<string> { "google" }),
