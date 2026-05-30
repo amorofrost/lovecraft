@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using SixLabors.ImageSharp;
@@ -22,11 +24,13 @@ public class AzureImageService : IImageService
     private readonly BlobServiceClient _blobServiceClient;
     private readonly BlobContainerClient _containerClient;
     private readonly TableClient _usersTable;
+    private readonly UserCache _userCache;
     private readonly ILogger<AzureImageService> _logger;
 
     public AzureImageService(
         BlobServiceClient blobServiceClient,
         TableServiceClient tableServiceClient,
+        UserCache userCache,
         ILogger<AzureImageService> logger)
     {
         _logger = logger;
@@ -34,6 +38,7 @@ public class AzureImageService : IImageService
         _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
         _containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob).GetAwaiter().GetResult();
         _usersTable = tableServiceClient.GetTableClient(TableNames.Users);
+        _userCache = userCache;
     }
 
     public async Task<string> UploadProfileImageAsync(string userId, Stream imageStream, string contentType)
@@ -61,7 +66,8 @@ public class AzureImageService : IImageService
         await blobClient.UploadAsync(outputStream);
         var blobUrl = blobClient.Uri.ToString();
 
-        // 4. Update UserEntity.ProfileImage in Table Storage; capture old URL for cleanup
+        // 4. Update UserEntity.ProfileImage + ImagesJson in Table Storage; refresh cache;
+        //    capture old URL for cleanup
         string? oldBlobUrl = null;
         try
         {
@@ -70,8 +76,35 @@ public class AzureImageService : IImageService
             var entity = response.Value;
             oldBlobUrl = entity.ProfileImage;
             entity.ProfileImage = blobUrl;
+
+            // Sync the new URL into the gallery as position 0 so the profile photo is
+            // always reflected in ImagesJson — fixes the "Photos section is empty after
+            // initial upload" bug. Removes the old profile URL from the list if present,
+            // dedupes, and preserves any user-curated additions.
+            var images = new List<string>();
+            if (!string.IsNullOrEmpty(entity.ImagesJson))
+            {
+                try
+                {
+                    images = JsonSerializer.Deserialize<List<string>>(entity.ImagesJson) ?? new List<string>();
+                }
+                catch (JsonException)
+                {
+                    images = new List<string>();
+                }
+            }
+            images = new List<string> { blobUrl }
+                .Concat(images.Where(u => u != blobUrl && u != oldBlobUrl))
+                .ToList();
+            entity.ImagesJson = JsonSerializer.Serialize(images);
+
             entity.UpdatedAt = DateTime.UtcNow;
             await _usersTable.UpdateEntityAsync(entity, entity.ETag);
+
+            // Keep the in-memory UserCache in sync — otherwise GetUserByIdAsync will
+            // continue to serve the stale (often empty) ProfileImage until the next
+            // container restart, which is exactly the bug the user reported.
+            _userCache.Set(entity);
         }
         catch (RequestFailedException ex)
         {
