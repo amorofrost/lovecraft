@@ -138,29 +138,74 @@ public class AzureChatService : IChatService
         await foreach (var entity in _messagesTable.QueryAsync<MessageEntity>(e => e.PartitionKey == chatId))
             all.Add(entity);
 
+        // Build a lookup so we can attach a reply snippet without re-querying per row.
+        var byId = all.ToDictionary(e => e.MessageId, e => e);
+
         return all
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .OrderBy(e => e.SentAt) // oldest-first to client
-            .Select(e => new MessageDto
-            {
-                Id = e.MessageId,
-                ChatId = chatId,
-                SenderId = e.SenderId,
-                Content = e.Content,
-                Timestamp = e.SentAt,
-                Read = e.Read,
-                Type = MessageType.Text,
-                ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>(),
-                Reactions = JsonSerializer.Deserialize<Dictionary<string, string>>(string.IsNullOrEmpty(e.Reactions) ? "{}" : e.Reactions) ?? new Dictionary<string, string>()
-            })
+            .Select(e => EntityToDto(e, chatId, byId))
             .ToList();
     }
 
-    public async Task<MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null)
+    private static MessageDto EntityToDto(MessageEntity e, string chatId, IReadOnlyDictionary<string, MessageEntity> byId)
+    {
+        var dto = new MessageDto
+        {
+            Id = e.MessageId,
+            ChatId = chatId,
+            SenderId = e.SenderId,
+            Content = e.Content,
+            Timestamp = e.SentAt,
+            Read = e.Read,
+            Type = MessageType.Text,
+            ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>(),
+            Reactions = JsonSerializer.Deserialize<Dictionary<string, string>>(string.IsNullOrEmpty(e.Reactions) ? "{}" : e.Reactions) ?? new Dictionary<string, string>(),
+        };
+        if (!string.IsNullOrEmpty(e.ReplyToMessageId))
+        {
+            dto.ReplyToMessageId = e.ReplyToMessageId;
+            if (byId.TryGetValue(e.ReplyToMessageId, out var target))
+                dto.ReplyToSnippet = BuildSnippet(target);
+        }
+        return dto;
+    }
+
+    private static MessageReplySnippetDto BuildSnippet(MessageEntity target)
+    {
+        var preview = target.Content ?? string.Empty;
+        if (preview.Length > 100) preview = preview.Substring(0, 100);
+        var images = JsonSerializer.Deserialize<List<string>>(target.ImageUrls ?? "[]") ?? new List<string>();
+        return new MessageReplySnippetDto
+        {
+            Id = target.MessageId,
+            SenderId = target.SenderId,
+            ContentPreview = preview,
+            HasImages = images.Count > 0,
+        };
+    }
+
+    public async Task<MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null, string? replyToMessageId = null)
     {
         if (!await ValidateAccessAsync(chatId, userId))
             throw new InvalidOperationException("Access denied");
+
+        // Resolve and validate reply target before we write.
+        MessageReplySnippetDto? snippet = null;
+        if (!string.IsNullOrEmpty(replyToMessageId))
+        {
+            MessageEntity? target = null;
+            await foreach (var t in _messagesTable.QueryAsync<MessageEntity>(
+                e => e.PartitionKey == chatId && e.MessageId == replyToMessageId))
+            {
+                target = t;
+                break;
+            }
+            if (target is null)
+                throw new ChatMessageException("INVALID_REPLY_TARGET", "Reply target not found in this chat");
+            snippet = BuildSnippet(target);
+        }
 
         var now = DateTime.UtcNow;
         var msgId = Guid.NewGuid().ToString();
@@ -177,7 +222,8 @@ public class AzureChatService : IChatService
             SentAt = now,
             Type = "text",
             Read = false,
-            ImageUrls = JsonSerializer.Serialize(imageUrls ?? new List<string>())
+            ImageUrls = JsonSerializer.Serialize(imageUrls ?? new List<string>()),
+            ReplyToMessageId = replyToMessageId ?? string.Empty,
         };
         await _messagesTable.AddEntityAsync(entity);
 
@@ -211,7 +257,9 @@ public class AzureChatService : IChatService
             Timestamp = now,
             Read = false,
             Type = MessageType.Text,
-            ImageUrls = imageUrls ?? new List<string>()
+            ImageUrls = imageUrls ?? new List<string>(),
+            ReplyToMessageId = string.IsNullOrEmpty(replyToMessageId) ? null : replyToMessageId,
+            ReplyToSnippet = snippet,
         };
     }
 

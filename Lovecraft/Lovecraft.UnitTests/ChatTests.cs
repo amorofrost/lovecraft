@@ -295,6 +295,87 @@ public class ChatTests
         Assert.Equal(ThumbsUp, updated.Reactions["user-anna"]);
         Assert.Equal(Tada, updated.Reactions["third-user"]);
     }
+
+    // --- Reply tests ---
+
+    [Fact]
+    public async Task SendMessageAsync_WithValidReplyTo_PopulatesSnippet()
+    {
+        var svc = CreateService();
+        var original = await svc.SendMessageAsync("chat-1", "user-anna", "the original message");
+        var reply = await svc.SendMessageAsync("chat-1", "current-user", "my reply", null, original.Id);
+        Assert.Equal(original.Id, reply.ReplyToMessageId);
+        Assert.NotNull(reply.ReplyToSnippet);
+        Assert.Equal(original.Id, reply.ReplyToSnippet!.Id);
+        Assert.Equal("user-anna", reply.ReplyToSnippet.SenderId);
+        Assert.Equal("the original message", reply.ReplyToSnippet.ContentPreview);
+        Assert.False(reply.ReplyToSnippet.HasImages);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithReplyToImageMessage_SnippetHasImagesTrue()
+    {
+        var svc = CreateService();
+        var original = await svc.SendMessageAsync("chat-1", "user-anna", "look", new List<string> { "u1" });
+        var reply = await svc.SendMessageAsync("chat-1", "current-user", "nice", null, original.Id);
+        Assert.NotNull(reply.ReplyToSnippet);
+        Assert.True(reply.ReplyToSnippet!.HasImages);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ReplyPreviewTruncatedTo100Chars()
+    {
+        var svc = CreateService();
+        var longContent = new string('a', 250);
+        var original = await svc.SendMessageAsync("chat-1", "user-anna", longContent);
+        var reply = await svc.SendMessageAsync("chat-1", "current-user", "reply", null, original.Id);
+        Assert.NotNull(reply.ReplyToSnippet);
+        Assert.Equal(100, reply.ReplyToSnippet!.ContentPreview.Length);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithBogusReplyTo_ThrowsInvalidReplyTarget()
+    {
+        var svc = CreateService();
+        var ex = await Assert.ThrowsAsync<ChatMessageException>(
+            () => svc.SendMessageAsync("chat-1", "current-user", "stray reply", null, "bogus-id"));
+        Assert.Equal("INVALID_REPLY_TARGET", ex.Code);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_NullReplyTo_LeavesReplyFieldsEmpty()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "plain message");
+        Assert.Null(msg.ReplyToMessageId);
+        Assert.Null(msg.ReplyToSnippet);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ChainOfReplies_EachKeepsItsOwnReplyTo()
+    {
+        var svc = CreateService();
+        var a = await svc.SendMessageAsync("chat-1", "user-anna", "A");
+        var b = await svc.SendMessageAsync("chat-1", "current-user", "B", null, a.Id);
+        var c = await svc.SendMessageAsync("chat-1", "user-anna", "C", null, b.Id);
+        Assert.Equal(a.Id, b.ReplyToMessageId);
+        Assert.Equal(b.Id, c.ReplyToMessageId);
+        Assert.Equal("A", b.ReplyToSnippet!.ContentPreview);
+        Assert.Equal("B", c.ReplyToSnippet!.ContentPreview);
+    }
+
+    [Fact]
+    public async Task GetMessagesAsync_PopulatesSnippetsForReplies()
+    {
+        var svc = CreateService();
+        var original = await svc.SendMessageAsync("chat-1", "user-anna", "first thing said");
+        var reply = await svc.SendMessageAsync("chat-1", "current-user", "responding", null, original.Id);
+        var history = await svc.GetMessagesAsync("chat-1", "current-user", page: 1, pageSize: 100);
+        var fetchedReply = history.First(m => m.Id == reply.Id);
+        Assert.Equal(original.Id, fetchedReply.ReplyToMessageId);
+        Assert.NotNull(fetchedReply.ReplyToSnippet);
+        Assert.Equal("first thing said", fetchedReply.ReplyToSnippet!.ContentPreview);
+    }
 }
 
 [Collection("ChatNotificationTests")]

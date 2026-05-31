@@ -20,4 +20,6 @@ public class MessageEntity : ITableEntity
     public string ImageUrls { get; set; } = "[]"; // stored as JSON array
     // JSON-serialized Dictionary<string,string> mapping userId → emoji (one reaction per user).
     public string Reactions { get; set; } = "{}";
+    // Empty string when this message is not a reply.
+    public string ReplyToMessageId { get; set; } = string.Empty;
 }

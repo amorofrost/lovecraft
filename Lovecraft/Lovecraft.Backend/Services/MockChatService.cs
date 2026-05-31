@@ -74,6 +74,14 @@ public class MockChatService : IChatService
             return Task.FromResult(new List<Lovecraft.Common.DTOs.Chats.MessageDto>());
 
         var all = MockDataStore.Messages.GetValueOrDefault(chatId) ?? new();
+        // Snippets reference other messages in the same chat — populate them now in case
+        // an older message was added since this reply was created.
+        var byId = all.ToDictionary(m => m.Id, m => m);
+        foreach (var m in all)
+        {
+            if (!string.IsNullOrEmpty(m.ReplyToMessageId) && byId.TryGetValue(m.ReplyToMessageId, out var target))
+                m.ReplyToSnippet = BuildSnippet(target);
+        }
         var paged = all
             .OrderByDescending(m => m.Timestamp)
             .Skip((page - 1) * pageSize)
@@ -83,10 +91,18 @@ public class MockChatService : IChatService
         return Task.FromResult(paged);
     }
 
-    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null)
+    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null, string? replyToMessageId = null)
     {
         var chat = MockDataStore.Chats.FirstOrDefault(c => c.Id == chatId && c.Participants.Contains(userId))
             ?? throw new InvalidOperationException("Chat not found or access denied");
+
+        Lovecraft.Common.DTOs.Chats.MessageReplySnippetDto? snippet = null;
+        if (!string.IsNullOrEmpty(replyToMessageId))
+        {
+            var target = MockDataStore.Messages.GetValueOrDefault(chatId)?.FirstOrDefault(m => m.Id == replyToMessageId)
+                ?? throw new ChatMessageException("INVALID_REPLY_TARGET", "Reply target not found in this chat");
+            snippet = BuildSnippet(target);
+        }
 
         var msg = new Lovecraft.Common.DTOs.Chats.MessageDto
         {
@@ -97,7 +113,9 @@ public class MockChatService : IChatService
             Timestamp = DateTime.UtcNow,
             Read = false,
             Type = MessageType.Text,
-            ImageUrls = imageUrls ?? new List<string>()
+            ImageUrls = imageUrls ?? new List<string>(),
+            ReplyToMessageId = string.IsNullOrEmpty(replyToMessageId) ? null : replyToMessageId,
+            ReplyToSnippet = snippet,
         };
 
         if (!MockDataStore.Messages.TryGetValue(chatId, out var msgList))
@@ -148,4 +166,17 @@ public class MockChatService : IChatService
 
     private static Lovecraft.Common.DTOs.Chats.MessageDto? FindMessage(string chatId, string messageId) =>
         MockDataStore.Messages.GetValueOrDefault(chatId)?.FirstOrDefault(m => m.Id == messageId);
+
+    private static Lovecraft.Common.DTOs.Chats.MessageReplySnippetDto BuildSnippet(Lovecraft.Common.DTOs.Chats.MessageDto target)
+    {
+        var preview = target.Content ?? string.Empty;
+        if (preview.Length > 100) preview = preview.Substring(0, 100);
+        return new Lovecraft.Common.DTOs.Chats.MessageReplySnippetDto
+        {
+            Id = target.Id,
+            SenderId = target.SenderId,
+            ContentPreview = preview,
+            HasImages = target.ImageUrls?.Count > 0,
+        };
+    }
 }

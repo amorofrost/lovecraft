@@ -79,7 +79,15 @@ public class ChatsController : ControllerBase
         if (!await _chatService.ValidateAccessAsync(id, CurrentUserId))
             return Forbid();
 
-        var message = await _chatService.SendMessageAsync(id, CurrentUserId, request.Content, request.ImageUrls);
+        MessageDto message;
+        try
+        {
+            message = await _chatService.SendMessageAsync(id, CurrentUserId, request.Content, request.ImageUrls, request.ReplyToMessageId);
+        }
+        catch (ChatMessageException ex)
+        {
+            return BadRequest(ApiResponse<MessageDto>.ErrorResponse(ex.Code, ex.Message));
+        }
 
         try { _metrics.RecordCount("bi_events", "bi|message_sent"); }
         catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
