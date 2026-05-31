@@ -24,6 +24,8 @@ public class MessageDto
     public bool Read { get; set; }
     public MessageType Type { get; set; } = MessageType.Text;
     public List<string> ImageUrls { get; set; } = new();
+    /// <summary>userId → emoji. One reaction per user per message; senders cannot react to their own messages.</summary>
+    public Dictionary<string, string> Reactions { get; set; } = new();
 }
 
 public class SendMessageRequestDto
@@ -44,4 +46,9 @@ public class CreateChatRequestDto
 public class CreatePrivateChatRequestDto
 {
     public string TargetUserId { get; set; } = string.Empty;
+}
+
+public class SetReactionRequestDto
+{
+    public string Emoji { get; set; } = string.Empty;
 }

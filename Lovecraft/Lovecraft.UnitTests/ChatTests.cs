@@ -197,6 +197,104 @@ public class ChatTests
         var persisted = history.First(m => m.Id == msg.Id);
         Assert.Equal(imageUrls, persisted.ImageUrls);
     }
+
+    // --- Reaction tests ---
+
+    private const string ThumbsUp = "\U0001F44D"; // 👍
+    private const string Heart    = "❤️";
+    private const string Tada     = "\U0001F389"; // 🎉
+
+    [Fact]
+    public async Task SetReactionAsync_AddsCallerReaction()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "user-anna", "react to me");
+        var updated = await svc.SetReactionAsync("chat-1", msg.Id, "current-user", ThumbsUp);
+        Assert.Equal(ThumbsUp, updated.Reactions["current-user"]);
+    }
+
+    [Fact]
+    public async Task SetReactionAsync_ReplacesExistingReactionForSameUser()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "user-anna", "replace test");
+        await svc.SetReactionAsync("chat-1", msg.Id, "current-user", ThumbsUp);
+        var updated = await svc.SetReactionAsync("chat-1", msg.Id, "current-user", Heart);
+        Assert.Single(updated.Reactions);
+        Assert.Equal(Heart, updated.Reactions["current-user"]);
+    }
+
+    [Fact]
+    public async Task RemoveReactionAsync_DropsReaction()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "user-anna", "remove test");
+        await svc.SetReactionAsync("chat-1", msg.Id, "current-user", ThumbsUp);
+        var updated = await svc.RemoveReactionAsync("chat-1", msg.Id, "current-user");
+        Assert.DoesNotContain("current-user", updated.Reactions.Keys);
+    }
+
+    [Fact]
+    public async Task RemoveReactionAsync_IsIdempotentWhenAbsent()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "user-anna", "idempotent remove");
+        var updated = await svc.RemoveReactionAsync("chat-1", msg.Id, "current-user");
+        Assert.Empty(updated.Reactions);
+    }
+
+    [Fact]
+    public async Task SetReactionAsync_ThrowsCantReactToOwnMessage()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "my own message");
+        var ex = await Assert.ThrowsAsync<ChatReactionException>(
+            () => svc.SetReactionAsync("chat-1", msg.Id, "current-user", ThumbsUp));
+        Assert.Equal("CANT_REACT_TO_OWN", ex.Code);
+    }
+
+    [Fact]
+    public async Task SetReactionAsync_ThrowsInvalidEmoji()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "user-anna", "invalid emoji test");
+        var ex = await Assert.ThrowsAsync<ChatReactionException>(
+            () => svc.SetReactionAsync("chat-1", msg.Id, "current-user", "\U0001F4A9")); // 💩 — not in set
+        Assert.Equal("INVALID_EMOJI", ex.Code);
+    }
+
+    [Fact]
+    public async Task SetReactionAsync_ThrowsMessageNotFound()
+    {
+        var svc = CreateService();
+        var ex = await Assert.ThrowsAsync<ChatReactionException>(
+            () => svc.SetReactionAsync("chat-1", "bogus-message-id", "current-user", ThumbsUp));
+        Assert.Equal("MESSAGE_NOT_FOUND", ex.Code);
+    }
+
+    [Fact]
+    public async Task RemoveReactionAsync_ThrowsMessageNotFound()
+    {
+        var svc = CreateService();
+        var ex = await Assert.ThrowsAsync<ChatReactionException>(
+            () => svc.RemoveReactionAsync("chat-1", "bogus-message-id", "current-user"));
+        Assert.Equal("MESSAGE_NOT_FOUND", ex.Code);
+    }
+
+    [Fact]
+    public async Task SetReactionAsync_MultipleUsersOnSameMessageCoexist()
+    {
+        var svc = CreateService();
+        // Send a message from a third user so both "current-user" and "user-anna" can react.
+        // (chat-1 participants per seed are current-user + user-anna; a non-participant can't
+        // be the sender, so we send from current-user and have user-anna react.)
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "everyone react");
+        await svc.SetReactionAsync("chat-1", msg.Id, "user-anna", ThumbsUp);
+        var updated = await svc.SetReactionAsync("chat-1", msg.Id, "third-user", Tada);
+        Assert.Equal(2, updated.Reactions.Count);
+        Assert.Equal(ThumbsUp, updated.Reactions["user-anna"]);
+        Assert.Equal(Tada, updated.Reactions["third-user"]);
+    }
 }
 
 [Collection("ChatNotificationTests")]

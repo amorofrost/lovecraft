@@ -1,3 +1,4 @@
+using Lovecraft.Backend.Constants;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Common.DTOs.Chats;
 using Lovecraft.Common.Enums;
@@ -124,4 +125,27 @@ public class MockChatService : IChatService
         var result = MockDataStore.Chats.Any(c => c.Id == chatId && c.Participants.Contains(userId));
         return Task.FromResult(result);
     }
+
+    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> SetReactionAsync(string chatId, string messageId, string userId, string emoji)
+    {
+        if (!AllowedReactions.IsAllowed(emoji))
+            throw new ChatReactionException("INVALID_EMOJI", $"Emoji '{emoji}' is not in the allowed set");
+        var msg = FindMessage(chatId, messageId)
+            ?? throw new ChatReactionException("MESSAGE_NOT_FOUND", "Message not found");
+        if (msg.SenderId == userId)
+            throw new ChatReactionException("CANT_REACT_TO_OWN", "You cannot react to your own message");
+        msg.Reactions[userId] = emoji;
+        return Task.FromResult(msg);
+    }
+
+    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> RemoveReactionAsync(string chatId, string messageId, string userId)
+    {
+        var msg = FindMessage(chatId, messageId)
+            ?? throw new ChatReactionException("MESSAGE_NOT_FOUND", "Message not found");
+        msg.Reactions.Remove(userId);
+        return Task.FromResult(msg);
+    }
+
+    private static Lovecraft.Common.DTOs.Chats.MessageDto? FindMessage(string chatId, string messageId) =>
+        MockDataStore.Messages.GetValueOrDefault(chatId)?.FirstOrDefault(m => m.Id == messageId);
 }

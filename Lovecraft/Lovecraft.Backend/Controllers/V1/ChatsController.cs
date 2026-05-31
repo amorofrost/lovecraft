@@ -118,4 +118,53 @@ public class ChatsController : ControllerBase
 
         return Ok(ApiResponse<MessageDto>.SuccessResponse(message));
     }
+
+    [HttpPut("{chatId}/messages/{messageId}/reaction")]
+    public async Task<ActionResult<ApiResponse<MessageDto>>> SetReaction(
+        string chatId, string messageId, [FromBody] SetReactionRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Emoji))
+            return BadRequest(ApiResponse<MessageDto>.ErrorResponse("EMOJI_REQUIRED", "Emoji is required"));
+
+        if (!await _chatService.ValidateAccessAsync(chatId, CurrentUserId))
+            return Forbid();
+
+        return await UpdateReactionAndBroadcastAsync(
+            chatId, messageId,
+            () => _chatService.SetReactionAsync(chatId, messageId, CurrentUserId, request.Emoji));
+    }
+
+    [HttpDelete("{chatId}/messages/{messageId}/reaction")]
+    public async Task<ActionResult<ApiResponse<MessageDto>>> RemoveReaction(string chatId, string messageId)
+    {
+        if (!await _chatService.ValidateAccessAsync(chatId, CurrentUserId))
+            return Forbid();
+
+        return await UpdateReactionAndBroadcastAsync(
+            chatId, messageId,
+            () => _chatService.RemoveReactionAsync(chatId, messageId, CurrentUserId));
+    }
+
+    private async Task<ActionResult<ApiResponse<MessageDto>>> UpdateReactionAndBroadcastAsync(
+        string chatId, string messageId, Func<Task<MessageDto>> mutate)
+    {
+        MessageDto updated;
+        try
+        {
+            updated = await mutate();
+        }
+        catch (ChatReactionException ex)
+        {
+            var status = ex.Code == "MESSAGE_NOT_FOUND" ? 404 : 400;
+            return StatusCode(status, ApiResponse<MessageDto>.ErrorResponse(ex.Code, ex.Message));
+        }
+
+        // Broadcast to everyone in the chat group (including the sender of the reaction —
+        // the frontend handler is idempotent and the REST caller has already updated locally).
+        await _hubContext.Clients.Group($"chat-{chatId}").SendAsync(
+            "MessageReactionUpdated",
+            new { messageId = updated.Id, reactions = updated.Reactions });
+
+        return Ok(ApiResponse<MessageDto>.SuccessResponse(updated));
+    }
 }

@@ -156,6 +156,19 @@ public interface IChatService
     Task<List<Lovecraft.Common.DTOs.Chats.MessageDto>> GetMessagesAsync(string chatId, string userId, int page = 1, int pageSize = 50);
     Task<Lovecraft.Common.DTOs.Chats.MessageDto> SendMessageAsync(string chatId, string userId, string content, List<string>? imageUrls = null);
     Task<bool> ValidateAccessAsync(string chatId, string userId);
+
+    /// <summary>
+    /// Add or replace the caller's reaction on a message. Throws <see cref="ChatReactionException"/>
+    /// with code CANT_REACT_TO_OWN, INVALID_EMOJI, or MESSAGE_NOT_FOUND. Caller must already
+    /// have been authorized via <see cref="ValidateAccessAsync"/>.
+    /// </summary>
+    Task<Lovecraft.Common.DTOs.Chats.MessageDto> SetReactionAsync(string chatId, string messageId, string userId, string emoji);
+
+    /// <summary>
+    /// Remove the caller's reaction on a message. Idempotent — succeeds even if no reaction
+    /// was present. Throws <see cref="ChatReactionException"/> with code MESSAGE_NOT_FOUND.
+    /// </summary>
+    Task<Lovecraft.Common.DTOs.Chats.MessageDto> RemoveReactionAsync(string chatId, string messageId, string userId);
 }
 
 public interface IImageService

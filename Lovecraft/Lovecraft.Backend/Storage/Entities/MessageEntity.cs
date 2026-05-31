@@ -18,4 +18,6 @@ public class MessageEntity : ITableEntity
     public string Type { get; set; } = "text";
     public bool Read { get; set; }
     public string ImageUrls { get; set; } = "[]"; // stored as JSON array
+    // JSON-serialized Dictionary<string,string> mapping userId → emoji (one reaction per user).
+    public string Reactions { get; set; } = "{}";
 }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Backend.Constants;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Chats;
@@ -150,7 +151,8 @@ public class AzureChatService : IChatService
                 Timestamp = e.SentAt,
                 Read = e.Read,
                 Type = MessageType.Text,
-                ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>()
+                ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>(),
+                Reactions = JsonSerializer.Deserialize<Dictionary<string, string>>(string.IsNullOrEmpty(e.Reactions) ? "{}" : e.Reactions) ?? new Dictionary<string, string>()
             })
             .ToList();
     }
@@ -224,5 +226,71 @@ public class AzureChatService : IChatService
         {
             return false;
         }
+    }
+
+    public async Task<MessageDto> SetReactionAsync(string chatId, string messageId, string userId, string emoji)
+    {
+        if (!AllowedReactions.IsAllowed(emoji))
+            throw new ChatReactionException("INVALID_EMOJI", $"Emoji '{emoji}' is not in the allowed set");
+        return await UpdateReactionsAsync(chatId, messageId, dict => dict[userId] = emoji, ownerCheckUserId: userId);
+    }
+
+    public async Task<MessageDto> RemoveReactionAsync(string chatId, string messageId, string userId)
+    {
+        return await UpdateReactionsAsync(chatId, messageId, dict => dict.Remove(userId), ownerCheckUserId: null);
+    }
+
+    // Locate the (single) message entity by id within its chat partition, apply the mutation
+    // to its Reactions dict, and write back with ETag. Retries up to 5 times on concurrent
+    // updates. The lookup is a partition scan because RowKey is invertedTicks_{id}, not the id.
+    private async Task<MessageDto> UpdateReactionsAsync(
+        string chatId,
+        string messageId,
+        Action<Dictionary<string, string>> mutate,
+        string? ownerCheckUserId)
+    {
+        const int maxAttempts = 5;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            MessageEntity? entity = null;
+            await foreach (var e in _messagesTable.QueryAsync<MessageEntity>(
+                e => e.PartitionKey == chatId && e.MessageId == messageId))
+            {
+                entity = e;
+                break;
+            }
+            if (entity is null)
+                throw new ChatReactionException("MESSAGE_NOT_FOUND", "Message not found");
+            if (ownerCheckUserId is not null && entity.SenderId == ownerCheckUserId)
+                throw new ChatReactionException("CANT_REACT_TO_OWN", "You cannot react to your own message");
+
+            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                string.IsNullOrEmpty(entity.Reactions) ? "{}" : entity.Reactions) ?? new Dictionary<string, string>();
+            mutate(dict);
+            entity.Reactions = JsonSerializer.Serialize(dict);
+
+            try
+            {
+                await _messagesTable.UpdateEntityAsync(entity, entity.ETag);
+                return new MessageDto
+                {
+                    Id = entity.MessageId,
+                    ChatId = chatId,
+                    SenderId = entity.SenderId,
+                    Content = entity.Content,
+                    Timestamp = entity.SentAt,
+                    Read = entity.Read,
+                    Type = MessageType.Text,
+                    ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),
+                    Reactions = dict,
+                };
+            }
+            catch (RequestFailedException ex) when (ex.Status == 412)
+            {
+                // ETag mismatch — another writer updated the row; re-read and retry.
+                continue;
+            }
+        }
+        throw new ChatReactionException("REACTION_CONFLICT", "Failed to update reaction after multiple retries");
     }
 }
