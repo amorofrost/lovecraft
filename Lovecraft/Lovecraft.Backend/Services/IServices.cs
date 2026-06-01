@@ -111,7 +111,12 @@ public interface IForumService
     Task<List<ForumTopicDto>?> GetEventDiscussionTopicsAsync(string userId, string eventId, bool isElevated);
     Task<List<ForumTopicDto>> GetTopicsAsync(string sectionId);
     Task<ForumTopicDto?> GetTopicByIdAsync(string topicId);
-    Task<List<ForumReplyDto>> GetRepliesAsync(string topicId);
+    /// <summary>
+    /// Returns replies in oldest-first order WITHIN the page. Page 1 = newest pageSize.
+    /// Defaults return all replies for backward compatibility with callers that need the full set
+    /// (e.g. lookup-by-id in UpdateReply).
+    /// </summary>
+    Task<List<ForumReplyDto>> GetRepliesAsync(string topicId, int page = 1, int pageSize = int.MaxValue);
     Task<ForumReplyDto> CreateReplyAsync(string topicId, string authorId, string authorName, string content, List<string>? imageUrls = null);
     /// <summary>
     /// Update an existing reply's content. Returns null if the reply is not found.

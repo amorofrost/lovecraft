@@ -187,20 +187,28 @@ public class ForumController : ControllerBase
     }
 
     /// <summary>
-    /// Get all replies for a topic
+    /// Get replies for a topic, paged. Page 1 = newest pageSize. Within a page, replies are
+    /// oldest-first for display.
     /// </summary>
     [HttpGet("topics/{topicId}/replies")]
-    public async Task<ActionResult<ApiResponse<List<ForumReplyDto>>>> GetReplies(string topicId)
+    public async Task<ActionResult<ApiResponse<List<ForumReplyDto>>>> GetReplies(
+        string topicId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
     {
         try
         {
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 50;
+            if (pageSize > 200) pageSize = 200;
+
             var topic = await _forumService.GetTopicByIdAsync(topicId);
             if (topic == null)
                 return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
             if (!await CallerMayAccessEventTopicContentAsync(topic))
                 return NotFound(ApiResponse<List<ForumReplyDto>>.ErrorResponse("NOT_FOUND", "Topic not found"));
 
-            var replies = await _forumService.GetRepliesAsync(topicId);
+            var replies = await _forumService.GetRepliesAsync(topicId, page, pageSize);
             return Ok(ApiResponse<List<ForumReplyDto>>.SuccessResponse(replies));
         }
         catch (Exception ex)

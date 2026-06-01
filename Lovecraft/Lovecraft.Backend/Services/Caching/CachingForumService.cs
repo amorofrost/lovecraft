@@ -76,13 +76,19 @@ public class CachingForumService : IForumService
         return result;
     }
 
-    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId, int page = 1, int pageSize = int.MaxValue)
     {
+        // Only cache the legacy "full list" path. Paged calls (used by the UI's chat-style
+        // load-older flow) bypass the cache — their fast path is the partition scan itself.
+        var isFullList = page == 1 && pageSize == int.MaxValue;
+        if (!isFullList)
+            return await _inner.GetRepliesAsync(topicId, page, pageSize);
+
         var key = RepliesKey(topicId);
         if (_cache.TryGetValue(key, out List<ForumReplyDto>? cached) && cached is not null)
             return cached;
 
-        var result = await _inner.GetRepliesAsync(topicId);
+        var result = await _inner.GetRepliesAsync(topicId, page, pageSize);
         _cache.Set(key, result, RepliesTtl);
         return result;
     }

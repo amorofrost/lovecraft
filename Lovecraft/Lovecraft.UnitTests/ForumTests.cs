@@ -287,6 +287,67 @@ public class ForumTests : IDisposable
 
         Assert.Null(updated);
     }
+
+    // --- Paged reply tests ---
+
+    [Fact]
+    public async Task GetReplies_DefaultArgs_ReturnsAllRepliesOldestFirst()
+    {
+        var service = CreateService();
+        var replies = await service.GetRepliesAsync("t1");
+        // t1 has 5 seeded replies (r1..r5)
+        Assert.Equal(5, replies.Count);
+        for (int i = 1; i < replies.Count; i++)
+            Assert.True(replies[i].CreatedAt >= replies[i - 1].CreatedAt);
+    }
+
+    [Fact]
+    public async Task GetReplies_Page1WithPageSize2_ReturnsNewestTwoOldestFirst()
+    {
+        var service = CreateService();
+        var page1 = await service.GetRepliesAsync("t1", page: 1, pageSize: 2);
+        Assert.Equal(2, page1.Count);
+        // t1 newest two are r4 (2024-02-22) and r5 (2024-02-23), shown oldest-first within page.
+        Assert.Equal("r4", page1[0].Id);
+        Assert.Equal("r5", page1[1].Id);
+    }
+
+    [Fact]
+    public async Task GetReplies_Page2WithPageSize2_ReturnsNextOlderSlice()
+    {
+        var service = CreateService();
+        var page2 = await service.GetRepliesAsync("t1", page: 2, pageSize: 2);
+        Assert.Equal(2, page2.Count);
+        // Next older two: r2 (2024-02-20 15:30) and r3 (2024-02-21 09:00), oldest-first.
+        Assert.Equal("r2", page2[0].Id);
+        Assert.Equal("r3", page2[1].Id);
+    }
+
+    [Fact]
+    public async Task GetReplies_LastPagePartialFill_Works()
+    {
+        var service = CreateService();
+        var page3 = await service.GetRepliesAsync("t1", page: 3, pageSize: 2);
+        // Only r1 left (the oldest, single-element partial page).
+        Assert.Single(page3);
+        Assert.Equal("r1", page3[0].Id);
+    }
+
+    [Fact]
+    public async Task GetReplies_PageBeyondData_ReturnsEmpty()
+    {
+        var service = CreateService();
+        var pageOOB = await service.GetRepliesAsync("t1", page: 99, pageSize: 2);
+        Assert.Empty(pageOOB);
+    }
+
+    [Fact]
+    public async Task GetReplies_UnknownTopic_ReturnsEmpty()
+    {
+        var service = CreateService();
+        var replies = await service.GetRepliesAsync("topic-that-does-not-exist");
+        Assert.Empty(replies);
+    }
 }
 
 [Collection("ForumTests")]

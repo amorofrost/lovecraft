@@ -217,7 +217,7 @@ public class AzureForumService : IForumService
         }
     }
 
-    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId, int page = 1, int pageSize = int.MaxValue)
     {
         var pk = ForumReplyEntity.GetPartitionKey(topicId);
         var entities = new List<ForumReplyEntity>();
@@ -228,7 +228,15 @@ public class AzureForumService : IForumService
             entities.Add(entity);
         }
 
-        var authorIds = entities
+        // Slice into the requested page (page 1 = newest pageSize entries, since the
+        // partition scan is already newest-first). Within the page, sort oldest-first
+        // for display in chat-like UIs.
+        var paged = entities
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        var authorIds = paged
             .Select(e => e.AuthorId)
             .Where(id => !string.IsNullOrEmpty(id))
             .Distinct(StringComparer.Ordinal)
@@ -245,7 +253,7 @@ public class AzureForumService : IForumService
         var badges = badgeTasks.ToDictionary(kv => kv.Key, kv => kv.Value.Result);
 
         // Compose DTOs synchronously — every external lookup is already resolved above.
-        return entities
+        return paged
             .OrderBy(e => e.CreatedAt)
             .Select(e =>
             {

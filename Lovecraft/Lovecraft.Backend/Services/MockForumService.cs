@@ -123,11 +123,14 @@ public class MockForumService : IForumService
         return Task.FromResult(topic);
     }
 
-    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId)
+    public async Task<List<ForumReplyDto>> GetRepliesAsync(string topicId, int page = 1, int pageSize = int.MaxValue)
     {
+        // Page 1 = newest pageSize; sort newest-first, slice, then sort oldest-first for display.
         var stored = MockDataStore.ForumReplies
             .Where(r => r.TopicId == topicId)
-            .OrderBy(r => r.CreatedAt)
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToList();
 
         var authorIds = stored.Select(r => r.AuthorId).Where(id => !string.IsNullOrEmpty(id)).Distinct();
