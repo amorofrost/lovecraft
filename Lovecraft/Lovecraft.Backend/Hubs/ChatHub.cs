@@ -1,3 +1,4 @@
+using Lovecraft.Backend.Helpers;
 using Lovecraft.Backend.Services;
 using Lovecraft.Backend.Services.Notifications;
 using Microsoft.AspNetCore.Authorization;
@@ -12,12 +13,12 @@ public class ChatHub : Hub
 {
     private readonly IChatService _chatService;
     private readonly IPresenceTracker _presence;
-    private readonly Lovecraft.Backend.Helpers.IForumTopicAccess _topicAccess;
+    private readonly IForumTopicAccess _topicAccess;
 
     // Tracks which groups each connection has joined so we can clean up on disconnect.
     private static readonly ConcurrentDictionary<string, HashSet<string>> ConnectionGroups = new();
 
-    public ChatHub(IChatService chatService, IPresenceTracker presence, Lovecraft.Backend.Helpers.IForumTopicAccess topicAccess)
+    public ChatHub(IChatService chatService, IPresenceTracker presence, IForumTopicAccess topicAccess)
     {
         _chatService = chatService;
         _presence = presence;

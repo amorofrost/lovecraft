@@ -113,4 +113,15 @@ public class ForumTopicAccessTests
         Assert.True(await access.CanViewTopicAsync(User("x"), topic.Id));
         Assert.False(await access.CanViewTopicAsync(User("z"), topic.Id));
     }
+
+    [Fact]
+    public async Task RankGatedTopic_BelowRankUser_CannotView()
+    {
+        var (access, forum, _, users) = Build();
+        var topic = new ForumTopicDto { Id = "t3", SectionId = "general", MinRank = "aloeCrew", NoviceVisible = true };
+        forum.Setup(f => f.GetTopicByIdAsync("t3")).ReturnsAsync(topic);
+        users.Setup(u => u.GetUserByIdAsync("low")).ReturnsAsync(new UserDto { Id = "low", Rank = UserRank.Novice });
+
+        Assert.False(await access.CanViewTopicAsync(User("low"), "t3"));
+    }
 }
