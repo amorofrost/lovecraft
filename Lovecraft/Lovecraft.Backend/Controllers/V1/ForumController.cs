@@ -24,6 +24,7 @@ public class ForumController : ControllerBase
     private readonly IUserService _userService;
     private readonly IEventService _eventService;
     private readonly IForumSubscriptionService _subscriptions;
+    private readonly IForumTopicAccess _topicAccess;
 
     public ForumController(
         IForumService forumService,
@@ -32,7 +33,8 @@ public class ForumController : ControllerBase
         IAppConfigService appConfig,
         IUserService userService,
         IEventService eventService,
-        IForumSubscriptionService subscriptions)
+        IForumSubscriptionService subscriptions,
+        IForumTopicAccess topicAccess)
     {
         _forumService = forumService;
         _hubContext = hubContext;
@@ -41,6 +43,7 @@ public class ForumController : ControllerBase
         _userService = userService;
         _eventService = eventService;
         _subscriptions = subscriptions;
+        _topicAccess = topicAccess;
     }
 
     /// <summary>
@@ -479,36 +482,6 @@ public class ForumController : ControllerBase
         return user?.Rank ?? UserRank.Novice;
     }
 
-    private async Task<bool> CallerMayAccessEventTopicContentAsync(ForumTopicDto topic)
-    {
-        if (!topic.SectionId.Equals("events", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var eventId = ResolveEventIdFromTopic(topic);
-        if (string.IsNullOrEmpty(eventId))
-            return false;
-
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId))
-            return false;
-
-        var staff = User.FindFirst("staffRole")?.Value ?? "none";
-        var isElevated = staff is "moderator" or "admin";
-        var ev = await _eventService.GetEventByIdAdminAsync(eventId);
-        if (ev is null)
-            return false;
-
-        return EventTopicAccess.CanViewEventTopic(ev, topic, userId, isElevated);
-    }
-
-    private static string? ResolveEventIdFromTopic(ForumTopicDto t)
-    {
-        if (!string.IsNullOrEmpty(t.EventId))
-            return t.EventId;
-        if (t.Id.StartsWith("evt-", StringComparison.Ordinal) && t.Id.Length > 4)
-            return t.Id.Substring(4);
-        if (t.Id.StartsWith("event-topic-", StringComparison.Ordinal) && t.Id.Length > "event-topic-".Length)
-            return t.Id["event-topic-".Length..];
-        return null;
-    }
+    private Task<bool> CallerMayAccessEventTopicContentAsync(ForumTopicDto topic)
+        => _topicAccess.CanViewEventTopicContentAsync(User, topic);
 }

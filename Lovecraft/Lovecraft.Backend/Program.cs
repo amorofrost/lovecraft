@@ -57,6 +57,7 @@ builder.Services.AddControllers()
                 System.Text.Json.JsonNamingPolicy.CamelCase));
     });
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<Lovecraft.Backend.Helpers.IForumTopicAccess, Lovecraft.Backend.Helpers.ForumTopicAccess>();
 
 // Allow up to 20 MB multipart bodies (profile image upload limit)
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>

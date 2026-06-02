@@ -12,14 +12,16 @@ public class ChatHub : Hub
 {
     private readonly IChatService _chatService;
     private readonly IPresenceTracker _presence;
+    private readonly Lovecraft.Backend.Helpers.IForumTopicAccess _topicAccess;
 
     // Tracks which groups each connection has joined so we can clean up on disconnect.
     private static readonly ConcurrentDictionary<string, HashSet<string>> ConnectionGroups = new();
 
-    public ChatHub(IChatService chatService, IPresenceTracker presence)
+    public ChatHub(IChatService chatService, IPresenceTracker presence, Lovecraft.Backend.Helpers.IForumTopicAccess topicAccess)
     {
         _chatService = chatService;
         _presence = presence;
+        _topicAccess = topicAccess;
     }
 
     private string CurrentUserId =>
@@ -39,7 +41,10 @@ public class ChatHub : Hub
 
     public async Task JoinTopic(string topicId)
     {
-        // No access check — any authenticated user may receive live reply updates
+        if (!await _topicAccess.CanViewTopicAsync(Context.User!, topicId))
+        {
+            throw new HubException("Access denied to topic.");
+        }
         var groupName = $"topic-{topicId}";
         await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
         _presence.Join(groupName, CurrentUserId);
