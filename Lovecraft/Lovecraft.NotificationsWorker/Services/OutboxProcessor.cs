@@ -30,6 +30,7 @@ public class OutboxProcessor : IOutboxProcessor
     private readonly TableClient _notifications;
     private readonly ITelegramDispatcher _telegram;
     private readonly IEmailDispatcher _email;
+    private readonly IFcmDispatcher _fcm;
     private readonly ILogger<OutboxProcessor> _logger;
 
     public OutboxProcessor(
@@ -37,12 +38,14 @@ public class OutboxProcessor : IOutboxProcessor
         TableClient notifications,
         ITelegramDispatcher telegram,
         IEmailDispatcher email,
+        IFcmDispatcher fcm,
         ILogger<OutboxProcessor> logger)
     {
         _outbox = outbox;
         _notifications = notifications;
         _telegram = telegram;
         _email = email;
+        _fcm = fcm;
         _logger = logger;
     }
 
@@ -74,6 +77,7 @@ public class OutboxProcessor : IOutboxProcessor
                 {
                     "Telegram" => await _telegram.DispatchAsync(notification, ct),
                     "Email" => await _email.DispatchAsync(notification, ct),
+                    "Fcm" => await _fcm.DispatchAsync(notification, ct),
                     _ => DispatchResult.PermanentError,
                 };
 

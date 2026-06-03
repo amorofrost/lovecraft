@@ -55,6 +55,7 @@ public class OutboxProcessorTests
         var processor = new OutboxProcessor(
             outbox.Object, notifs.Object,
             dispatcher.Object, Mock.Of<IEmailDispatcher>(),
+            Mock.Of<IFcmDispatcher>(),
             NullLogger<OutboxProcessor>.Instance);
 
         return (processor, outbox, notifs, dispatcher);
@@ -171,6 +172,7 @@ public class OutboxProcessorTests
         var processor = new OutboxProcessor(
             outbox.Object, notifs.Object,
             Mock.Of<ITelegramDispatcher>(), Mock.Of<IEmailDispatcher>(),
+            Mock.Of<IFcmDispatcher>(),
             NullLogger<OutboxProcessor>.Instance);
 
         await processor.ProcessChannelAsync("Telegram", CancellationToken.None);
@@ -217,6 +219,46 @@ public class OutboxProcessorTests
             It.Is<string>(f => f.Contains("RowKey le") || f.Contains("RowKey lt")),
             It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Fcm_channel_dispatches_via_IFcmDispatcher_and_moves_row_to_DONE()
+    {
+        var now = DateTime.UtcNow;
+        var outbox = new Mock<TableClient>();
+        var notifs = new Mock<TableClient>();
+        var fcmDispatcher = new Mock<IFcmDispatcher>();
+        fcmDispatcher.Setup(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DispatchResult.Delivered);
+
+        var notifEntity = MakeNotif();
+        notifs.Setup(t => t.QueryAsync<NotificationEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(new[] { notifEntity }.ToAsyncPageable());
+
+        outbox.Setup(t => t.QueryAsync<NotificationOutboxEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(new[] { MakeRow("Fcm", now.AddMinutes(-1)) }.ToAsyncPageable());
+
+        NotificationOutboxEntity? doneRow = null;
+        outbox.Setup(t => t.AddEntityAsync(It.IsAny<NotificationOutboxEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<NotificationOutboxEntity, CancellationToken>((e, _) => doneRow = e)
+            .ReturnsAsync(new Mock<Response>().Object);
+        outbox.Setup(t => t.DeleteEntityAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<ETag>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Mock<Response>().Object);
+
+        var processor = new OutboxProcessor(
+            outbox.Object, notifs.Object,
+            Mock.Of<ITelegramDispatcher>(), Mock.Of<IEmailDispatcher>(),
+            fcmDispatcher.Object,
+            NullLogger<OutboxProcessor>.Instance);
+
+        await processor.ProcessChannelAsync("Fcm", CancellationToken.None);
+
+        fcmDispatcher.Verify(d => d.DispatchAsync(It.IsAny<NotificationModel>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.NotNull(doneRow);
+        Assert.StartsWith("OUTBOX_Fcm_DONE_", doneRow!.PartitionKey);
+        Assert.NotNull(doneRow.DeliveredAtUtc);
     }
 }
 

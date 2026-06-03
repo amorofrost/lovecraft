@@ -87,6 +87,18 @@ internal sealed class NotificationsWorkerEntryPoint
                     sp.GetRequiredService<ILogger<TelegramDispatcher>>()));
         }
 
+        // Phase 2A: stub until FCM_SERVICE_ACCOUNT_JSON is configured (Phase 2C swaps in the real FcmDispatcher).
+        var fcmServiceAccountJson = Environment.GetEnvironmentVariable("FCM_SERVICE_ACCOUNT_JSON");
+        if (!string.IsNullOrEmpty(fcmServiceAccountJson))
+        {
+            // TODO 2C: real FcmDispatcher when FCM_SERVICE_ACCOUNT_JSON present
+            builder.Services.AddSingleton<IFcmDispatcher, StubFcmDispatcher>();
+        }
+        else
+        {
+            builder.Services.AddSingleton<IFcmDispatcher, StubFcmDispatcher>();
+        }
+
         var sendGridApiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
         var jwtSecretKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
         if (!string.IsNullOrEmpty(sendGridApiKey) && !string.IsNullOrEmpty(jwtSecretKey))
@@ -118,6 +130,7 @@ internal sealed class NotificationsWorkerEntryPoint
                 outboxTable, notificationsTable,
                 sp.GetRequiredService<ITelegramDispatcher>(),
                 sp.GetRequiredService<IEmailDispatcher>(),
+                sp.GetRequiredService<IFcmDispatcher>(),
                 sp.GetRequiredService<ILogger<OutboxProcessor>>()));
 
         builder.Services.AddSingleton<IDigestProcessor>(sp =>

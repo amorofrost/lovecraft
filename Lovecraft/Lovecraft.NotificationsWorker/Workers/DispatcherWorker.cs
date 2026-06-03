@@ -6,7 +6,7 @@ namespace Lovecraft.NotificationsWorker.Workers;
 
 public class DispatcherWorker : BackgroundService
 {
-    private static readonly string[] Channels = { "Telegram", "Email" };
+    private static readonly string[] Channels = { "Telegram", "Email", "Fcm" };
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(10);
 
     private readonly IOutboxProcessor _processor;
