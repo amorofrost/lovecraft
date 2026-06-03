@@ -18,17 +18,20 @@ public class NotificationsController : ControllerBase
     private readonly IPushSubscriptionService _pushSubscriptionService;
     private readonly INotificationPreferenceService _preferenceService;
     private readonly IUserService _userService;
+    private readonly IFcmSubscriptionService _fcm;
 
     public NotificationsController(
         INotificationService notificationService,
         IPushSubscriptionService pushSubscriptionService,
         INotificationPreferenceService preferenceService,
-        IUserService userService)
+        IUserService userService,
+        IFcmSubscriptionService fcm)
     {
         _notificationService = notificationService;
         _pushSubscriptionService = pushSubscriptionService;
         _preferenceService = preferenceService;
         _userService = userService;
+        _fcm = fcm;
     }
 
     private string CurrentUserId =>
@@ -172,6 +175,26 @@ public class NotificationsController : ControllerBase
         if (!found)
             return NotFound(ApiResponse<object>.ErrorResponse("NOT_FOUND", "Subscription not found"));
         return Ok(ApiResponse<object>.SuccessResponse(new { }));
+    }
+
+    // ── FCM (Android) subscriptions ──────────────────────────────────────────
+
+    /// <summary>POST /api/v1/push/fcm/register — register an FCM device token.</summary>
+    [HttpPost("push/fcm/register")]
+    public async Task<ActionResult<ApiResponse<FcmSubscriptionDto>>> RegisterFcm([FromBody] FcmRegisterRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token))
+            return BadRequest(ApiResponse<FcmSubscriptionDto>.ErrorResponse("INVALID_TOKEN", "FCM token is required"));
+        var dto = await _fcm.RegisterAsync(CurrentUserId, request);
+        return Ok(ApiResponse<FcmSubscriptionDto>.SuccessResponse(dto));
+    }
+
+    /// <summary>DELETE /api/v1/push/fcm/register/{deviceId} — unregister one FCM device.</summary>
+    [HttpDelete("push/fcm/register/{deviceId}")]
+    public async Task<ActionResult<ApiResponse<bool>>> UnregisterFcm(string deviceId)
+    {
+        var removed = await _fcm.UnregisterAsync(CurrentUserId, deviceId);
+        return Ok(ApiResponse<bool>.SuccessResponse(removed));
     }
 
     // ── Notification preferences ─────────────────────────────────────────────
