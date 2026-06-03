@@ -37,6 +37,7 @@ public static class TableNames
     public static string NotificationsOutbox    => Prefix + "notificationsoutbox";
     public static string NotificationPreferences => Prefix + "notificationpreferences";
     public static string WebPushSubscriptions   => Prefix + "webpushsubscriptions";
+    public static string FcmSubscriptions       => Prefix + "fcmsubscriptions";
     public static string Broadcasts             => Prefix + "broadcasts";
     public static string MetricsMinute          => Prefix + "metricsminute";
     public static string MetricsHour            => Prefix + "metricshour";

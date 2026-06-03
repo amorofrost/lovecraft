@@ -6,4 +6,5 @@ public enum NotificationChannel
     Telegram,
     WebPush,
     Email,
+    Fcm,
 }
