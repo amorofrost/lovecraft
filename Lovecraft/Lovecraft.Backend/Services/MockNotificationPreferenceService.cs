@@ -42,12 +42,14 @@ public class MockNotificationPreferenceService : INotificationPreferenceService
                 { "telegram", false },
                 { "webPush",  false },
                 { "email",    false },
+                { "fcm",      name is "MatchCreated" or "MessageReceived" or "LikeReceived" or "EventReminder" },
             };
         }
         prefs.Frequency["inApp"]    = NotificationFrequency.Immediate;
         prefs.Frequency["telegram"] = NotificationFrequency.Immediate;
         prefs.Frequency["webPush"]  = NotificationFrequency.Immediate;
         prefs.Frequency["email"]    = NotificationFrequency.Daily;
+        prefs.Frequency["fcm"]      = NotificationFrequency.Immediate;
         return prefs;
     }
 

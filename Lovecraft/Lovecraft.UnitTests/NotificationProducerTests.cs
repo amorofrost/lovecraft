@@ -16,6 +16,7 @@ public class NotificationProducerTests
         MockDataStore.Notifications.Clear();
         MockDataStore.NotificationPreferences.Clear();
         MockDataStore.PushSubscriptions.Clear();
+        MockDataStore.FcmSubscriptions.Clear();
     }
 
     private static (NotificationProducer Producer, MockNotificationService Notifs, Mock<IInAppDispatcher> InApp, Mock<IWebPushDispatcher> WebPush)
@@ -30,9 +31,10 @@ public class NotificationProducerTests
             .ReturnsAsync((false, false));   // (TelegramLinked, EmailVerified) — overridden per-test via Setup chaining
         var inApp = new Mock<IInAppDispatcher>();
         var webPush = new Mock<IWebPushDispatcher>();
+        var fcmSvc = new MockFcmSubscriptionService();
         var deduper = new NotificationDeduper(notifs);
         var producer = new NotificationProducer(
-            notifs, prefSvc, pushSvc, userSvc.Object, inApp.Object, webPush.Object,
+            notifs, prefSvc, pushSvc, fcmSvc, userSvc.Object, inApp.Object, webPush.Object,
             presence ?? new PresenceTracker(), deduper,
             NullLogger<NotificationProducer>.Instance);
         return (producer, notifs, inApp, webPush);
@@ -127,9 +129,10 @@ public class NotificationProducerTests
             .ReturnsAsync((false, false));
         var inApp = new Mock<IInAppDispatcher>();
         var webPush = new Mock<IWebPushDispatcher>();
+        var fcmSvc = new MockFcmSubscriptionService();
         var deduper = new NotificationDeduper(notifsMock.Object);
         var producer = new NotificationProducer(
-            notifsMock.Object, prefSvc, pushSvc, userSvc.Object, inApp.Object, webPush.Object,
+            notifsMock.Object, prefSvc, pushSvc, fcmSvc, userSvc.Object, inApp.Object, webPush.Object,
             new PresenceTracker(), deduper,
             NullLogger<NotificationProducer>.Instance);
 
@@ -188,9 +191,10 @@ public class NotificationProducerTests
             .ReturnsAsync((false, false));
         var inApp = new Mock<IInAppDispatcher>();
         var webPush = new Mock<IWebPushDispatcher>();
+        var fcmSvc2 = new MockFcmSubscriptionService();
         var deduper = new NotificationDeduper(notifsMock.Object);
         var producer = new NotificationProducer(
-            notifsMock.Object, prefSvc, pushSvc, userSvc.Object, inApp.Object, webPush.Object,
+            notifsMock.Object, prefSvc, pushSvc, fcmSvc2, userSvc.Object, inApp.Object, webPush.Object,
             new PresenceTracker(), deduper,
             NullLogger<NotificationProducer>.Instance);
 

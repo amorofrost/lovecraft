@@ -9,6 +9,7 @@ public class ChannelAvailability
     public bool TelegramLinked { get; set; }
     public bool EmailVerified { get; set; }
     public bool WebPushSubscribed { get; set; }
+    public bool FcmRegistered { get; set; }
 }
 
 /// <summary>
@@ -42,6 +43,9 @@ public static class NotificationPolicy
 
         if (Enabled(row, "email") && avail.EmailVerified)
             result.Add(NotificationChannel.Email);
+
+        if (Enabled(row, "fcm") && avail.FcmRegistered)
+            result.Add(NotificationChannel.Fcm);
 
         return result;
     }

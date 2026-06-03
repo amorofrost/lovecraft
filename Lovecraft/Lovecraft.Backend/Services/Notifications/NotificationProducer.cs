@@ -10,6 +10,7 @@ public class NotificationProducer : INotificationProducer
     private readonly INotificationService _notifications;
     private readonly INotificationPreferenceService _prefs;
     private readonly IPushSubscriptionService _push;
+    private readonly IFcmSubscriptionService _fcm;
     private readonly IUserService _users;
     private readonly IInAppDispatcher _inApp;
     private readonly IWebPushDispatcher _webPush;
@@ -21,6 +22,7 @@ public class NotificationProducer : INotificationProducer
         INotificationService notifications,
         INotificationPreferenceService prefs,
         IPushSubscriptionService push,
+        IFcmSubscriptionService fcm,
         IUserService users,
         IInAppDispatcher inApp,
         IWebPushDispatcher webPush,
@@ -31,6 +33,7 @@ public class NotificationProducer : INotificationProducer
         _notifications = notifications;
         _prefs = prefs;
         _push = push;
+        _fcm = fcm;
         _users = users;
         _inApp = inApp;
         _webPush = webPush;
@@ -184,11 +187,13 @@ public class NotificationProducer : INotificationProducer
     {
         var status = await _users.GetNotificationContactStatusAsync(userId);
         var subCount = await _push.CountAsync(userId);
+        var fcmCount = await _fcm.CountAsync(userId);
         return new ChannelAvailability
         {
             TelegramLinked    = status.TelegramLinked,
             EmailVerified     = status.EmailVerified,
             WebPushSubscribed = subCount > 0,
+            FcmRegistered     = fcmCount > 0,
         };
     }
 
