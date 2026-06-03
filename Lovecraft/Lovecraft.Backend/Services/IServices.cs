@@ -227,3 +227,11 @@ public interface IPushSubscriptionService
     Task<int> CountAsync(string userId);
     Task<bool> UnsubscribeAsync(string userId, string deviceId);
 }
+
+public interface IFcmSubscriptionService
+{
+    Task<FcmSubscriptionDto> RegisterAsync(string userId, FcmRegisterRequestDto request);
+    Task<List<FcmSubscriptionDto>> ListAsync(string userId);
+    Task<int> CountAsync(string userId);
+    Task<bool> UnregisterAsync(string userId, string deviceId);
+}

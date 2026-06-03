@@ -291,6 +291,11 @@ if (useAzure)
     builder.Services.AddSingleton<IPushSubscriptionService>(sp =>
         new AzurePushSubscriptionService(pushTable,
             sp.GetRequiredService<ILogger<AzurePushSubscriptionService>>()));
+    var fcmTable = serviceClient.GetTableClient(TableNames.FcmSubscriptions);
+    fcmTable.CreateIfNotExists();
+    builder.Services.AddSingleton<IFcmSubscriptionService>(sp =>
+        new AzureFcmSubscriptionService(fcmTable,
+            sp.GetRequiredService<ILogger<AzureFcmSubscriptionService>>()));
     builder.Services.AddSingleton<IBroadcastService>(sp =>
         new AzureBroadcastService(serviceClient));
 }
@@ -334,6 +339,7 @@ else
     builder.Services.AddSingleton<INotificationService, MockNotificationService>();
     builder.Services.AddSingleton<INotificationPreferenceService, MockNotificationPreferenceService>();
     builder.Services.AddSingleton<IPushSubscriptionService, MockPushSubscriptionService>();
+    builder.Services.AddSingleton<IFcmSubscriptionService, MockFcmSubscriptionService>();
     builder.Services.AddSingleton<IBroadcastService, MockBroadcastService>();
 }
 
