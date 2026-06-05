@@ -569,6 +569,36 @@ public class ChatNotificationTests : IClassFixture<AclTests.TestAppFactory>
     }
 
     [Fact]
+    public async Task SendMessage_allows_empty_content_with_images()
+    {
+        using var client = CreateClientAsUser(_factory, "u-img-a");
+        var chatResp = await client.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-img-b" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatId = (await chatResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+
+        var resp = await client.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages",
+            new { content = "", imageUrls = new[] { "https://example.com/p.jpg" } });
+        resp.EnsureSuccessStatusCode();
+        var data = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal("", data.GetProperty("content").GetString());
+        Assert.Single(data.GetProperty("imageUrls").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task SendMessage_rejects_empty_content_without_images()
+    {
+        using var client = CreateClientAsUser(_factory, "u-img-c");
+        var chatResp = await client.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-img-d" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatId = (await chatResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+
+        var resp = await client.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages", new { content = "   " });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task EditMessage_succeeds_for_author_and_sets_editedAt()
     {
         using var client = CreateClientAsUser(_factory, "u-author");

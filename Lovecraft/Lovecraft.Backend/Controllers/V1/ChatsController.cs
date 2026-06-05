@@ -70,8 +70,9 @@ public class ChatsController : ControllerBase
     public async Task<ActionResult<ApiResponse<MessageDto>>> SendMessage(
         string id, [FromBody] SendMessageRequestDto request)
     {
-        if (string.IsNullOrWhiteSpace(request.Content))
-            return BadRequest(ApiResponse<MessageDto>.ErrorResponse("CONTENT_REQUIRED", "Message content cannot be empty"));
+        var hasImages = request.ImageUrls is { Count: > 0 };
+        if (string.IsNullOrWhiteSpace(request.Content) && !hasImages)
+            return BadRequest(ApiResponse<MessageDto>.ErrorResponse("CONTENT_REQUIRED", "Message must have text or at least one image"));
 
         if (HtmlGuard.ContainsHtml(request.Content))
             return BadRequest(ApiResponse<MessageDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in messages"));
@@ -105,6 +106,8 @@ public class ChatsController : ControllerBase
             var preview = request.Content.Length > 80
                 ? request.Content.Substring(0, 80) + "…"
                 : request.Content;
+            if (string.IsNullOrWhiteSpace(preview) && hasImages)
+                preview = "📷";
             var payloadJson = JsonSerializer.Serialize(new
             {
                 chatId = id,
