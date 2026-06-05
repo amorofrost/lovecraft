@@ -127,6 +127,48 @@ public class ChatsController : ControllerBase
         return Ok(ApiResponse<MessageDto>.SuccessResponse(message));
     }
 
+    [HttpPut("{chatId}/messages/{messageId}")]
+    public async Task<ActionResult<ApiResponse<MessageDto>>> EditMessage(
+        string chatId, string messageId, [FromBody] EditMessageRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Content))
+            return BadRequest(ApiResponse<MessageDto>.ErrorResponse("CONTENT_REQUIRED", "Message content cannot be empty"));
+
+        if (HtmlGuard.ContainsHtml(request.Content))
+            return BadRequest(ApiResponse<MessageDto>.ErrorResponse("HTML_NOT_ALLOWED", "HTML tags are not permitted in messages"));
+
+        if (!await _chatService.ValidateAccessAsync(chatId, CurrentUserId))
+            return Forbid();
+
+        MessageDto updated;
+        try
+        {
+            updated = await _chatService.EditMessageAsync(chatId, messageId, CurrentUserId, request.Content);
+        }
+        catch (ChatMessageException ex)
+        {
+            var status = ex.Code switch
+            {
+                "MESSAGE_NOT_FOUND" => 404,
+                "NOT_MESSAGE_OWNER" => 403,
+                "EDIT_WINDOW_EXPIRED" => 403,
+                _ => 400,
+            };
+            return StatusCode(status, ApiResponse<MessageDto>.ErrorResponse(ex.Code, ex.Message));
+        }
+
+        try { _metrics.RecordCount("bi_events", "bi|message_edited"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "BI metric failed"); }
+
+        // Broadcast the edit to every member of the chat group (including the editor —
+        // the frontend handler is idempotent and the REST caller already patched locally).
+        await _hubContext.Clients.Group($"chat-{chatId}").SendAsync(
+            "MessageEdited",
+            new { messageId = updated.Id, content = updated.Content, editedAt = updated.EditedAt });
+
+        return Ok(ApiResponse<MessageDto>.SuccessResponse(updated));
+    }
+
     [HttpPut("{chatId}/messages/{messageId}/reaction")]
     public async Task<ActionResult<ApiResponse<MessageDto>>> SetReaction(
         string chatId, string messageId, [FromBody] SetReactionRequestDto request)

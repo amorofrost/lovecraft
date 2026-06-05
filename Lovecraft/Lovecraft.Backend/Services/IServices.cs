@@ -174,6 +174,22 @@ public interface IChatService
     /// was present. Throws <see cref="ChatReactionException"/> with code MESSAGE_NOT_FOUND.
     /// </summary>
     Task<Lovecraft.Common.DTOs.Chats.MessageDto> RemoveReactionAsync(string chatId, string messageId, string userId);
+
+    /// <summary>
+    /// Replace the text content of a message the caller authored, within
+    /// <see cref="ChatEditPolicy.EditWindow"/> of when it was sent. Stamps EditedAt.
+    /// Throws <see cref="ChatMessageException"/> with code MESSAGE_NOT_FOUND,
+    /// NOT_MESSAGE_OWNER, or EDIT_WINDOW_EXPIRED. Caller must already have been
+    /// authorized via <see cref="ValidateAccessAsync"/>.
+    /// </summary>
+    Task<Lovecraft.Common.DTOs.Chats.MessageDto> EditMessageAsync(string chatId, string messageId, string userId, string newContent);
+}
+
+/// <summary>Shared policy constants for chat message editing.</summary>
+public static class ChatEditPolicy
+{
+    /// <summary>How long after sending a message the author may still edit it.</summary>
+    public static readonly TimeSpan EditWindow = TimeSpan.FromHours(24);
 }
 
 public interface IImageService

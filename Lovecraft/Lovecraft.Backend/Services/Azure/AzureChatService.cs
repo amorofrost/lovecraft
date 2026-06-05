@@ -158,6 +158,7 @@ public class AzureChatService : IChatService
             SenderId = e.SenderId,
             Content = e.Content,
             Timestamp = e.SentAt,
+            EditedAt = e.EditedAt,
             Read = e.Read,
             Type = MessageType.Text,
             ImageUrls = JsonSerializer.Deserialize<List<string>>(e.ImageUrls ?? "[]") ?? new List<string>(),
@@ -288,6 +289,92 @@ public class AzureChatService : IChatService
         return await UpdateReactionsAsync(chatId, messageId, dict => dict.Remove(userId), ownerCheckUserId: null);
     }
 
+    public async Task<MessageDto> EditMessageAsync(string chatId, string messageId, string userId, string newContent)
+    {
+        const int maxAttempts = 5;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            MessageEntity? entity = null;
+            await foreach (var e in _messagesTable.QueryAsync<MessageEntity>(
+                e => e.PartitionKey == chatId && e.MessageId == messageId))
+            {
+                entity = e;
+                break;
+            }
+            if (entity is null)
+                throw new ChatMessageException("MESSAGE_NOT_FOUND", "Message not found");
+            if (entity.SenderId != userId)
+                throw new ChatMessageException("NOT_MESSAGE_OWNER", "You can only edit your own messages");
+            if (DateTime.UtcNow - entity.SentAt > ChatEditPolicy.EditWindow)
+                throw new ChatMessageException("EDIT_WINDOW_EXPIRED", "The edit window for this message has passed");
+
+            var now = DateTime.UtcNow;
+            entity.Content = newContent;
+            entity.EditedAt = now;
+
+            try
+            {
+                await _messagesTable.UpdateEntityAsync(entity, entity.ETag);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 412)
+            {
+                // ETag mismatch — another writer updated the row (e.g. a reaction); re-read and retry.
+                continue;
+            }
+
+            // Keep the chat-list preview in sync when the most recent message was edited.
+            await UpdateLastMessagePreviewIfLatestAsync(chatId, messageId, newContent, now);
+
+            var reactions = JsonSerializer.Deserialize<Dictionary<string, string>>(
+                string.IsNullOrEmpty(entity.Reactions) ? "{}" : entity.Reactions) ?? new Dictionary<string, string>();
+            return new MessageDto
+            {
+                Id = entity.MessageId,
+                ChatId = chatId,
+                SenderId = entity.SenderId,
+                Content = entity.Content,
+                Timestamp = entity.SentAt,
+                EditedAt = entity.EditedAt,
+                Read = entity.Read,
+                Type = MessageType.Text,
+                ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),
+                Reactions = reactions,
+                ReplyToMessageId = string.IsNullOrEmpty(entity.ReplyToMessageId) ? null : entity.ReplyToMessageId,
+            };
+        }
+        throw new ChatMessageException("EDIT_CONFLICT", "Failed to edit message after multiple retries");
+    }
+
+    // If the edited message is the newest in the chat, refresh LastMessageContent on both
+    // UserChats index rows so the conversation list reflects the new text.
+    private async Task UpdateLastMessagePreviewIfLatestAsync(string chatId, string messageId, string newContent, DateTime editedAt)
+    {
+        DateTime newestSentAt = DateTime.MinValue;
+        string newestId = string.Empty;
+        await foreach (var e in _messagesTable.QueryAsync<MessageEntity>(e => e.PartitionKey == chatId))
+        {
+            if (e.SentAt > newestSentAt) { newestSentAt = e.SentAt; newestId = e.MessageId; }
+        }
+        if (newestId != messageId) return;
+
+        ChatEntity chatRow;
+        try { chatRow = (await _chatsTable.GetEntityAsync<ChatEntity>("CHAT", chatId)).Value; }
+        catch (RequestFailedException ex) when (ex.Status == 404) { return; }
+
+        foreach (var participantId in chatRow.ParticipantIds.Split(','))
+        {
+            try
+            {
+                var indexRow = await _userChatsTable.GetEntityAsync<UserChatEntity>(participantId, chatId);
+                var updated = indexRow.Value;
+                updated.LastMessageContent = newContent;
+                updated.UpdatedAt = editedAt;
+                await _userChatsTable.UpdateEntityAsync(updated, updated.ETag);
+            }
+            catch (RequestFailedException) { /* missing/conflicting index row — best-effort */ }
+        }
+    }
+
     // Locate the (single) message entity by id within its chat partition, apply the mutation
     // to its Reactions dict, and write back with ETag. Retries up to 5 times on concurrent
     // updates. The lookup is a partition scan because RowKey is invertedTicks_{id}, not the id.
@@ -327,6 +414,7 @@ public class AzureChatService : IChatService
                     SenderId = entity.SenderId,
                     Content = entity.Content,
                     Timestamp = entity.SentAt,
+                    EditedAt = entity.EditedAt,
                     Read = entity.Read,
                     Type = MessageType.Text,
                     ImageUrls = JsonSerializer.Deserialize<List<string>>(entity.ImageUrls ?? "[]") ?? new List<string>(),

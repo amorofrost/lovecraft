@@ -21,6 +21,8 @@ public class MessageDto
     public string SenderId { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; }
+    /// <summary>UTC time the message was last edited, or null if it was never edited.</summary>
+    public DateTime? EditedAt { get; set; }
     public bool Read { get; set; }
     public MessageType Type { get; set; } = MessageType.Text;
     public List<string> ImageUrls { get; set; } = new();
@@ -71,4 +73,9 @@ public class CreatePrivateChatRequestDto
 public class SetReactionRequestDto
 {
     public string Emoji { get; set; } = string.Empty;
+}
+
+public class EditMessageRequestDto
+{
+    public string Content { get; set; } = string.Empty;
 }

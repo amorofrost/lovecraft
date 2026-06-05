@@ -15,6 +15,8 @@ public class MessageEntity : ITableEntity
     public string SenderId { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public DateTime SentAt { get; set; }
+    // UTC time of the last edit, or null if the message was never edited.
+    public DateTime? EditedAt { get; set; }
     public string Type { get; set; } = "text";
     public bool Read { get; set; }
     public string ImageUrls { get; set; } = "[]"; // stored as JSON array

@@ -164,6 +164,37 @@ public class MockChatService : IChatService
         return Task.FromResult(msg);
     }
 
+    public Task<Lovecraft.Common.DTOs.Chats.MessageDto> EditMessageAsync(string chatId, string messageId, string userId, string newContent)
+    {
+        var msg = FindMessage(chatId, messageId)
+            ?? throw new ChatMessageException("MESSAGE_NOT_FOUND", "Message not found");
+        if (msg.SenderId != userId)
+            throw new ChatMessageException("NOT_MESSAGE_OWNER", "You can only edit your own messages");
+        if (DateTime.UtcNow - msg.Timestamp > ChatEditPolicy.EditWindow)
+            throw new ChatMessageException("EDIT_WINDOW_EXPIRED", "The edit window for this message has passed");
+
+        msg.Content = newContent;
+        msg.EditedAt = DateTime.UtcNow;
+
+        // Keep the chat-list preview in sync when the newest message was edited.
+        var latest = MockDataStore.Messages.GetValueOrDefault(chatId)?
+            .OrderByDescending(m => m.Timestamp).FirstOrDefault();
+        if (latest?.Id == messageId)
+        {
+            var chat = MockDataStore.Chats.FirstOrDefault(c => c.Id == chatId);
+            foreach (var participantId in chat?.Participants ?? new List<string>())
+            {
+                var entries = MockDataStore.UserChats.GetValueOrDefault(participantId);
+                if (entries == null) continue;
+                var idx = entries.FindIndex(e => e.ChatId == chatId);
+                if (idx >= 0)
+                    entries[idx] = (chatId, entries[idx].OtherUserId, newContent, entries[idx].LastAt);
+            }
+        }
+
+        return Task.FromResult(msg);
+    }
+
     private static Lovecraft.Common.DTOs.Chats.MessageDto? FindMessage(string chatId, string messageId) =>
         MockDataStore.Messages.GetValueOrDefault(chatId)?.FirstOrDefault(m => m.Id == messageId);
 

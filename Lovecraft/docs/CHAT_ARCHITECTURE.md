@@ -42,6 +42,8 @@ The frontend uses the REST layer for initial data load (chat list, message histo
 | Event | Payload | Emitted by |
 |---|---|---|
 | `MessageReceived` | `MessageDto` | `ChatsController.SendMessage` via `IHubContext<ChatHub>.Clients.Group($"chat-{id}")` (REST path — all group members including sender receive it); also by `ChatHub.SendMessage` via `Clients.OthersInGroup` (hub path — sender excluded) |
+| `MessageEdited` | `{ messageId, content, editedAt }` | `ChatsController.EditMessage` via `IHubContext<ChatHub>.Clients.Group($"chat-{id}")` (full group, including editor; the frontend patch is idempotent) |
+| `MessageReactionUpdated` | `{ messageId, reactions }` | `ChatsController` reaction endpoints via `IHubContext<ChatHub>.Clients.Group($"chat-{id}")` |
 | `ReplyPosted` | `(ForumReplyDto reply, string topicId)` | `ForumController.CreateReply` (via `IHubContext<ChatHub>`) |
 
 > **Message delivery flow (REST path, which the frontend uses):** Client sends `POST /api/v1/chats/{id}/messages` → controller persists via `IChatService` → broadcasts `MessageReceived` to the full group via `IHubContext`. The sender receives the event too; the frontend deduplicates by message ID to prevent double-display.
@@ -58,6 +60,7 @@ All require `Authorization: Bearer <token>`.
 | `POST` | `/api/v1/chats` | `{ targetUserId }` | Get existing or create new private chat |
 | `GET` | `/api/v1/chats/{id}/messages` | — | Paginated messages (`?page=1&pageSize=50`) |
 | `POST` | `/api/v1/chats/{id}/messages` | `{ content }` | Persist message and broadcast `MessageReceived` to all group members via `IHubContext<ChatHub>` |
+| `PUT` | `/api/v1/chats/{id}/messages/{messageId}` | `{ content }` | Edit own message within 24h of sending (`ChatEditPolicy.EditWindow`). Stamps `EditedAt`, broadcasts `MessageEdited`. Errors: `NOT_MESSAGE_OWNER`/`EDIT_WINDOW_EXPIRED` (403), `MESSAGE_NOT_FOUND` (404), `CONTENT_REQUIRED`/`HTML_NOT_ALLOWED` (400) |
 
 ---
 

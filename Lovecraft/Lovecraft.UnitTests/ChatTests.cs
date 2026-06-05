@@ -376,6 +376,72 @@ public class ChatTests
         Assert.NotNull(fetchedReply.ReplyToSnippet);
         Assert.Equal("first thing said", fetchedReply.ReplyToSnippet!.ContentPreview);
     }
+
+    // --- Edit tests ---
+
+    [Fact]
+    public async Task EditMessageAsync_UpdatesContentAndStampsEditedAt()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "original");
+        Assert.Null(msg.EditedAt);
+        var updated = await svc.EditMessageAsync("chat-1", msg.Id, "current-user", "edited text");
+        Assert.Equal("edited text", updated.Content);
+        Assert.NotNull(updated.EditedAt);
+    }
+
+    [Fact]
+    public async Task EditMessageAsync_PersistsAndIsVisibleToOtherParticipant()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "original");
+        await svc.EditMessageAsync("chat-1", msg.Id, "current-user", "edited");
+        var recipientView = await svc.GetMessagesAsync("chat-1", "user-anna", page: 1, pageSize: 100);
+        var seen = recipientView.First(m => m.Id == msg.Id);
+        Assert.Equal("edited", seen.Content);
+        Assert.NotNull(seen.EditedAt);
+    }
+
+    [Fact]
+    public async Task EditMessageAsync_ThrowsNotMessageOwner()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "user-anna", "anna's message");
+        var ex = await Assert.ThrowsAsync<ChatMessageException>(
+            () => svc.EditMessageAsync("chat-1", msg.Id, "current-user", "hijack"));
+        Assert.Equal("NOT_MESSAGE_OWNER", ex.Code);
+    }
+
+    [Fact]
+    public async Task EditMessageAsync_ThrowsMessageNotFound()
+    {
+        var svc = CreateService();
+        var ex = await Assert.ThrowsAsync<ChatMessageException>(
+            () => svc.EditMessageAsync("chat-1", "bogus-message-id", "current-user", "x"));
+        Assert.Equal("MESSAGE_NOT_FOUND", ex.Code);
+    }
+
+    [Fact]
+    public async Task EditMessageAsync_ThrowsWhenWindowExpired()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "old message");
+        // MockChatService stores the same DTO instance; backdate it past the 24h window.
+        msg.Timestamp = DateTime.UtcNow.AddHours(-25);
+        var ex = await Assert.ThrowsAsync<ChatMessageException>(
+            () => svc.EditMessageAsync("chat-1", msg.Id, "current-user", "too late"));
+        Assert.Equal("EDIT_WINDOW_EXPIRED", ex.Code);
+    }
+
+    [Fact]
+    public async Task EditMessageAsync_UpdatesChatListPreviewWhenLatest()
+    {
+        var svc = CreateService();
+        var msg = await svc.SendMessageAsync("chat-1", "current-user", "latest message");
+        await svc.EditMessageAsync("chat-1", msg.Id, "current-user", "edited latest");
+        var chats = await svc.GetChatsAsync("current-user");
+        Assert.Contains(chats, c => c.LastMessage?.Content == "edited latest");
+    }
 }
 
 [Collection("ChatNotificationTests")]
@@ -453,6 +519,45 @@ public class ChatNotificationTests : IClassFixture<AclTests.TestAppFactory>
         producer.Verify(p => p.ProduceAsync(
             "u-sender", It.IsAny<NotificationType>(), It.IsAny<string?>(),
             It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EditMessage_succeeds_for_author_and_sets_editedAt()
+    {
+        using var client = CreateClientAsUser(_factory, "u-author");
+        var chatResp = await client.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-peer" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatId = (await chatResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+
+        var sendResp = await client.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages", new { content = "first" });
+        sendResp.EnsureSuccessStatusCode();
+        var msgId = (await sendResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+
+        var editResp = await client.PutAsJsonAsync($"/api/v1/chats/{chatId}/messages/{msgId}", new { content = "edited" });
+        editResp.EnsureSuccessStatusCode();
+        var data = (await editResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal("edited", data.GetProperty("content").GetString());
+        Assert.NotEqual(JsonValueKind.Null, data.GetProperty("editedAt").ValueKind);
+    }
+
+    [Fact]
+    public async Task EditMessage_forbidden_for_non_author()
+    {
+        using var author = CreateClientAsUser(_factory, "u-author2");
+        var chatResp = await author.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-peer2" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatId = (await chatResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+        var sendResp = await author.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages", new { content = "mine" });
+        var msgId = (await sendResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+
+        // u-peer2 is a participant of the chat but not the message author → 403.
+        using var peer = CreateClientAsUser(_factory, "u-peer2");
+        var editResp = await peer.PutAsJsonAsync($"/api/v1/chats/{chatId}/messages/{msgId}", new { content = "hijack" });
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, editResp.StatusCode);
     }
 
     [Fact]
