@@ -447,6 +447,9 @@ public static class MockDataStore
         ["user-anna"]    = new() { ("chat-1", "current-user", "Привет!", DateTime.UtcNow.AddMinutes(-30)) }
     };
 
+    // Unread counters: userId → (chatId → count). Mock mirror of UserChatEntity.UnreadCount.
+    public static Dictionary<string, Dictionary<string, int>> UnreadCounts { get; } = new();
+
     // Messages: keyed by chatId
     public static Dictionary<string, List<Lovecraft.Common.DTOs.Chats.MessageDto>> Messages { get; } = new()
     {

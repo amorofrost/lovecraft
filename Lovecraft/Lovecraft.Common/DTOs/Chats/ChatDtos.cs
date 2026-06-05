@@ -9,6 +9,8 @@ public class ChatDto
     public string? Name { get; set; }
     public List<string> Participants { get; set; } = new();
     public MessageDto? LastMessage { get; set; }
+    /// <summary>Unread messages for the requesting user in this chat (0 when caught up).</summary>
+    public int UnreadCount { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string? EventId { get; set; }

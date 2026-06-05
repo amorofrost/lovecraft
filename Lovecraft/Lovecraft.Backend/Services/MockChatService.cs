@@ -23,7 +23,8 @@ public class MockChatService : IChatService
                     CreatedAt = c.CreatedAt,
                     UpdatedAt = c.UpdatedAt,
                     EventId = c.EventId,
-                    LastMessage = lastMsg
+                    LastMessage = lastMsg,
+                    UnreadCount = MockDataStore.UnreadCounts.GetValueOrDefault(userId)?.GetValueOrDefault(c.Id) ?? 0
                 };
             })
             .ToList();
@@ -125,14 +126,22 @@ public class MockChatService : IChatService
         }
         msgList.Add(msg);
 
-        // Update UserChats index for both participants
+        // Update UserChats index for both participants; bump unread for everyone but the sender.
         foreach (var participantId in chat.Participants)
         {
             var entries = MockDataStore.UserChats.GetValueOrDefault(participantId);
-            if (entries == null) continue;
-            var idx = entries.FindIndex(e => e.ChatId == chatId);
-            if (idx >= 0)
-                entries[idx] = (chatId, entries[idx].OtherUserId, content, msg.Timestamp);
+            if (entries != null)
+            {
+                var idx = entries.FindIndex(e => e.ChatId == chatId);
+                if (idx >= 0)
+                    entries[idx] = (chatId, entries[idx].OtherUserId, content, msg.Timestamp);
+            }
+            if (participantId != userId)
+            {
+                if (!MockDataStore.UnreadCounts.TryGetValue(participantId, out var counts))
+                    MockDataStore.UnreadCounts[participantId] = counts = new();
+                counts[chatId] = counts.GetValueOrDefault(chatId) + 1;
+            }
         }
 
         return Task.FromResult(msg);
@@ -193,6 +202,13 @@ public class MockChatService : IChatService
         }
 
         return Task.FromResult(msg);
+    }
+
+    public Task MarkChatReadAsync(string chatId, string userId)
+    {
+        if (MockDataStore.UnreadCounts.TryGetValue(userId, out var counts))
+            counts[chatId] = 0;
+        return Task.CompletedTask;
     }
 
     private static Lovecraft.Common.DTOs.Chats.MessageDto? FindMessage(string chatId, string messageId) =>

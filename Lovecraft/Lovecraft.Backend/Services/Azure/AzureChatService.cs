@@ -50,6 +50,7 @@ public class AzureChatService : IChatService
                         Content = entry.LastMessageContent,
                         Timestamp = entry.LastMessageAt
                     },
+                    UnreadCount = entry.UnreadCount,
                     CreatedAt = entry.UpdatedAt
                 });
             }
@@ -343,6 +344,37 @@ public class AzureChatService : IChatService
             };
         }
         throw new ChatMessageException("EDIT_CONFLICT", "Failed to edit message after multiple retries");
+    }
+
+    public async Task MarkChatReadAsync(string chatId, string userId)
+    {
+        const int maxAttempts = 3;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            UserChatEntity row;
+            try
+            {
+                row = (await _userChatsTable.GetEntityAsync<UserChatEntity>(userId, chatId)).Value;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                return; // No index row → nothing to clear.
+            }
+
+            if (row.UnreadCount == 0) return;
+            row.UnreadCount = 0;
+
+            try
+            {
+                await _userChatsTable.UpdateEntityAsync(row, row.ETag);
+                return;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 412)
+            {
+                // A concurrent send incremented the counter — re-read and retry.
+                continue;
+            }
+        }
     }
 
     // If the edited message is the newest in the chat, refresh LastMessageContent on both

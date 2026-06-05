@@ -442,6 +442,53 @@ public class ChatTests
         var chats = await svc.GetChatsAsync("current-user");
         Assert.Contains(chats, c => c.LastMessage?.Content == "edited latest");
     }
+
+    // --- Unread / mark-read tests ---
+
+    private static async Task<int> UnreadForAsync(IChatService svc, string userId, string chatId)
+    {
+        var chats = await svc.GetChatsAsync(userId);
+        return chats.FirstOrDefault(c => c.Id == chatId)?.UnreadCount ?? 0;
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_IncrementsUnreadForRecipient()
+    {
+        var svc = CreateService();
+        var before = await UnreadForAsync(svc, "user-anna", "chat-1");
+        await svc.SendMessageAsync("chat-1", "current-user", "unread bump");
+        var after = await UnreadForAsync(svc, "user-anna", "chat-1");
+        Assert.Equal(before + 1, after);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_DoesNotIncrementUnreadForSender()
+    {
+        var svc = CreateService();
+        var before = await UnreadForAsync(svc, "current-user", "chat-1");
+        await svc.SendMessageAsync("chat-1", "current-user", "sender no bump");
+        var after = await UnreadForAsync(svc, "current-user", "chat-1");
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public async Task MarkChatReadAsync_ResetsUnreadToZero()
+    {
+        var svc = CreateService();
+        await svc.SendMessageAsync("chat-1", "current-user", "to be read");
+        Assert.True(await UnreadForAsync(svc, "user-anna", "chat-1") > 0);
+        await svc.MarkChatReadAsync("chat-1", "user-anna");
+        Assert.Equal(0, await UnreadForAsync(svc, "user-anna", "chat-1"));
+    }
+
+    [Fact]
+    public async Task MarkChatReadAsync_IsIdempotentWhenAlreadyZero()
+    {
+        var svc = CreateService();
+        await svc.MarkChatReadAsync("chat-1", "current-user");
+        await svc.MarkChatReadAsync("chat-1", "current-user");
+        Assert.Equal(0, await UnreadForAsync(svc, "current-user", "chat-1"));
+    }
 }
 
 [Collection("ChatNotificationTests")]
@@ -540,6 +587,49 @@ public class ChatNotificationTests : IClassFixture<AclTests.TestAppFactory>
         var data = (await editResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
         Assert.Equal("edited", data.GetProperty("content").GetString());
         Assert.NotEqual(JsonValueKind.Null, data.GetProperty("editedAt").ValueKind);
+    }
+
+    private static int UnreadFor(JsonElement chatsEnvelope, string chatId)
+    {
+        foreach (var c in chatsEnvelope.GetProperty("data").EnumerateArray())
+            if (c.GetProperty("id").GetString() == chatId)
+                return c.GetProperty("unreadCount").GetInt32();
+        return -1;
+    }
+
+    [Fact]
+    public async Task MarkRead_resets_unread_for_caller()
+    {
+        using var author = CreateClientAsUser(_factory, "u-mr-a");
+        var chatResp = await author.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-mr-b" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatId = (await chatResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+        await author.PostAsJsonAsync($"/api/v1/chats/{chatId}/messages", new { content = "ping" });
+
+        using var recipient = CreateClientAsUser(_factory, "u-mr-b");
+        var before = await recipient.GetFromJsonAsync<JsonElement>("/api/v1/chats");
+        Assert.True(UnreadFor(before, chatId!) > 0);
+
+        var readResp = await recipient.PostAsync($"/api/v1/chats/{chatId}/read", null);
+        readResp.EnsureSuccessStatusCode();
+
+        var after = await recipient.GetFromJsonAsync<JsonElement>("/api/v1/chats");
+        Assert.Equal(0, UnreadFor(after, chatId!));
+    }
+
+    [Fact]
+    public async Task MarkRead_forbidden_for_non_participant()
+    {
+        using var author = CreateClientAsUser(_factory, "u-mr-c");
+        var chatResp = await author.PostAsJsonAsync("/api/v1/chats", new { targetUserId = "u-mr-d" });
+        chatResp.EnsureSuccessStatusCode();
+        var chatId = (await chatResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("data").GetProperty("id").GetString();
+
+        using var stranger = CreateClientAsUser(_factory, "u-mr-stranger");
+        var resp = await stranger.PostAsync($"/api/v1/chats/{chatId}/read", null);
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
     [Fact]

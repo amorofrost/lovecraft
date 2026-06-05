@@ -183,6 +183,13 @@ public interface IChatService
     /// authorized via <see cref="ValidateAccessAsync"/>.
     /// </summary>
     Task<Lovecraft.Common.DTOs.Chats.MessageDto> EditMessageAsync(string chatId, string messageId, string userId, string newContent);
+
+    /// <summary>
+    /// Reset the caller's unread counter for a chat to zero (called when they open/read it).
+    /// Idempotent and best-effort. Caller must already have been authorized via
+    /// <see cref="ValidateAccessAsync"/>.
+    /// </summary>
+    Task MarkChatReadAsync(string chatId, string userId);
 }
 
 /// <summary>Shared policy constants for chat message editing.</summary>

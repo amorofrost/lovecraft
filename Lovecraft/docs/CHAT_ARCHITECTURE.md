@@ -61,6 +61,7 @@ All require `Authorization: Bearer <token>`.
 | `GET` | `/api/v1/chats/{id}/messages` | — | Paginated messages (`?page=1&pageSize=50`) |
 | `POST` | `/api/v1/chats/{id}/messages` | `{ content }` | Persist message and broadcast `MessageReceived` to all group members via `IHubContext<ChatHub>` |
 | `PUT` | `/api/v1/chats/{id}/messages/{messageId}` | `{ content }` | Edit own message within 24h of sending (`ChatEditPolicy.EditWindow`). Stamps `EditedAt`, broadcasts `MessageEdited`. Errors: `NOT_MESSAGE_OWNER`/`EDIT_WINDOW_EXPIRED` (403), `MESSAGE_NOT_FOUND` (404), `CONTENT_REQUIRED`/`HTML_NOT_ALLOWED` (400) |
+| `POST` | `/api/v1/chats/{id}/read` | — | Reset the caller's `UnreadCount` for the chat to 0 (called when they open it). Idempotent, best-effort. `UnreadCount` is incremented per-recipient on send and surfaced on `ChatDto`; the frontend drives the unread dot off it |
 
 ---
 

@@ -127,6 +127,16 @@ public class ChatsController : ControllerBase
         return Ok(ApiResponse<MessageDto>.SuccessResponse(message));
     }
 
+    [HttpPost("{id}/read")]
+    public async Task<ActionResult<ApiResponse<object>>> MarkRead(string id)
+    {
+        if (!await _chatService.ValidateAccessAsync(id, CurrentUserId))
+            return Forbid();
+
+        await _chatService.MarkChatReadAsync(id, CurrentUserId);
+        return Ok(ApiResponse<object>.SuccessResponse(new { chatId = id }));
+    }
+
     [HttpPut("{chatId}/messages/{messageId}")]
     public async Task<ActionResult<ApiResponse<MessageDto>>> EditMessage(
         string chatId, string messageId, [FromBody] EditMessageRequestDto request)
