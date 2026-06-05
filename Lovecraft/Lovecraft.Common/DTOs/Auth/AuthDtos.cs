@@ -105,6 +105,11 @@ public class TelegramLoginConfigDto
 {
     /// <summary>Bot username without @, for the widget data-telegram-login attribute.</summary>
     public string BotUsername { get; set; } = string.Empty;
+
+    /// <summary>Numeric bot id (the token prefix before ':'). This is public — it is the bot's
+    /// user id, not the secret token — and is required by the custom-button
+    /// Telegram.Login.auth({ bot_id }) flow on the web client.</summary>
+    public string BotId { get; set; } = string.Empty;
 }
 
 /// <summary>Verified Telegram user identity carried across the pending-ticket flow.</summary>

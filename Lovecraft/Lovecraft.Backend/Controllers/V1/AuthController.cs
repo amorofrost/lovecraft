@@ -46,8 +46,14 @@ public class AuthController : ControllerBase
     public ActionResult<ApiResponse<TelegramLoginConfigDto>> GetTelegramLoginConfig()
     {
         var username = _telegramAuth.BotUsername?.Trim() ?? "";
+        // bot_id is the numeric prefix of the bot token (before ':'). It is public — it's the
+        // bot's user id, not the secret token — and the custom-button Telegram.Login.auth({ bot_id })
+        // web flow requires it (the iframe widget only needs the username).
+        var token = _telegramAuth.BotToken?.Trim() ?? "";
+        var colon = token.IndexOf(':');
+        var botId = colon > 0 ? token[..colon] : "";
         return Ok(ApiResponse<TelegramLoginConfigDto>.SuccessResponse(
-            new TelegramLoginConfigDto { BotUsername = username }));
+            new TelegramLoginConfigDto { BotUsername = username, BotId = botId }));
     }
 
     /// <summary>Public OAuth 2.0 Web client id for Google Identity Services. Not a secret.</summary>
