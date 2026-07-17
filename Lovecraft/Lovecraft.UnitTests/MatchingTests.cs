@@ -533,19 +533,10 @@ public class AzureMatchingNotificationTests
         var producer = new Mock<INotificationProducer>();
         var userService = new Mock<IUserService>();
 
-        var senderDto = new UserDto
-        {
-            Id = "sender-id",
-            Name = "Sender",
-            Settings = new UserSettingsDto { AnonymousLikes = true },
-        };
-
-        userService.Setup(u => u.GetUserByIdAsync("sender-id"))
-            .ReturnsAsync(senderDto);
-
         var svc = BuildAzureService(userService, producer);
 
-        await svc.CreateLikeAsync("sender-id", "recipient-id");
+        // Anonymity is now per-like via the `anonymous` param, not a sender-global setting.
+        await svc.CreateLikeAsync("sender-id", "recipient-id", anonymous: true);
 
         producer.Verify(p => p.ProduceAsync(
             "recipient-id",

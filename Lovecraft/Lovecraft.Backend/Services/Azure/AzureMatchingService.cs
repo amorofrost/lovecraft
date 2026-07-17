@@ -65,7 +65,8 @@ public class AzureMatchingService : IMatchingService
             FromUserId = fromUserId,
             ToUserId = toUserId,
             CreatedAt = now,
-            IsMatch = isMutual
+            IsMatch = isMutual,
+            IsAnonymous = anonymous
         };
 
         // Atomic create: AddEntityAsync fails with 409 if (fromUserId, toUserId)
@@ -105,7 +106,8 @@ public class AzureMatchingService : IMatchingService
             FromUserId = fromUserId,
             ToUserId = toUserId,
             CreatedAt = now,
-            IsMatch = isMutual
+            IsMatch = isMutual,
+            IsAnonymous = anonymous
         };
         await _likesReceivedTable.UpsertEntityAsync(likeReceivedEntity);
 
@@ -184,32 +186,21 @@ public class AzureMatchingService : IMatchingService
         }
         else
         {
-            // Non-mutual like: fire LikeReceived notification to recipient
+            // Non-mutual like: fire LikeReceived notification to recipient.
+            // Anonymity comes from the request, not the sender's global setting.
             if (_producer is not null)
             {
-                // Look up sender's AnonymousLikes setting to decide whether to reveal the actor.
-                bool isAnonymous = false;
-                try
-                {
-                    var sender = await _userService.GetUserByIdAsync(fromUserId);
-                    isAnonymous = sender?.Settings.AnonymousLikes ?? false;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to fetch sender settings for anonymous-like check for {Sender}", fromUserId);
-                }
-
                 var payloadJson = JsonSerializer.Serialize(new
                 {
                     likeId,
-                    anonymous = isAnonymous,
+                    anonymous,
                 });
                 try
                 {
                     await _producer.ProduceAsync(
                         recipientUserId: toUserId,
                         type: NotificationType.LikeReceived,
-                        actorId: isAnonymous ? null : fromUserId,
+                        actorId: anonymous ? null : fromUserId,
                         payloadJson: payloadJson,
                         sourceEventId: likeId);
                 }
@@ -249,14 +240,6 @@ public class AzureMatchingService : IMatchingService
         return results;
     }
 
-    // TODO(Task 3): implement anonymous-received-count using Azure table storage.
-    // Stubbed here only so the interface change from Task 2 keeps the solution
-    // compiling; do not call this in production until Task 3 lands.
-    public Task<int> GetAnonymousReceivedCountAsync(string userId)
-    {
-        throw new NotImplementedException("GetAnonymousReceivedCountAsync not yet implemented for AzureMatchingService (Task 3).");
-    }
-
     public async Task<List<LikeDto>> GetReceivedLikesAsync(string userId)
     {
         // "Received" = pending likes only: people who liked me whom I have NOT liked
@@ -271,9 +254,26 @@ public class AzureMatchingService : IMatchingService
             filter: $"PartitionKey eq '{userId}'"))
         {
             if (iLiked.Contains(entity.RowKey)) continue; // mutual → excluded
+            if (entity.IsAnonymous) continue;             // anonymous → surfaced as count only
             results.Add(ToReceivedLikeDto(entity));
         }
         return results;
+    }
+
+    public async Task<int> GetAnonymousReceivedCountAsync(string userId)
+    {
+        var iLiked = new HashSet<string>();
+        await foreach (var e in _likesTable.QueryAsync<LikeEntity>(filter: $"PartitionKey eq '{userId}'"))
+            iLiked.Add(e.RowKey);
+
+        var count = 0;
+        await foreach (var entity in _likesReceivedTable.QueryAsync<LikeEntity>(
+            filter: $"PartitionKey eq '{userId}'"))
+        {
+            if (iLiked.Contains(entity.RowKey)) continue; // mutual → excluded
+            if (entity.IsAnonymous) count++;
+        }
+        return count;
     }
 
     public async Task<List<MatchDto>> GetMatchesAsync(string userId)
@@ -308,7 +308,8 @@ public class AzureMatchingService : IMatchingService
         FromUserId = entity.PartitionKey,
         ToUserId = entity.RowKey,
         CreatedAt = entity.CreatedAt > DateTime.MinValue ? entity.CreatedAt : DateTime.UtcNow,
-        IsMatch = entity.IsMatch
+        IsMatch = entity.IsMatch,
+        IsAnonymous = entity.IsAnonymous
     };
 
     // likesreceived table: PK = toUserId (recipient), RK = fromUserId (sender)
@@ -318,6 +319,7 @@ public class AzureMatchingService : IMatchingService
         FromUserId = entity.RowKey,
         ToUserId = entity.PartitionKey,
         CreatedAt = entity.CreatedAt > DateTime.MinValue ? entity.CreatedAt : DateTime.UtcNow,
-        IsMatch = entity.IsMatch
+        IsMatch = entity.IsMatch,
+        IsAnonymous = entity.IsAnonymous
     };
 }
