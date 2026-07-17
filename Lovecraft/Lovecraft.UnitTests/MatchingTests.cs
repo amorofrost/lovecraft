@@ -547,3 +547,127 @@ public class AzureMatchingNotificationTests
             It.IsAny<string?>()), Times.Once);
     }
 }
+
+/// <summary>
+/// Azure-path coverage for the privacy-critical read paths: GetReceivedLikesAsync's
+/// anonymous exclusion and GetAnonymousReceivedCountAsync's count. These are only
+/// unit-tested against MockMatchingService elsewhere in this file; AzureMatchingService
+/// is the production implementation and was previously untested for this logic.
+/// </summary>
+[Collection("MatchingTests")]
+public class AzureMatchingPrivacyTests
+{
+    /// <summary>
+    /// Extends the AzureMatchingNotificationTests harness above: in addition to mocking
+    /// the write path (AddEntityAsync / UpsertEntityAsync), captures written entities into
+    /// in-memory stores and serves QueryAsync&lt;LikeEntity&gt; back out of those stores
+    /// (filtered by the "PartitionKey eq '...'" OData filter AzureMatchingService sends),
+    /// so the real read-path logic in GetReceivedLikesAsync / GetAnonymousReceivedCountAsync
+    /// runs against AzureMatchingService itself rather than a mock of the whole service.
+    /// </summary>
+    private static AzureMatchingService BuildAzureService(
+        Mock<IUserService> userService,
+        List<LikeEntity> sentStore,
+        List<LikeEntity> receivedStore)
+    {
+        var likesTable = new Mock<TableClient>();
+        var likesReceivedTable = new Mock<TableClient>();
+
+        likesTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue<TableItem>(null!, Mock.Of<Response>()));
+        likesReceivedTable.Setup(t => t.CreateIfNotExistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Response.FromValue<TableItem>(null!, Mock.Of<Response>()));
+
+        // No reverse like exists → 404, so isMutual = false at creation time for every like.
+        // (Mutuality for the read paths under test here is recomputed dynamically from the
+        // sent/received stores below — the same way AzureMatchingService itself does it —
+        // not read back from this creation-time flag.)
+        likesTable.Setup(t => t.GetEntityAsync<LikeEntity>(
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new RequestFailedException(404, "Not Found"));
+
+        likesTable.Setup(t => t.AddEntityAsync(It.IsAny<LikeEntity>(), It.IsAny<CancellationToken>()))
+            .Callback<LikeEntity, CancellationToken>((entity, _) => sentStore.Add(entity))
+            .ReturnsAsync(Mock.Of<Response>());
+
+        likesReceivedTable.Setup(t => t.UpsertEntityAsync(
+                It.IsAny<LikeEntity>(), It.IsAny<TableUpdateMode>(), It.IsAny<CancellationToken>()))
+            .Callback<LikeEntity, TableUpdateMode, CancellationToken>((entity, _, _) => receivedStore.Add(entity))
+            .ReturnsAsync(Mock.Of<Response>());
+
+        likesTable.Setup(t => t.QueryAsync<LikeEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns<string, int?, IEnumerable<string>, CancellationToken>((filter, _, _, _) =>
+                ToPageable(sentStore.Where(e => e.PartitionKey == ExtractPartitionKey(filter))));
+
+        likesReceivedTable.Setup(t => t.QueryAsync<LikeEntity>(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Returns<string, int?, IEnumerable<string>, CancellationToken>((filter, _, _, _) =>
+                ToPageable(receivedStore.Where(e => e.PartitionKey == ExtractPartitionKey(filter))));
+
+        var tsc = new Mock<TableServiceClient>();
+        tsc.Setup(x => x.GetTableClient(TableNames.Likes)).Returns(likesTable.Object);
+        tsc.Setup(x => x.GetTableClient(TableNames.LikesReceived)).Returns(likesReceivedTable.Object);
+
+        userService.Setup(u => u.IncrementCounterAsync(It.IsAny<string>(), It.IsAny<UserCounter>()))
+            .ThrowsAsync(new InvalidOperationException("counter not needed in this test"));
+
+        return new AzureMatchingService(
+            tsc.Object,
+            Mock.Of<IChatService>(),
+            userService.Object,
+            NullLogger<AzureMatchingService>.Instance);
+    }
+
+    private static string? ExtractPartitionKey(string filter)
+    {
+        const string marker = "PartitionKey eq '";
+        var idx = filter.IndexOf(marker, StringComparison.Ordinal);
+        if (idx < 0) return null;
+        var start = idx + marker.Length;
+        var end = filter.IndexOf('\'', start);
+        return end < 0 ? null : filter.Substring(start, end - start);
+    }
+
+    private static AsyncPageable<LikeEntity> ToPageable(IEnumerable<LikeEntity> items)
+    {
+        var page = Page<LikeEntity>.FromValues(items.ToList(), null, Mock.Of<Response>());
+        return AsyncPageable<LikeEntity>.FromPages(new[] { page });
+    }
+
+    [Fact]
+    public async Task GetReceivedLikesAsync_ExcludesAnonymous()
+    {
+        var userService = new Mock<IUserService>();
+        var sentStore = new List<LikeEntity>();
+        var receivedStore = new List<LikeEntity>();
+        var svc = BuildAzureService(userService, sentStore, receivedStore);
+
+        await svc.CreateLikeAsync("bob", "alice", anonymous: true);   // anonymous → hidden
+        await svc.CreateLikeAsync("carol", "alice");                  // normal → shown
+
+        var received = await svc.GetReceivedLikesAsync("alice");
+
+        Assert.Single(received);
+        Assert.Equal("carol", received[0].FromUserId);
+    }
+
+    [Fact]
+    public async Task GetAnonymousReceivedCountAsync_CountsPendingAnonymousOnly()
+    {
+        var userService = new Mock<IUserService>();
+        var sentStore = new List<LikeEntity>();
+        var receivedStore = new List<LikeEntity>();
+        var svc = BuildAzureService(userService, sentStore, receivedStore);
+
+        await svc.CreateLikeAsync("bob", "alice", anonymous: true);   // pending anonymous
+        await svc.CreateLikeAsync("carol", "alice");                  // pending normal
+        await svc.CreateLikeAsync("dave", "alice", anonymous: true);  // pending anonymous
+        await svc.CreateLikeAsync("alice", "dave", anonymous: true);  // alice → dave: makes alice/dave mutual → excluded
+
+        var count = await svc.GetAnonymousReceivedCountAsync("alice");
+
+        Assert.Equal(1, count); // only bob remains pending+anonymous
+    }
+}
