@@ -1,14 +1,16 @@
+using System;
 using System.Text.Json;
 using System.Web;
 using Lovecraft.NotificationsWorker.Models;
 using Microsoft.Extensions.Logging;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace Lovecraft.NotificationsWorker.Renderers;
 
 public class TelegramMessageRenderer : ITelegramMessageRenderer
 {
-    private const string AppBaseUrl = "https://aloeve.club";
+    private const string MiniAppUrl = "https://aloeve.club/tg";
 
     private readonly ILogger<TelegramMessageRenderer> _logger;
 
@@ -49,14 +51,15 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
             _                       => "You have a new notification",
         };
 
-        var openUrl  = BuildOpenUrl(notification.Type, notification.ActorId, payload);
-        var muteData = $"mute:{ToCamelCase(notification.Type)}";
+        var destPath  = BuildDestPath(notification.Type, notification.ActorId, payload);
+        var webAppUrl = $"{MiniAppUrl}?dest={Uri.EscapeDataString(destPath)}";
+        var muteData  = $"mute:{ToCamelCase(notification.Type)}";
 
         var keyboard = new InlineKeyboardMarkup(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithUrl("Open in app", openUrl),
+                InlineKeyboardButton.WithWebApp("Open in app", new WebAppInfo { Url = webAppUrl }),
                 InlineKeyboardButton.WithCallbackData("Mute these", muteData),
             },
         });
@@ -64,43 +67,51 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
         return (body, keyboard);
     }
 
-    private static string BuildOpenUrl(string type, string? actorId, Dictionary<string, object?> payload)
+    private static string BuildDestPath(string type, string? actorId, Dictionary<string, object?> payload)
     {
         return type switch
         {
             "LikeReceived" or "MatchCreated" => actorId is not null
-                ? $"{AppBaseUrl}/friends?userId={Uri.EscapeDataString(actorId)}"
-                : $"{AppBaseUrl}/friends",
-            "MessageReceived"    => $"{AppBaseUrl}/talks?chat={Uri.EscapeDataString(GetString(payload, "chatId"))}",
-            "ForumReplyToThread" => $"{AppBaseUrl}/talks?topic={Uri.EscapeDataString(GetString(payload, "topicId"))}",
+                ? $"/friends?userId={Uri.EscapeDataString(actorId)}"
+                : "/friends",
+            "MessageReceived"    => $"/talks?chat={Uri.EscapeDataString(GetString(payload, "chatId"))}",
+            "ForumReplyToThread" => $"/talks?topic={Uri.EscapeDataString(GetString(payload, "topicId"))}",
             "EventPublished" or "EventReminder" or "EventInviteReceived" =>
-                $"{AppBaseUrl}/aloevera/events/{Uri.EscapeDataString(GetString(payload, "eventId"))}",
-            "CommunityBroadcast" => ResolveCommunityBroadcastLink(GetString(payload, "link")),
-            "RankUp"             => $"{AppBaseUrl}/settings",
-            _                    => AppBaseUrl,
+                $"/aloevera/events/{Uri.EscapeDataString(GetString(payload, "eventId"))}",
+            "CommunityBroadcast" => ResolveCommunityBroadcastPath(GetString(payload, "link")),
+            "RankUp"             => "/settings",
+            _                    => "/",
         };
     }
 
-    private static string ResolveCommunityBroadcastLink(string link)
+    private static string ResolveCommunityBroadcastPath(string link)
     {
         if (string.IsNullOrEmpty(link))
-            return $"{AppBaseUrl}/aloevera";
+            return "/aloevera";
+
+        // A rooted path is already an in-app relative path. This MUST be checked before
+        // Uri.TryCreate: on Unix a leading-'/' string parses as an absolute file:// URI
+        // (Uri.TryCreate(..., Absolute) returns true), which would otherwise send every
+        // relative link down the "disallowed absolute" fallback. Reject protocol-relative
+        // '//host' (open-redirect surface) → safe default.
+        if (link.StartsWith('/'))
+            return link.StartsWith("//") ? "/aloevera" : link;
 
         if (Uri.TryCreate(link, UriKind.Absolute, out var absolute))
         {
-            // Only allow absolute URLs pointing to the app's own domain.
+            // Only allow absolute URLs pointing to the app's own domain; use just the path+query.
             if (absolute.Scheme == Uri.UriSchemeHttps &&
                 (absolute.Host.Equals("aloeve.club", StringComparison.OrdinalIgnoreCase) ||
                  absolute.Host.Equals("www.aloeve.club", StringComparison.OrdinalIgnoreCase)))
             {
-                return absolute.ToString();
+                return absolute.PathAndQuery;
             }
-            // Disallowed absolute URL (off-domain or non-HTTPS) — fall back to safe default.
-            return $"{AppBaseUrl}/aloevera";
+            // Disallowed absolute URL (off-domain or non-HTTPS) — safe default.
+            return "/aloevera";
         }
 
-        // Relative path — prepend base URL (path must start with /)
-        return link.StartsWith('/') ? $"{AppBaseUrl}{link}" : $"{AppBaseUrl}/{link}";
+        // Non-rooted, non-absolute (e.g. "aloevera") — treat as a path.
+        return $"/{link}";
     }
 
     private static bool IsAnonymous(Dictionary<string, object?> payload)
