@@ -17,4 +17,5 @@ public class LikeEntity : ITableEntity
     public string ToUserId { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public bool IsMatch { get; set; }
+    public bool IsAnonymous { get; set; }
 }

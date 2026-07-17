@@ -9,6 +9,7 @@ public class LikeDto
     public string ToUserId { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public bool IsMatch { get; set; }
+    public bool IsAnonymous { get; set; }
 }
 
 public class MatchDto
@@ -33,6 +34,7 @@ public class MessageDto
 public class CreateLikeRequestDto
 {
     public string ToUserId { get; set; } = string.Empty;
+    public bool Anonymous { get; set; }
 }
 
 public class LikeResponseDto
@@ -40,4 +42,9 @@ public class LikeResponseDto
     public LikeDto Like { get; set; } = new();
     public bool IsMatch { get; set; }
     public MatchDto? Match { get; set; }
+}
+
+public class AnonymousLikeCountDto
+{
+    public int Count { get; set; }
 }
