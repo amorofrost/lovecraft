@@ -34,7 +34,7 @@ public class MatchingController : ControllerBase
         if (currentUserId == null) return Unauthorized();
         try
         {
-            var result = await _matchingService.CreateLikeAsync(currentUserId, request.ToUserId);
+            var result = await _matchingService.CreateLikeAsync(currentUserId, request.ToUserId, request.Anonymous);
             return Ok(ApiResponse<LikeResponseDto>.SuccessResponse(result));
         }
         catch (Exception ex)
@@ -81,6 +81,26 @@ public class MatchingController : ControllerBase
         {
             _logger.LogError(ex, "Error getting received likes");
             return StatusCode(500, ApiResponse<List<LikeDto>>.ErrorResponse("INTERNAL_ERROR", "Failed to get received likes"));
+        }
+    }
+
+    /// <summary>
+    /// Count of pending anonymous likes received by the current user
+    /// </summary>
+    [HttpGet("likes/received/anonymous-count")]
+    public async Task<ActionResult<ApiResponse<AnonymousLikeCountDto>>> GetAnonymousReceivedCount()
+    {
+        var currentUserId = CurrentUserId;
+        if (currentUserId == null) return Unauthorized();
+        try
+        {
+            var count = await _matchingService.GetAnonymousReceivedCountAsync(currentUserId);
+            return Ok(ApiResponse<AnonymousLikeCountDto>.SuccessResponse(new AnonymousLikeCountDto { Count = count }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting anonymous received count");
+            return StatusCode(500, ApiResponse<AnonymousLikeCountDto>.ErrorResponse("INTERNAL_ERROR", "Failed to get anonymous like count"));
         }
     }
 
