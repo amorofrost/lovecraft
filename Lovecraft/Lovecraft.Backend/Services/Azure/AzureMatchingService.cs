@@ -42,7 +42,7 @@ public class AzureMatchingService : IMatchingService
         ).GetAwaiter().GetResult();
     }
 
-    public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
+    public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId, bool anonymous = false)
     {
         // Check if there's a reverse like (mutual match). Done before the write
         // so the IsMatch flag is persisted on the new row.
@@ -247,6 +247,14 @@ public class AzureMatchingService : IMatchingService
             results.Add(ToSentLikeDto(entity));
         }
         return results;
+    }
+
+    // TODO(Task 3): implement anonymous-received-count using Azure table storage.
+    // Stubbed here only so the interface change from Task 2 keeps the solution
+    // compiling; do not call this in production until Task 3 lands.
+    public Task<int> GetAnonymousReceivedCountAsync(string userId)
+    {
+        throw new NotImplementedException("GetAnonymousReceivedCountAsync not yet implemented for AzureMatchingService (Task 3).");
     }
 
     public async Task<List<LikeDto>> GetReceivedLikesAsync(string userId)

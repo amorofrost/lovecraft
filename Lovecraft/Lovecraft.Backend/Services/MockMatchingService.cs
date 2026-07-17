@@ -24,7 +24,7 @@ public class MockMatchingService : IMatchingService
         _logger = logger;
     }
 
-    public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId)
+    public async Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId, bool anonymous = false)
     {
         // Check if like already exists
         var existingLike = MockDataStore.Likes.FirstOrDefault(l =>
@@ -46,7 +46,8 @@ public class MockMatchingService : IMatchingService
             FromUserId = fromUserId,
             ToUserId = toUserId,
             CreatedAt = DateTime.UtcNow,
-            IsMatch = false
+            IsMatch = false,
+            IsAnonymous = anonymous
         };
 
         MockDataStore.Likes.Add(like);
@@ -102,8 +103,6 @@ public class MockMatchingService : IMatchingService
         // Non-mutual like: fire LikeReceived notification to recipient (skip self-action)
         if (_producer is not null && fromUserId != toUserId)
         {
-            var sender = MockDataStore.Users.FirstOrDefault(u => u.Id == fromUserId);
-            var anonymous = sender?.Settings?.AnonymousLikes ?? false;
             var payloadJson = JsonSerializer.Serialize(new
             {
                 likeId = like.Id,
@@ -147,9 +146,21 @@ public class MockMatchingService : IMatchingService
             .ToHashSet();
 
         var likes = MockDataStore.Likes
-            .Where(l => l.ToUserId == userId && !iLiked.Contains(l.FromUserId))
+            .Where(l => l.ToUserId == userId && !iLiked.Contains(l.FromUserId) && !l.IsAnonymous)
             .ToList();
         return Task.FromResult(likes);
+    }
+
+    public Task<int> GetAnonymousReceivedCountAsync(string userId)
+    {
+        var iLiked = MockDataStore.Likes
+            .Where(l => l.FromUserId == userId)
+            .Select(l => l.ToUserId)
+            .ToHashSet();
+
+        var count = MockDataStore.Likes
+            .Count(l => l.ToUserId == userId && !iLiked.Contains(l.FromUserId) && l.IsAnonymous);
+        return Task.FromResult(count);
     }
 
     public Task<List<MatchDto>> GetMatchesAsync(string userId)

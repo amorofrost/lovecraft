@@ -80,9 +80,10 @@ public interface IEventService
 
 public interface IMatchingService
 {
-    Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId);
+    Task<LikeResponseDto> CreateLikeAsync(string fromUserId, string toUserId, bool anonymous = false);
     Task<List<LikeDto>> GetSentLikesAsync(string userId);
     Task<List<LikeDto>> GetReceivedLikesAsync(string userId);
+    Task<int> GetAnonymousReceivedCountAsync(string userId);
     Task<List<MatchDto>> GetMatchesAsync(string userId);
 }
 

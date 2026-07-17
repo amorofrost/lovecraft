@@ -8,6 +8,7 @@ using Lovecraft.Backend.Services.Notifications;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Common.DTOs.Matching;
+using Lovecraft.Common.DTOs.Notifications;
 using Lovecraft.Common.DTOs.Users;
 using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -42,6 +43,80 @@ public class MatchingTests : IDisposable
         var userSvc = new MockUserService(new MockAppConfigService());
         var matching = new MockMatchingService(chat, userSvc);
         return (matching, chat);
+    }
+
+    private static (MockMatchingService matching, Mock<INotificationProducer> producer) CreateServicesWithProducer()
+    {
+        var chat = new MockChatService();
+        var userSvc = new MockUserService(new MockAppConfigService());
+        var producer = new Mock<INotificationProducer>();
+        producer
+            .Setup(p => p.ProduceAsync(It.IsAny<string>(), It.IsAny<NotificationType>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync((NotificationDto?)null);
+        var matching = new MockMatchingService(chat, userSvc, producer.Object);
+        return (matching, producer);
+    }
+
+    // ── Anonymity ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateLike_Anonymous_PersistsFlag()
+    {
+        var (svc, _) = CreateServices();
+
+        await svc.CreateLikeAsync("alice", "bob", anonymous: true);
+
+        var stored = MockDataStore.Likes.Single(l => l.FromUserId == "alice" && l.ToUserId == "bob");
+        Assert.True(stored.IsAnonymous);
+    }
+
+    [Fact]
+    public async Task CreateLike_Anonymous_NotifiesWithNullActor()
+    {
+        var (svc, producer) = CreateServicesWithProducer();
+
+        await svc.CreateLikeAsync("alice", "bob", anonymous: true);
+
+        producer.Verify(p => p.ProduceAsync(
+            "bob", NotificationType.LikeReceived, null, It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateLike_Normal_NotifiesWithActor()
+    {
+        var (svc, producer) = CreateServicesWithProducer();
+
+        await svc.CreateLikeAsync("alice", "bob");
+
+        producer.Verify(p => p.ProduceAsync(
+            "bob", NotificationType.LikeReceived, "alice", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetReceivedLikes_ExcludesAnonymous()
+    {
+        var (svc, _) = CreateServices();
+        await svc.CreateLikeAsync("bob", "alice", anonymous: true);   // anonymous → hidden
+        await svc.CreateLikeAsync("carol", "alice");                  // normal → shown
+
+        var received = await svc.GetReceivedLikesAsync("alice");
+
+        Assert.Single(received);
+        Assert.Equal("carol", received[0].FromUserId);
+    }
+
+    [Fact]
+    public async Task GetAnonymousReceivedCount_CountsPendingAnonymousOnly()
+    {
+        var (svc, _) = CreateServices();
+        await svc.CreateLikeAsync("bob", "alice", anonymous: true);   // pending anonymous
+        await svc.CreateLikeAsync("carol", "alice");                  // pending normal
+        await svc.CreateLikeAsync("dave", "alice", anonymous: true);  // pending anonymous
+        await svc.CreateLikeAsync("alice", "dave", anonymous: true);  // makes alice↔dave mutual → excluded
+
+        var count = await svc.GetAnonymousReceivedCountAsync("alice");
+
+        Assert.Equal(1, count); // only bob remains pending+anonymous
     }
 
     // ── CreateLike ────────────────────────────────────────────────────────────
@@ -363,10 +438,8 @@ public class MatchingNotificationTests
         var producer = new Mock<INotificationProducer>();
         var svc = BuildService(producer);
 
-        // Seed sender with AnonymousLikes=true via mock user data
-        var sender = MockDataStore.Users.First();
-        sender.Settings.AnonymousLikes = true;
-        await svc.CreateLikeAsync(sender.Id, "u-target");
+        // Anonymity is now per-like via the `anonymous` param, not a sender-global setting.
+        await svc.CreateLikeAsync("u-from", "u-target", anonymous: true);
 
         producer.Verify(p => p.ProduceAsync(
             "u-target",
