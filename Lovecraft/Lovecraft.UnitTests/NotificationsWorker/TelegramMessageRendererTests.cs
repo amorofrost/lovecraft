@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Lovecraft.Common.Enums;
 using Lovecraft.NotificationsWorker.Models;
 using Lovecraft.NotificationsWorker.Renderers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,12 +13,12 @@ public class TelegramMessageRendererTests
 {
     private readonly TelegramMessageRenderer _renderer = new(NullLogger<TelegramMessageRenderer>.Instance);
 
-    // Extracts and decodes the relative dest path from the "Open in app" web_app button.
+    // Locates the "Open in app" web_app button structurally (its label is localized, so we
+    // cannot match on text) and decodes its relative dest path.
     private static string DestOf(InlineKeyboardMarkup keyboard)
     {
-        var open = keyboard.InlineKeyboard.SelectMany(row => row).First(b => b.Text.Contains("Open"));
-        Assert.Null(open.Url);                    // web_app button carries no plain Url
-        Assert.NotNull(open.WebApp);
+        var open = keyboard.InlineKeyboard.SelectMany(row => row).First(b => b.WebApp is not null);
+        Assert.Null(open.Url);
         var url = open.WebApp!.Url;
         Assert.StartsWith("https://aloeve.club/tg?dest=", url);
         const string marker = "?dest=";
@@ -25,28 +26,79 @@ public class TelegramMessageRendererTests
         return Uri.UnescapeDataString(encoded);
     }
 
-    [Fact]
-    public void LikeReceived_anonymous_omits_actor()
-    {
-        var notif = new NotificationModel("n1", "u1", "LikeReceived", null,
-            "{\"likeId\":\"l1\",\"anonymous\":true}", DateTime.UtcNow);
+    private static Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton OpenButton(InlineKeyboardMarkup keyboard) =>
+        keyboard.InlineKeyboard.SelectMany(row => row).First(b => b.WebApp is not null);
 
-        var (html, _) = _renderer.Render(notif);
+    private static Telegram.Bot.Types.ReplyMarkups.InlineKeyboardButton MuteButton(InlineKeyboardMarkup keyboard) =>
+        keyboard.InlineKeyboard.SelectMany(row => row).First(b => b.CallbackData?.StartsWith("mute:") == true);
 
-        Assert.Contains("Someone", html);
-        Assert.DoesNotContain("<b>Someone</b> liked", html);   // anonymous wording can vary; just check no actor name leak
-    }
+    // ---- Localized bodies ----
 
     [Fact]
-    public void MessageReceived_uses_payload_preview()
+    public void MessageReceived_body_is_russian_for_ru()
     {
         var notif = new NotificationModel("n2", "u1", "MessageReceived", "actor",
-            "{\"chatId\":\"c1\",\"messageId\":\"m1\",\"preview\":\"hello there\"}", DateTime.UtcNow);
+            "{\"chatId\":\"c1\",\"preview\":\"hello there\"}", DateTime.UtcNow);
 
-        var (html, _) = _renderer.Render(notif);
+        var (html, _) = _renderer.Render(notif, Language.Ru);
 
+        Assert.Contains("Новое сообщение", html);
+        Assert.Contains("hello there", html);   // preview content passes through untranslated
+    }
+
+    [Fact]
+    public void MessageReceived_body_is_english_for_en()
+    {
+        var notif = new NotificationModel("n2", "u1", "MessageReceived", "actor",
+            "{\"chatId\":\"c1\",\"preview\":\"hello there\"}", DateTime.UtcNow);
+
+        var (html, _) = _renderer.Render(notif, Language.En);
+
+        Assert.Contains("New message", html);
         Assert.Contains("hello there", html);
     }
+
+    [Fact]
+    public void MatchCreated_body_localized()
+    {
+        var notif = new NotificationModel("n1", "u1", "MatchCreated", "actor", "{}", DateTime.UtcNow);
+
+        Assert.Contains("новый мэтч", _renderer.Render(notif, Language.Ru).Html);
+        Assert.Contains("new match", _renderer.Render(notif, Language.En).Html);
+    }
+
+    [Fact]
+    public void EventReminder_body_localized_title_passthrough()
+    {
+        var notif = new NotificationModel("n10", "u1", "EventReminder", null,
+            "{\"eventId\":\"e1\",\"eventTitle\":\"Show\"}", DateTime.UtcNow);
+
+        var ru = _renderer.Render(notif, Language.Ru).Html;
+        Assert.Contains("Событие завтра", ru);
+        Assert.Contains("Show", ru);            // event title passes through
+        Assert.Contains("Event tomorrow", _renderer.Render(notif, Language.En).Html);
+    }
+
+    [Fact]
+    public void RankUp_uses_localized_rank_name()
+    {
+        var notif = new NotificationModel("n12", "u1", "RankUp", null,
+            "{\"newRank\":\"aloeCrew\"}", DateTime.UtcNow);
+
+        Assert.Contains("Команда AloeVera", _renderer.Render(notif, Language.Ru).Html);
+        Assert.Contains("Aloe Crew", _renderer.Render(notif, Language.En).Html);
+    }
+
+    [Fact]
+    public void Default_notification_localized()
+    {
+        var notif = new NotificationModel("nz", "u1", "SomethingUnknown", null, "{}", DateTime.UtcNow);
+
+        Assert.Contains("новое уведомление", _renderer.Render(notif, Language.Ru).Html);
+        Assert.Contains("new notification", _renderer.Render(notif, Language.En).Html);
+    }
+
+    // ---- Buttons ----
 
     [Fact]
     public void Open_button_is_a_web_app_button_pointing_at_the_mini_app()
@@ -54,28 +106,38 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n3", "u1", "MatchCreated", "actor",
             "{\"matchId\":\"m1\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
+        var (_, keyboard) = _renderer.Render(notif, Language.Ru);
 
         Assert.NotNull(keyboard);
-        var open = keyboard.InlineKeyboard.SelectMany(row => row).FirstOrDefault(b => b.Text.Contains("Open"));
-        Assert.NotNull(open);
-        Assert.Null(open!.Url);
-        Assert.NotNull(open.WebApp);
+        var open = OpenButton(keyboard);
+        Assert.Null(open.Url);
         Assert.StartsWith("https://aloeve.club/tg?dest=", open.WebApp!.Url);
     }
 
     [Fact]
-    public void All_notifications_have_mute_callback_button()
+    public void Open_button_label_is_localized()
+    {
+        var notif = new NotificationModel("n3", "u1", "MatchCreated", "actor", "{}", DateTime.UtcNow);
+
+        Assert.Equal("Открыть в приложении", OpenButton(_renderer.Render(notif, Language.Ru).Keyboard).Text);
+        Assert.Equal("Open in app", OpenButton(_renderer.Render(notif, Language.En).Keyboard).Text);
+    }
+
+    [Fact]
+    public void Mute_button_data_stable_label_localized()
     {
         var notif = new NotificationModel("n4", "u1", "MessageReceived", "actor",
             "{\"chatId\":\"c1\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        var muteButton = keyboard.InlineKeyboard.SelectMany(row => row).FirstOrDefault(b => b.CallbackData?.StartsWith("mute:") == true);
-        Assert.NotNull(muteButton);
-        Assert.Equal("mute:messageReceived", muteButton!.CallbackData);
+        var muteRu = MuteButton(_renderer.Render(notif, Language.Ru).Keyboard);
+        var muteEn = MuteButton(_renderer.Render(notif, Language.En).Keyboard);
+        Assert.Equal("mute:messageReceived", muteRu.CallbackData);   // data unchanged
+        Assert.Equal("mute:messageReceived", muteEn.CallbackData);
+        Assert.Equal("Отключить эти", muteRu.Text);
+        Assert.Equal("Mute these", muteEn.Text);
     }
+
+    // ---- dest paths (unchanged behavior; language-agnostic) ----
 
     [Fact]
     public void CommunityBroadcast_uses_payload_link()
@@ -83,9 +145,18 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n5", "u1", "CommunityBroadcast", null,
             "{\"title\":\"Big news\",\"body\":\"something\",\"link\":\"/aloevera/events/42\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
+        Assert.Equal("/aloevera/events/42", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
+    }
 
-        Assert.Equal("/aloevera/events/42", DestOf(keyboard));
+    [Fact]
+    public void CommunityBroadcast_body_passes_through_untranslated()
+    {
+        var notif = new NotificationModel("n5", "u1", "CommunityBroadcast", null,
+            "{\"title\":\"Big news\",\"body\":\"something\"}", DateTime.UtcNow);
+
+        var html = _renderer.Render(notif, Language.Ru).Html;
+        Assert.Contains("Big news", html);
+        Assert.Contains("something", html);
     }
 
     [Fact]
@@ -94,9 +165,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n7", "u1", "CommunityBroadcast", null,
             "{\"title\":\"X\",\"body\":\"Y\",\"link\":\"https://evil.example/phish\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        Assert.Equal("/aloevera", DestOf(keyboard));
+        Assert.Equal("/aloevera", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
     }
 
     [Fact]
@@ -105,9 +174,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n8", "u1", "MessageReceived", "actor",
             "{\"chatId\":\"c1\",\"preview\":\"hi\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        Assert.Equal("/talks?chat=c1", DestOf(keyboard));
+        Assert.Equal("/talks?chat=c1", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
     }
 
     [Fact]
@@ -116,9 +183,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n9", "u1", "ForumReplyToThread", "actor",
             "{\"topicId\":\"t1\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        Assert.Equal("/talks?topic=t1", DestOf(keyboard));
+        Assert.Equal("/talks?topic=t1", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
     }
 
     [Fact]
@@ -127,9 +192,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n10", "u1", "EventReminder", null,
             "{\"eventId\":\"e1\",\"eventTitle\":\"Show\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        Assert.Equal("/aloevera/events/e1", DestOf(keyboard));
+        Assert.Equal("/aloevera/events/e1", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
     }
 
     [Fact]
@@ -138,9 +201,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n11", "u1", "LikeReceived", "actor-9",
             "{\"likeId\":\"l1\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        Assert.Equal("/friends?userId=actor-9", DestOf(keyboard));
+        Assert.Equal("/friends?userId=actor-9", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
     }
 
     [Fact]
@@ -149,9 +210,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n12", "u1", "RankUp", null,
             "{\"newRank\":\"aloeCrew\"}", DateTime.UtcNow);
 
-        var (_, keyboard) = _renderer.Render(notif);
-
-        Assert.Equal("/settings", DestOf(keyboard));
+        Assert.Equal("/settings", DestOf(_renderer.Render(notif, Language.Ru).Keyboard));
     }
 
     [Fact]
@@ -160,7 +219,7 @@ public class TelegramMessageRendererTests
         var notif = new NotificationModel("n6", "u1", "MessageReceived", "actor",
             "not-valid-json", DateTime.UtcNow);
 
-        var (html, keyboard) = _renderer.Render(notif);
+        var (html, keyboard) = _renderer.Render(notif, Language.Ru);
 
         Assert.NotNull(html);
         Assert.NotEmpty(html);

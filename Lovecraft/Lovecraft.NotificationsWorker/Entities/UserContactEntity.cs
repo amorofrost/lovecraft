@@ -25,6 +25,9 @@ public class UserContactEntity : ITableEntity
     /// <summary>Whether the email has been verified via confirmation link.</summary>
     public bool EmailVerified { get; set; } = false;
 
+    /// <summary>Raw JSON of the user's settings (contains their Language). Parsed via LanguageResolver.</summary>
+    public string SettingsJson { get; set; } = "{}";
+
     public static string GetPartitionKey(string userId) =>
         $"user-{userId[0].ToString().ToLower()}";
 }

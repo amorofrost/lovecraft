@@ -1,5 +1,7 @@
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Common.Enums;
+using Lovecraft.Common.Localization;
 using Lovecraft.NotificationsWorker.Entities;
 using Lovecraft.NotificationsWorker.Models;
 using Lovecraft.NotificationsWorker.Renderers;
@@ -41,11 +43,13 @@ public class TelegramDispatcher : ITelegramDispatcher
     {
         // Step 1: Look up user's Telegram chat id from the users table
         string? telegramUserId = null;
+        Language language = Language.Ru;
         try
         {
             var pk = UserContactEntity.GetPartitionKey(notification.UserId);
             var entity = await _users.GetEntityAsync<UserContactEntity>(pk, notification.UserId, cancellationToken: ct);
             telegramUserId = entity.Value.TelegramUserId;
+            language = LanguageResolver.FromSettings(entity.Value.SettingsJson);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -66,7 +70,7 @@ public class TelegramDispatcher : ITelegramDispatcher
         await _rateLimiter.AcquireAsync(telegramUserId, ct);
 
         // Step 4: Render notification as Telegram HTML + inline keyboard
-        var (html, keyboard) = _renderer.Render(notification);
+        var (html, keyboard) = _renderer.Render(notification, language);
 
         // Step 5: Send
         try

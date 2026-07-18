@@ -1,5 +1,6 @@
 using Azure;
 using Azure.Data.Tables;
+using Lovecraft.Common.Enums;
 using Lovecraft.NotificationsWorker.Dispatchers;
 using Lovecraft.NotificationsWorker.Entities;
 using Lovecraft.NotificationsWorker.Models;
@@ -19,14 +20,17 @@ public class TelegramDispatcherTests
     private static (TelegramDispatcher, Mock<ITelegramSendClient>) BuildDispatcher(
         string? telegramUserId,
         Func<Task>? sendBehavior = null,
-        Mock<ITelegramRateLimiter>? rateLimiter = null)
+        Mock<ITelegramRateLimiter>? rateLimiter = null,
+        string? settingsJson = null)
     {
         var users = new Mock<TableClient>();
         if (telegramUserId is not null)
         {
             users.Setup(t => t.GetEntityAsync<UserContactEntity>(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Response.FromValue(new UserContactEntity { TelegramUserId = telegramUserId }, new Mock<Response>().Object));
+                .ReturnsAsync(Response.FromValue(
+                    new UserContactEntity { TelegramUserId = telegramUserId, SettingsJson = settingsJson ?? "{}" },
+                    new Mock<Response>().Object));
         }
         else
         {
@@ -108,5 +112,27 @@ public class TelegramDispatcherTests
         var result = await dispatcher.DispatchAsync(SampleNotification(), CancellationToken.None);
 
         Assert.Equal(DispatchResult.RetryableError, result);
+    }
+
+    [Fact]
+    public async Task Renders_in_user_language_from_settings()
+    {
+        // English settings (Language:1) → English body
+        var (dispEn, sendEn) = BuildDispatcher(telegramUserId: "555111", settingsJson: "{\"Language\":1}");
+        await dispEn.DispatchAsync(SampleNotification("MatchCreated"), CancellationToken.None);
+        sendEn.Verify(s => s.SendAsync(
+            It.IsAny<string>(),
+            It.Is<string>(h => h.Contains("new match")),
+            It.IsAny<Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // Russian settings (Language:0) → Russian body
+        var (dispRu, sendRu) = BuildDispatcher(telegramUserId: "555111", settingsJson: "{\"Language\":0}");
+        await dispRu.DispatchAsync(SampleNotification("MatchCreated"), CancellationToken.None);
+        sendRu.Verify(s => s.SendAsync(
+            It.IsAny<string>(),
+            It.Is<string>(h => h.Contains("новый мэтч")),
+            It.IsAny<Telegram.Bot.Types.ReplyMarkups.InlineKeyboardMarkup>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

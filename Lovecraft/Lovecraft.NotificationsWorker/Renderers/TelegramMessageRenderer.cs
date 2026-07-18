@@ -1,6 +1,8 @@
 using System;
 using System.Text.Json;
 using System.Web;
+using Lovecraft.Common.Enums;
+using Lovecraft.Common.Localization;
 using Lovecraft.NotificationsWorker.Models;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot.Types;
@@ -19,7 +21,7 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
         _logger = logger;
     }
 
-    public (string Html, InlineKeyboardMarkup Keyboard) Render(NotificationModel notification)
+    public (string Html, InlineKeyboardMarkup Keyboard) Render(NotificationModel notification, Language language)
     {
         Dictionary<string, object?> payload;
         try
@@ -37,18 +39,21 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
 
         string body = notification.Type switch
         {
-            "LikeReceived" => IsAnonymous(payload)
-                ? "❤️ Someone liked your profile"
-                : "❤️ Someone liked your profile",   // actor name lookup deferred to follow-up
-            "MatchCreated"          => "💞 You have a new match!",
-            "MessageReceived"       => $"💬 New message: {HttpUtility.HtmlEncode(GetString(payload, "preview"))}",
-            "ForumReplyToThread"    => "💭 Someone replied in a thread",
-            "CommunityBroadcast"    => $"📣 <b>{HttpUtility.HtmlEncode(GetString(payload, "title"))}</b>\n\n{HttpUtility.HtmlEncode(GetString(payload, "body"))}",
-            "EventPublished"        => $"📅 New event: <b>{HttpUtility.HtmlEncode(GetString(payload, "eventTitle"))}</b>",
-            "EventReminder"         => $"⏰ Event tomorrow: <b>{HttpUtility.HtmlEncode(GetString(payload, "eventTitle"))}</b>",
-            "EventInviteReceived"   => $"🎟️ You're invited: <b>{HttpUtility.HtmlEncode(GetString(payload, "eventTitle"))}</b>",
-            "RankUp"                => $"🏆 You're now <b>{HttpUtility.HtmlEncode(GetString(payload, "newRank"))}</b>!",
-            _                       => "You have a new notification",
+            "LikeReceived"        => TelegramStrings.Get(language, TelegramStrings.LikeReceived),
+            "MatchCreated"        => TelegramStrings.Get(language, TelegramStrings.MatchCreated),
+            "MessageReceived"     => string.Format(TelegramStrings.Get(language, TelegramStrings.MessageReceived),
+                                                    HttpUtility.HtmlEncode(GetString(payload, "preview"))),
+            "ForumReplyToThread"  => TelegramStrings.Get(language, TelegramStrings.ForumReply),
+            "CommunityBroadcast"  => $"📣 <b>{HttpUtility.HtmlEncode(GetString(payload, "title"))}</b>\n\n{HttpUtility.HtmlEncode(GetString(payload, "body"))}",
+            "EventPublished"      => string.Format(TelegramStrings.Get(language, TelegramStrings.EventPublished),
+                                                    HttpUtility.HtmlEncode(GetString(payload, "eventTitle"))),
+            "EventReminder"       => string.Format(TelegramStrings.Get(language, TelegramStrings.EventReminder),
+                                                    HttpUtility.HtmlEncode(GetString(payload, "eventTitle"))),
+            "EventInviteReceived" => string.Format(TelegramStrings.Get(language, TelegramStrings.EventInvite),
+                                                    HttpUtility.HtmlEncode(GetString(payload, "eventTitle"))),
+            "RankUp"              => string.Format(TelegramStrings.Get(language, TelegramStrings.RankUp),
+                                                    HttpUtility.HtmlEncode(TelegramStrings.GetRankName(language, GetString(payload, "newRank")))),
+            _                     => TelegramStrings.Get(language, TelegramStrings.DefaultNotification),
         };
 
         var destPath  = BuildDestPath(notification.Type, notification.ActorId, payload);
@@ -59,8 +64,8 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
         {
             new[]
             {
-                InlineKeyboardButton.WithWebApp("Open in app", new WebAppInfo { Url = webAppUrl }),
-                InlineKeyboardButton.WithCallbackData("Mute these", muteData),
+                InlineKeyboardButton.WithWebApp(TelegramStrings.Get(language, TelegramStrings.BtnOpenInApp), new WebAppInfo { Url = webAppUrl }),
+                InlineKeyboardButton.WithCallbackData(TelegramStrings.Get(language, TelegramStrings.BtnMute), muteData),
             },
         });
 
@@ -112,13 +117,6 @@ public class TelegramMessageRenderer : ITelegramMessageRenderer
 
         // Non-rooted, non-absolute (e.g. "aloevera") — treat as a path.
         return $"/{link}";
-    }
-
-    private static bool IsAnonymous(Dictionary<string, object?> payload)
-    {
-        var v = GetString(payload, "anonymous");
-        return v.Equals("true", StringComparison.OrdinalIgnoreCase)
-            || v.Equals("True", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetString(Dictionary<string, object?> payload, string key)
