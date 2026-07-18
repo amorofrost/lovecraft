@@ -4,6 +4,7 @@ using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Lovecraft.Common.Localization;
 
 namespace Lovecraft.TelegramBot;
 
@@ -49,7 +50,8 @@ public class TelegramBotWorker : BackgroundService
                 : false;
             if (handled)
             {
-                await bot.AnswerCallbackQuery(cb.Id, "Notifications muted", cancellationToken: ct);
+                var lang = LanguageResolver.FromTelegramCode(cb.From.LanguageCode);
+                await bot.AnswerCallbackQuery(cb.Id, TelegramStrings.Get(lang, TelegramStrings.BotMuteAck), cancellationToken: ct);
             }
             return;
         }
@@ -62,18 +64,20 @@ public class TelegramBotWorker : BackgroundService
 
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase))
         {
+            var lang = LanguageResolver.FromTelegramCode(message.From?.LanguageCode);
             await bot.SendMessage(
                 message.Chat.Id,
-                "AloeVera Harmony Meet — use the menu button to open the mini app, or sign in on the website with Telegram.",
+                TelegramStrings.Get(lang, TelegramStrings.BotStart),
                 cancellationToken: ct);
             return;
         }
 
         if (text.StartsWith("/help", StringComparison.OrdinalIgnoreCase))
         {
+            var lang = LanguageResolver.FromTelegramCode(message.From?.LanguageCode);
             await bot.SendMessage(
                 message.Chat.Id,
-                "Commands: /start — welcome. Open the Mini App from the bot menu for the web experience inside Telegram.",
+                TelegramStrings.Get(lang, TelegramStrings.BotHelp),
                 cancellationToken: ct);
         }
     }
