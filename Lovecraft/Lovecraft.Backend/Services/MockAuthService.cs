@@ -947,8 +947,82 @@ public class MockAuthService : IAuthService
         _logger.LogInformation("Revoked all tokens for user {UserId}", userId);
     }
 
-    public Task<PreRegisterResultDto> PreRegisterAttendeesAsync(string eventId, List<PreRegisterAttendeeDto> attendees)
-        => throw new NotImplementedException();
+    public async Task<PreRegisterResultDto> PreRegisterAttendeesAsync(
+        string eventId, List<PreRegisterAttendeeDto> attendees)
+    {
+        var result = new PreRegisterResultDto();
+
+        foreach (var row in attendees ?? new List<PreRegisterAttendeeDto>())
+        {
+            var validated = PreRegistrationRowValidator.Validate(row);
+            var rowResult = new PreRegisterRowResultDto { TelegramUsername = validated.Username };
+
+            if (validated.Status is not null)
+            {
+                rowResult.Status = validated.Status;
+                rowResult.Message = validated.Message;
+                if (validated.Status == PreRegistrationRowValidator.StatusInvalidUsername)
+                    result.Summary.InvalidUsername++;
+                else
+                    result.Summary.InvalidName++;
+                result.Results.Add(rowResult);
+                continue;
+            }
+
+            var userId = validated.UserId;
+            var name = validated.Name;
+            rowResult.UserId = userId;
+
+            if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
+            {
+                rowResult.Status = PreRegistrationRowValidator.StatusSkippedExists;
+                rowResult.Message = "an account with this username already exists";
+                result.Summary.SkippedExists++;
+                result.Results.Add(rowResult);
+                continue;
+            }
+
+            try
+            {
+                var syntheticEmail = $"prereg_{userId}@telegram.local";
+                var user = new MockUser
+                {
+                    Id = userId,
+                    AccountNameDisplay = validated.Username,
+                    Email = syntheticEmail,
+                    Name = name,
+                    PasswordHash = _passwordHasher.HashPassword(Guid.NewGuid().ToString("N")),
+                    EmailVerified = true,
+                    AuthMethods = new List<string>(),
+                    PreRegistered = true,
+                    TelegramUserId = null,
+                    Gender = NormalizeGender(row.Gender),
+                    ProfileImage = row.PhotoUrl ?? string.Empty,
+                    CreatedAt = DateTime.UtcNow,
+                };
+
+                _users[syntheticEmail.ToLowerInvariant()] = user;
+                SyncAuthContactState(user);
+
+                await _events.RegisterForEventAsync(userId, eventId);
+
+                rowResult.Status = PreRegistrationRowValidator.StatusCreated;
+                result.Summary.Created++;
+                _logger.LogInformation("Pre-registered shell account {UserId} for event {EventId}", userId, eventId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Pre-registration failed for {Username}", validated.Username);
+                rowResult.Status = PreRegistrationRowValidator.StatusError;
+                rowResult.Message = ex.Message;
+                result.Summary.Error++;
+            }
+
+            result.Results.Add(rowResult);
+        }
+
+        return result;
+    }
 
     private class MockUser
     {
