@@ -10,6 +10,7 @@ using Lovecraft.Backend.Services.Caching;
 using Lovecraft.Backend.Storage;
 using Lovecraft.Backend.Storage.Entities;
 using Lovecraft.Backend.Services;
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Options;
@@ -1614,4 +1615,7 @@ public class AzureAuthService : IAuthService
         if (cfg.Registration.RequireEventInvite) throw new InviteRequiredException();
         return null;
     }
+
+    public Task<PreRegisterResultDto> PreRegisterAttendeesAsync(string eventId, List<PreRegisterAttendeeDto> attendees)
+        => throw new NotImplementedException();
 }

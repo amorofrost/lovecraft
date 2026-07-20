@@ -1,3 +1,4 @@
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Auth;
 
 namespace Lovecraft.Backend.Services;
@@ -59,6 +60,11 @@ public interface IAuthService
 
     /// <summary>Returns availability of a chosen account name. See AccountNameAvailabilityDto for reason codes.</summary>
     Task<AccountNameAvailabilityDto> CheckAccountNameAvailabilityAsync(string name);
+
+    /// <summary>Admin bulk import: create shell accounts for event attendees keyed by Telegram
+    /// username, and register each created account as an attendee of <paramref name="eventId"/>.
+    /// Idempotent — rows whose username already resolves to an account are skipped.</summary>
+    Task<PreRegisterResultDto> PreRegisterAttendeesAsync(string eventId, List<PreRegisterAttendeeDto> attendees);
 }
 
 public enum AttachEmailResult

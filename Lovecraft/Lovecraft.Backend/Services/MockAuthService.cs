@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Lovecraft.Common.DTOs.Admin;
 using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.Enums;
 using Lovecraft.Backend.Auth;
@@ -933,7 +934,7 @@ public class MockAuthService : IAuthService
     public async Task RevokeAllUserTokensAsync(string userId)
     {
         await Task.Delay(50);
-        
+
         var tokensToRemove = _refreshTokens.Where(kvp => kvp.Value == userId)
             .Select(kvp => kvp.Key)
             .ToList();
@@ -945,6 +946,9 @@ public class MockAuthService : IAuthService
 
         _logger.LogInformation("Revoked all tokens for user {UserId}", userId);
     }
+
+    public Task<PreRegisterResultDto> PreRegisterAttendeesAsync(string eventId, List<PreRegisterAttendeeDto> attendees)
+        => throw new NotImplementedException();
 
     private class MockUser
     {
@@ -968,6 +972,7 @@ public class MockAuthService : IAuthService
         public string? TelegramUserId { get; set; }
         public string? GoogleUserId { get; set; }
         public string ProfileImage { get; set; } = string.Empty;
+        public bool PreRegistered { get; set; }
     }
 
     private class PasswordResetToken

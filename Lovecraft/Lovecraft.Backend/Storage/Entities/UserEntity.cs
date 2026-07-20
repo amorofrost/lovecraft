@@ -54,6 +54,11 @@ public class UserEntity : ITableEntity
     /// <summary>Google <c>sub</c> when the account uses Google sign-in; empty otherwise.</summary>
     public string GoogleUserId { get; set; } = string.Empty;
 
+    /// <summary>True when the row was created by admin attendee pre-registration.
+    /// Combined with an empty <see cref="TelegramUserId"/> this marks an unclaimed shell
+    /// account that may be claimed by a matching Telegram username on first sign-in.</summary>
+    public bool PreRegistered { get; set; }
+
     /// <summary>Instagram username (without @), optional.</summary>
     public string InstagramHandle { get; set; } = string.Empty;
 
