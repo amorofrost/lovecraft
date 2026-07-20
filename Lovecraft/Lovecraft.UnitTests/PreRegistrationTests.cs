@@ -1,7 +1,11 @@
+using System.Linq;
 using Lovecraft.Backend.Auth;
 using Lovecraft.Backend.Configuration;
+using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Admin;
+using Lovecraft.Common.DTOs.Events;
+using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -12,7 +16,7 @@ namespace Lovecraft.UnitTests;
 public class PreRegistrationTests
 {
     private const string BotToken = "1234567:TEST-BOT-TOKEN-FOR-PREREGISTRATION";
-    private const string EventId = "1";
+    private const string EventId = "preregistration-test-event";
 
     private readonly MockAuthService _auth;
 
@@ -38,6 +42,27 @@ public class PreRegistrationTests
             events,
             Options.Create(new TelegramAuthOptions { BotToken = BotToken, BotUsername = "testbot" }),
             Options.Create(new GoogleAuthOptions()));
+
+        // Dedicated event so pre-registered attendees never perturb the shared seeded
+        // events that other test classes assert exact attendee counts on.
+        if (!MockDataStore.Events.Any(e => e.Id == EventId))
+        {
+            MockDataStore.Events.Add(new EventDto
+            {
+                Id = EventId,
+                Title = "Pre-registration test event",
+                Description = "Fixture event owned by PreRegistrationTests",
+                Date = new DateTime(2026, 1, 1, 18, 0, 0),
+                EndDate = new DateTime(2026, 1, 1, 22, 0, 0),
+                Location = "Test",
+                Capacity = 1000,
+                Attendees = new List<string>(),
+                Category = EventCategory.Concert,
+                Price = "0",
+                Organizer = "Test",
+                Visibility = EventVisibility.Public,
+            });
+        }
     }
 
     private static PreRegisterAttendeeDto Row(string username, string name = "Test Person") =>
