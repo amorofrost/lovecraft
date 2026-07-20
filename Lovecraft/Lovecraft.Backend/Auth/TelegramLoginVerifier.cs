@@ -39,12 +39,6 @@ public static class TelegramLoginVerifier
         return Convert.ToHexString(computed).ToLowerInvariant();
     }
 
-    /// <summary>Test-only alias for <see cref="ComputeLoginHashHex"/>: signs a widget payload
-    /// exactly the way <see cref="Verify"/> checks it, by reusing the same data-check-string
-    /// builder and HMAC computation rather than duplicating that logic in test code.</summary>
-    public static string ComputeHashForTest(string botToken, TelegramLoginRequestDto dto) =>
-        ComputeLoginHashHex(botToken, dto);
-
     private static string BuildDataCheckString(TelegramLoginRequestDto dto)
     {
         var pairs = new List<KeyValuePair<string, string>>

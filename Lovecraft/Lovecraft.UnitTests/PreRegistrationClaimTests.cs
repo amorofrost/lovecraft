@@ -81,7 +81,7 @@ public class PreRegistrationClaimTests
             Username = username,
             AuthDate = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
         };
-        dto.Hash = TelegramLoginVerifier.ComputeHashForTest(BotToken, dto);
+        dto.Hash = TelegramLoginVerifier.ComputeLoginHashHex(BotToken, dto);
         return dto;
     }
 
@@ -119,6 +119,30 @@ public class PreRegistrationClaimTests
 
         Assert.NotNull(second);
         Assert.Equal("signedIn", second!.Status);
+    }
+
+    [Fact]
+    public async Task WidgetLogin_AlreadyClaimedShell_DifferentTelegramId_DoesNotReclaim()
+    {
+        await _auth.PreRegisterAttendeesAsync(EventId,
+            new() { new PreRegisterAttendeeDto { TelegramUsername = "Recycled_User", Name = "Recycled" } });
+
+        // The legitimate owner claims the shell first.
+        var first = await _auth.TelegramLoginAsync(SignedWidgetPayload(60001, "Recycled_User"));
+        Assert.NotNull(first);
+        Assert.Equal("signedIn", first!.Status);
+
+        // The Telegram username is later recycled to a different account (different numeric id).
+        // It must NOT be able to steal the already-claimed shell.
+        var second = await _auth.TelegramLoginAsync(SignedWidgetPayload(60002, "Recycled_User"));
+        Assert.NotNull(second);
+        Assert.Equal("pending", second!.Status);
+
+        // The shell must still be linked to the FIRST telegram identity: signing in again as
+        // 60001 (by numeric id alone, username omitted) must still resolve to signedIn.
+        var third = await _auth.TelegramLoginAsync(SignedWidgetPayload(60001, null));
+        Assert.NotNull(third);
+        Assert.Equal("signedIn", third!.Status);
     }
 
     [Fact]
