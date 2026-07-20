@@ -208,6 +208,17 @@ public class MockAuthService : IAuthService
             Username = request.Username,
             PhotoUrl = request.PhotoUrl,
         };
+
+        var claimed = TryClaimPreRegistered(tgInfo);
+        if (claimed is not null)
+        {
+            return new TelegramLoginResultDto
+            {
+                Status = "signedIn",
+                Auth = await IssueJwtPairAsync(claimed),
+            };
+        }
+
         var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
         _logger.LogInformation("Mock Telegram login: pending ticket for tg {TgId}", tgKey);
         return new TelegramLoginResultDto { Status = "pending", Ticket = ticket, Telegram = tgInfo };
@@ -344,6 +355,17 @@ public class MockAuthService : IAuthService
         {
             var auth = await IssueJwtPairAsync(existing);
             return new TelegramMiniAppLoginResultDto { Status = "signedIn", Auth = auth, Telegram = tgInfo };
+        }
+
+        var claimed = TryClaimPreRegistered(tgInfo);
+        if (claimed is not null)
+        {
+            return new TelegramMiniAppLoginResultDto
+            {
+                Status = "signedIn",
+                Auth = await IssueJwtPairAsync(claimed),
+                Telegram = tgInfo,
+            };
         }
 
         _logger.LogInformation("Mock Mini app login: needsRegistration for tg {TgId}", tgKey);
@@ -568,6 +590,28 @@ public class MockAuthService : IAuthService
         }
 
         return AttachEmailResult.Ok;
+    }
+
+    /// <summary>Finds an unclaimed pre-registered shell whose userId equals the normalized
+    /// Telegram username and links this Telegram identity to it. Returns null when there is
+    /// no claimable shell — callers then fall through to the normal pending/registration path.
+    /// Only rows with PreRegistered == true and no TelegramUserId are eligible, so a normal
+    /// account whose name merely matches a Telegram username is never taken over.</summary>
+    private MockUser? TryClaimPreRegistered(TelegramUserInfoDto tgInfo)
+    {
+        var userId = PreRegistrationRowValidator.NormalizeUsername(tgInfo.Username);
+        if (string.IsNullOrEmpty(userId)) return null;
+
+        var shell = _users.Values.FirstOrDefault(u =>
+            string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)
+            && u.PreRegistered
+            && string.IsNullOrEmpty(u.TelegramUserId));
+
+        if (shell is null) return null;
+        if (!AttachTelegramToUser(shell, tgInfo)) return null;
+
+        _logger.LogInformation("Claimed pre-registered account {UserId} for tg {TgId}", shell.Id, tgInfo.Id);
+        return shell;
     }
 
     private bool AttachTelegramToUser(MockUser user, TelegramUserInfoDto tgInfo)
