@@ -27,6 +27,7 @@ public class AdminController : ControllerBase
     private readonly IForumService _forum;
     private readonly IStoreService _store;
     private readonly IBlogService _blog;
+    private readonly IAuthService _auth;
 
     public AdminController(
         IAppConfigService appConfig,
@@ -34,7 +35,8 @@ public class AdminController : ControllerBase
         IEventService events,
         IForumService forum,
         IStoreService store,
-        IBlogService blog)
+        IBlogService blog,
+        IAuthService auth)
     {
         _appConfig = appConfig;
         _eventInvites = eventInvites;
@@ -42,6 +44,7 @@ public class AdminController : ControllerBase
         _forum = forum;
         _store = store;
         _blog = blog;
+        _auth = auth;
     }
 
     [HttpGet("events")]
@@ -116,6 +119,34 @@ public class AdminController : ControllerBase
         if (!ok)
             return NotFound(ApiResponse<bool>.ErrorResponse("NOT_FOUND", "Attendee not found"));
         return Ok(ApiResponse<bool>.SuccessResponse(true));
+    }
+
+    /// <summary>Bulk pre-registration of event attendees by Telegram username. Admin-only
+    /// (inherited from the controller-level [RequireStaffRole("admin")]).</summary>
+    [HttpPost("events/{eventId}/preregister")]
+    public async Task<ActionResult<ApiResponse<PreRegisterResultDto>>> PreRegisterAttendees(
+        string eventId, [FromBody] PreRegisterAttendeesRequestDto request)
+    {
+        if (request?.Attendees is null || request.Attendees.Count == 0)
+            return BadRequest(ApiResponse<PreRegisterResultDto>.ErrorResponse(
+                "ATTENDEES_REQUIRED", "At least one attendee is required"));
+
+        if (request.Attendees.Count > 500)
+            return BadRequest(ApiResponse<PreRegisterResultDto>.ErrorResponse(
+                "TOO_MANY_ATTENDEES", "At most 500 attendees per request"));
+
+        // Pre-flight: attendee registration silently no-ops for a missing or archived event,
+        // which would report every row as "created" while registering nobody. Fail fast instead.
+        var target = await _events.GetEventByIdAdminAsync(eventId);
+        if (target is null)
+            return BadRequest(ApiResponse<PreRegisterResultDto>.ErrorResponse(
+                "EVENT_NOT_FOUND", "No such event"));
+        if (target.Archived)
+            return BadRequest(ApiResponse<PreRegisterResultDto>.ErrorResponse(
+                "EVENT_ARCHIVED", "Cannot pre-register attendees for an archived event"));
+
+        var result = await _auth.PreRegisterAttendeesAsync(eventId, request.Attendees);
+        return Ok(ApiResponse<PreRegisterResultDto>.SuccessResponse(result));
     }
 
     [HttpGet("events/{eventId}/forum-topics")]
