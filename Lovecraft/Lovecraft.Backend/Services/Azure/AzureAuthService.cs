@@ -284,6 +284,17 @@ public class AzureAuthService : IAuthService
                 Username = request.Username,
                 PhotoUrl = request.PhotoUrl,
             };
+
+            var claimed = await TryClaimPreRegisteredAsync(tgInfo);
+            if (claimed is not null)
+            {
+                return new TelegramLoginResultDto
+                {
+                    Status = "signedIn",
+                    Auth = await IssueJwtPairAsync(claimed),
+                };
+            }
+
             var ticket = _jwtService.GenerateTelegramPendingTicket(tgInfo);
             _logger.LogInformation("Telegram login: pending ticket issued for tg {TgId}", tgKey);
             return new TelegramLoginResultDto
@@ -564,6 +575,17 @@ public class AzureAuthService : IAuthService
 
         if (userEntity is null)
         {
+            var claimed = await TryClaimPreRegisteredAsync(tgInfo);
+            if (claimed is not null)
+            {
+                return new TelegramMiniAppLoginResultDto
+                {
+                    Status = "signedIn",
+                    Auth = await IssueJwtPairAsync(claimed),
+                    Telegram = tgInfo,
+                };
+            }
+
             _logger.LogInformation("Mini app login: needsRegistration for tg {TgId}", tgKey);
             return new TelegramMiniAppLoginResultDto { Status = "needsRegistration", Telegram = tgInfo };
         }
@@ -982,6 +1004,38 @@ public class AzureAuthService : IAuthService
         await _usersTable.UpdateEntityAsync(userEntity, userEntity.ETag, TableUpdateMode.Replace);
         _userCache.Set(userEntity);
         return true;
+    }
+
+    /// <summary>Finds an unclaimed pre-registered shell whose userId equals the normalized
+    /// Telegram username and links this Telegram identity to it. Returns null when there is no
+    /// claimable shell — callers then fall through to the normal pending/registration path.
+    /// Only rows with PreRegistered == true and an empty TelegramUserId are eligible, so a normal
+    /// account whose name merely matches a Telegram username is never taken over.</summary>
+    private async Task<UserEntity?> TryClaimPreRegisteredAsync(TelegramUserInfoDto tgInfo)
+    {
+        var userId = PreRegistrationRowValidator.NormalizeUsername(tgInfo.Username);
+        if (string.IsNullOrEmpty(userId)) return null;
+
+        UserEntity shell;
+        try
+        {
+            var resp = await _usersTable.GetEntityAsync<UserEntity>(
+                UserEntity.GetPartitionKey(userId), userId);
+            shell = resp.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+
+        if (!shell.PreRegistered || !string.IsNullOrEmpty(shell.TelegramUserId))
+            return null;
+
+        if (!await AttachTelegramToUserAsync(shell, tgInfo))
+            return null;
+
+        _logger.LogInformation("Claimed pre-registered account {UserId} for tg {TgId}", userId, tgInfo.Id);
+        return shell;
     }
 
     /// <summary>Set TelegramUserId + append "telegram" to AuthMethods + write tg index (atomic insert).</summary>
