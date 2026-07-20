@@ -111,6 +111,17 @@ For Mini App contexts inside Telegram clients. Uses `Telegram.WebApp.initData` a
 | POST | `/telegram-miniapp-register` | public, rate-limited | Body `{ initData, name, age, location, gender, bio?, inviteCode? }` |
 | POST | `/telegram-miniapp-link-login` | public, rate-limited | Body `{ initData, email, password }` — link Telegram to existing local account |
 
+### Pre-registered account claim
+
+Admins can pre-create "shell" accounts for known attendees before they ever sign in (see `POST /api/v1/admin/events/{eventId}/preregister`) — `userId` = normalized Telegram username, `PreRegistered = true`, no auth method, empty `TelegramUserId`. Both `TelegramLoginAsync` (widget) and `MiniAppLoginAsync` (Mini App) try to **claim** one of these shells before falling back to `pending` / `needsRegistration`:
+
+1. The sign-in payload's numeric Telegram id is unknown (no `usertelegramindex` row).
+2. If the payload carries a `username`, normalize it the same way `AccountNameValidator` normalizes account names and point-read `users` for that id.
+3. Claim only when the row is eligible: **`PreRegistered == true` AND `TelegramUserId` is empty.** If eligible, attach the real numeric id (same `AttachTelegramToUser(Async)` primitive used for linking), persist, and issue the JWT pair — the response is `signedIn`, not `pending`/`needsRegistration`, so the person never sees the registration wizard.
+4. Otherwise (no username, no matching row, the row is a normal non-shell account, or the shell was already claimed by a different Telegram id) → fall through to the existing unknown-id path unchanged.
+
+The eligibility check is what keeps this safe: a normal account whose display name or account name happens to match someone's Telegram username is **never** claimed, because it was never marked `PreRegistered`.
+
 ### Account management
 
 | Method | Path | Auth | Description |

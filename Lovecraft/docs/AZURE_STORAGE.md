@@ -45,6 +45,7 @@ Stores the full user profile. See [AUTHENTICATION.md](./AUTHENTICATION.md#-stora
 - `StaffRole` (`"none"|"moderator"|"admin"`), `RankOverride` (admin-set; otherwise null and rank is computed)
 - `ReplyCount`, `LikesReceived`, `EventsAttended`, `MatchCount` — counters feeding `RankCalculator`
 - `RegistrationSourceEventId`, `RegistrationSourceRedeemedAtUtc` — immutable invite-source audit
+- `PreRegistered` — `true` for admin-created "shell" accounts (see [AUTHENTICATION.md](./AUTHENTICATION.md#pre-registered-account-claim)); stays `true` permanently, so claim-eligibility also requires an empty `TelegramUserId`
 - `PreferencesJson`, `SettingsJson`, `FavoriteSongJson`, `ImagesJson`, `PromptsJson`
 
 #### `useremailindex`
