@@ -1616,6 +1616,137 @@ public class AzureAuthService : IAuthService
         return null;
     }
 
-    public Task<PreRegisterResultDto> PreRegisterAttendeesAsync(string eventId, List<PreRegisterAttendeeDto> attendees)
-        => throw new NotImplementedException();
+    public async Task<PreRegisterResultDto> PreRegisterAttendeesAsync(
+        string eventId, List<PreRegisterAttendeeDto> attendees)
+    {
+        var result = new PreRegisterResultDto();
+
+        foreach (var row in attendees ?? new List<PreRegisterAttendeeDto>())
+        {
+            var validated = PreRegistrationRowValidator.Validate(row);
+            var rowResult = new PreRegisterRowResultDto { TelegramUsername = validated.Username };
+
+            if (validated.Status is not null)
+            {
+                rowResult.Status = validated.Status;
+                rowResult.Message = validated.Message;
+                if (validated.Status == PreRegistrationRowValidator.StatusInvalidUsername)
+                    result.Summary.InvalidUsername++;
+                else
+                    result.Summary.InvalidName++;
+                result.Results.Add(rowResult);
+                continue;
+            }
+
+            var userId = validated.UserId;
+            var name = validated.Name;
+            rowResult.UserId = userId;
+
+            // Dedup: any existing account (shell or real) with this userId wins.
+            try
+            {
+                await _usersTable.GetEntityAsync<UserEntity>(UserEntity.GetPartitionKey(userId), userId);
+                rowResult.Status = PreRegistrationRowValidator.StatusSkippedExists;
+                rowResult.Message = "an account with this username already exists";
+                result.Summary.SkippedExists++;
+                result.Results.Add(rowResult);
+                continue;
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // free to create
+            }
+
+            try
+            {
+                // Photo is best-effort: a download/upload failure must NOT fail the row.
+                var profileImage = string.Empty;
+                try
+                {
+                    profileImage = await FetchExternalPhotoAsync(userId, row.PhotoUrl);
+                }
+                catch (Exception photoEx)
+                {
+                    _logger.LogWarning(photoEx,
+                        "Pre-registration: photo fetch failed for {UserId}; continuing without it", userId);
+                }
+
+                var syntheticEmail = $"prereg_{userId}@telegram.local";
+                var emailLower = syntheticEmail.ToLowerInvariant();
+                var now = DateTime.UtcNow;
+
+                var userEntity = new UserEntity
+                {
+                    PartitionKey = UserEntity.GetPartitionKey(userId),
+                    RowKey = userId,
+                    AccountNameDisplay = validated.Username,
+                    Email = syntheticEmail,
+                    PasswordHash = _passwordHasher.HashPassword(
+                        Convert.ToBase64String(RandomNumberGenerator.GetBytes(48))),
+                    Name = name,
+                    Gender = NormalizeGender(row.Gender),
+                    ProfileImage = profileImage,
+                    ImagesJson = JsonSerializer.Serialize(
+                        !string.IsNullOrEmpty(profileImage)
+                            ? new List<string> { profileImage }
+                            : new List<string>()),
+                    EmailVerified = true,
+                    AuthMethodsJson = JsonSerializer.Serialize(new List<string>()),
+                    TelegramUserId = string.Empty,
+                    PreRegistered = true,
+                    PreferencesJson = JsonSerializer.Serialize(new { AgeRangeMin = 18, AgeRangeMax = 65, MaxDistance = 50, ShowMe = "everyone" }),
+                    SettingsJson = JsonSerializer.Serialize(new { ProfileVisibility = "public", AnonymousLikes = false, Language = "ru", Notifications = true }),
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    IsOnline = false,
+                    LastSeen = now,
+                };
+
+                try
+                {
+                    await _usersTable.AddEntityAsync(userEntity);
+                }
+                catch (RequestFailedException ex) when (ex.Status == 409)
+                {
+                    rowResult.Status = PreRegistrationRowValidator.StatusSkippedExists;
+                    rowResult.Message = "an account with this username already exists";
+                    result.Summary.SkippedExists++;
+                    result.Results.Add(rowResult);
+                    continue;
+                }
+
+                try
+                {
+                    await _emailIndexTable.AddEntityAsync(new UserEmailIndexEntity
+                    {
+                        PartitionKey = emailLower,
+                        RowKey = "INDEX",
+                        UserId = userId
+                    });
+                }
+                catch (RequestFailedException ex) when (ex.Status == 409)
+                {
+                    // Index already present for this synthetic address — harmless.
+                }
+
+                _userCache.Set(userEntity);
+                await _events.RegisterForEventAsync(userId, eventId);
+
+                rowResult.Status = PreRegistrationRowValidator.StatusCreated;
+                result.Summary.Created++;
+                _logger.LogInformation("Pre-registered shell account {UserId} for event {EventId}", userId, eventId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Pre-registration failed for {Username}", validated.Username);
+                rowResult.Status = PreRegistrationRowValidator.StatusError;
+                rowResult.Message = ex.Message;
+                result.Summary.Error++;
+            }
+
+            result.Results.Add(rowResult);
+        }
+
+        return result;
+    }
 }
