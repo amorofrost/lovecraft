@@ -1019,6 +1019,7 @@ public class MockAuthService : IAuthService
 
             if (_users.Values.Any(u => string.Equals(u.Id, userId, StringComparison.OrdinalIgnoreCase)))
             {
+                await _events.RegisterForEventAsync(userId, eventId);
                 rowResult.Status = PreRegistrationRowValidator.StatusSkippedExists;
                 rowResult.Message = "an account with this username already exists";
                 result.Summary.SkippedExists++;
@@ -1041,7 +1042,7 @@ public class MockAuthService : IAuthService
                     PreRegistered = true,
                     TelegramUserId = null,
                     Gender = NormalizeGender(row.Gender),
-                    ProfileImage = row.PhotoUrl ?? string.Empty,
+                    ProfileImage = PreRegistrationRowValidator.SanitizePhotoUrl(row.PhotoUrl) ?? string.Empty,
                     CreatedAt = DateTime.UtcNow,
                 };
 

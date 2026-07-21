@@ -1700,6 +1700,7 @@ public class AzureAuthService : IAuthService
             try
             {
                 await _usersTable.GetEntityAsync<UserEntity>(UserEntity.GetPartitionKey(userId), userId);
+                await _events.RegisterForEventAsync(userId, eventId);
                 rowResult.Status = PreRegistrationRowValidator.StatusSkippedExists;
                 rowResult.Message = "an account with this username already exists";
                 result.Summary.SkippedExists++;
@@ -1717,7 +1718,8 @@ public class AzureAuthService : IAuthService
                 var profileImage = string.Empty;
                 try
                 {
-                    profileImage = await FetchExternalPhotoAsync(userId, row.PhotoUrl);
+                    profileImage = await FetchExternalPhotoAsync(
+                        userId, PreRegistrationRowValidator.SanitizePhotoUrl(row.PhotoUrl));
                 }
                 catch (Exception photoEx)
                 {
@@ -1762,6 +1764,7 @@ public class AzureAuthService : IAuthService
                 }
                 catch (RequestFailedException ex) when (ex.Status == 409)
                 {
+                    await _events.RegisterForEventAsync(userId, eventId);
                     rowResult.Status = PreRegistrationRowValidator.StatusSkippedExists;
                     rowResult.Message = "an account with this username already exists";
                     result.Summary.SkippedExists++;

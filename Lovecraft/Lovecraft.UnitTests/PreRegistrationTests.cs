@@ -4,6 +4,7 @@ using Lovecraft.Backend.Configuration;
 using Lovecraft.Backend.MockData;
 using Lovecraft.Backend.Services;
 using Lovecraft.Common.DTOs.Admin;
+using Lovecraft.Common.DTOs.Auth;
 using Lovecraft.Common.DTOs.Events;
 using Lovecraft.Common.Enums;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,6 +19,12 @@ public class PreRegistrationTests
     private const string BotToken = "1234567:TEST-BOT-TOKEN-FOR-PREREGISTRATION";
     private const string EventId = "preregistration-test-event";
 
+    // Dedicated to the skippedExists-repair test below: a second fixture event, distinct
+    // from EventId (shared with PreRegistrationClaimTests), so asserting its exact
+    // attendee membership can't be perturbed by any other test class's imports.
+    private const string RepairEventId = "preregistration-repair-test-event";
+
+    private readonly MockEventService _events;
     private readonly MockAuthService _auth;
 
     public PreRegistrationTests()
@@ -32,6 +39,7 @@ public class PreRegistrationTests
         };
         var jwt = new JwtService(jwtSettings, NullLogger<JwtService>.Instance);
         var (app, invites, events) = TestAuthDependencies.CreateMockStack();
+        _events = events;
         _auth = new MockAuthService(
             jwt,
             new PasswordHasher(),
@@ -54,6 +62,25 @@ public class PreRegistrationTests
                 Description = "Fixture event owned by PreRegistrationTests",
                 Date = new DateTime(2026, 1, 1, 18, 0, 0),
                 EndDate = new DateTime(2026, 1, 1, 22, 0, 0),
+                Location = "Test",
+                Capacity = 1000,
+                Attendees = new List<string>(),
+                Category = EventCategory.Concert,
+                Price = "0",
+                Organizer = "Test",
+                Visibility = EventVisibility.Public,
+            });
+        }
+
+        if (!MockDataStore.Events.Any(e => e.Id == RepairEventId))
+        {
+            MockDataStore.Events.Add(new EventDto
+            {
+                Id = RepairEventId,
+                Title = "Pre-registration repair test event",
+                Description = "Fixture event owned by PreRegistrationTests (skippedExists repair)",
+                Date = new DateTime(2026, 1, 2, 18, 0, 0),
+                EndDate = new DateTime(2026, 1, 2, 22, 0, 0),
                 Location = "Test",
                 Capacity = 1000,
                 Attendees = new List<string>(),
@@ -144,5 +171,39 @@ public class PreRegistrationTests
         Assert.Equal(2, result.Summary.Created);
         Assert.Equal(1, result.Summary.InvalidUsername);
         Assert.Equal(3, result.Results.Count);
+    }
+
+    [Fact]
+    public async Task PreRegister_SkippedExists_StillRegistersAttendeeForTargetEvent()
+    {
+        // Set up an account that already exists but is NOT an attendee of RepairEventId.
+        // Using a normal (non-shell) registered account rather than a pre-registered shell
+        // for a different event: it is the simplest way to get an existing account whose
+        // userId is known in advance (AccountName is normalized identically to a Telegram
+        // username by PreRegistrationRowValidator/AccountNameValidator) while guaranteeing
+        // it starts out with zero event memberships, so the only way it could show up on
+        // RepairEventId's roster afterwards is via the fix under test.
+        const string username = "Repair_User";
+        var registered = await _auth.RegisterAsync(new RegisterRequestDto
+        {
+            AccountName = username,
+            Email = "repair_user@example.com",
+            Password = "Str0ng!Passw0rd",
+            Name = "Repair User",
+            Age = 30,
+            Gender = "female",
+        });
+        Assert.NotNull(registered);
+        var userId = registered!.User.Id;
+
+        var repairEvent = MockDataStore.Events.Single(e => e.Id == RepairEventId);
+        Assert.DoesNotContain(userId, repairEvent.Attendees);
+
+        var result = await _auth.PreRegisterAttendeesAsync(RepairEventId, new() { Row(username) });
+
+        var row = Assert.Single(result.Results);
+        Assert.Equal("skippedExists", row.Status);
+        Assert.Equal(1, result.Summary.SkippedExists);
+        Assert.Contains(userId, repairEvent.Attendees);
     }
 }

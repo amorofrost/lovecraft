@@ -52,4 +52,18 @@ public static class PreRegistrationRowValidator
 
         return new ValidatedRow(username, AccountNameValidator.Normalize(username), name, null, null);
     }
+
+    /// <summary>Returns the photo URL only when it is an absolute http(s) URL; otherwise null.
+    /// Admin-supplied URLs reach a server-side image fetch, so non-http(s) schemes (file:, ftp:,
+    /// gopher:, ...) and relative/garbage values must not be fetched (SSRF hardening; the design
+    /// spec requires a well-formed http(s) URL).</summary>
+    public static string? SanitizePhotoUrl(string? photoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(photoUrl)) return null;
+        var trimmed = photoUrl.Trim();
+        return Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
+               && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? trimmed
+            : null;
+    }
 }

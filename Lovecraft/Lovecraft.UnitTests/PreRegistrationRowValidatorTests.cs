@@ -78,4 +78,34 @@ public class PreRegistrationRowValidatorTests
 
         Assert.Equal(PreRegistrationRowValidator.StatusInvalidUsername, v.Status);
     }
+
+    [Theory]
+    [InlineData("https://example.com/p.jpg")]
+    [InlineData("http://example.com/p.jpg")]
+    public void SanitizePhotoUrl_AbsoluteHttpOrHttps_ReturnsUrl(string url)
+    {
+        Assert.Equal(url, PreRegistrationRowValidator.SanitizePhotoUrl(url));
+    }
+
+    [Fact]
+    public void SanitizePhotoUrl_TrimsSurroundingWhitespace_OnAcceptedUrl()
+    {
+        Assert.Equal(
+            "https://example.com/p.jpg",
+            PreRegistrationRowValidator.SanitizePhotoUrl("   https://example.com/p.jpg   "));
+    }
+
+    [Theory]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("ftp://example.com/p.jpg")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("/p.jpg")]
+    [InlineData("not a url at all")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void SanitizePhotoUrl_NonHttpSchemeOrMalformed_ReturnsNull(string? url)
+    {
+        Assert.Null(PreRegistrationRowValidator.SanitizePhotoUrl(url));
+    }
 }
