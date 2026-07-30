@@ -307,8 +307,10 @@ TELEGRAM_BOT_USERNAME=<bot username without @>
 # or Telegram__BotToken / Telegram__BotUsername in appsettings.json
 # BotFather /setdomain must include aloeve.club and www.aloeve.club for the widget to render
 
-# Email
-SENDGRID_API_KEY=<sendgrid api key>          # absent → NullEmailService logs to console
+# Email (choose one provider; first match wins)
+AZURE_COMMUNICATION_CONNECTION_STRING=<azure comm svc connection string>  # preferred if set
+SENDGRID_API_KEY=<sendgrid api key>          # fallback if Azure Comm not set
+# If neither is set → NullEmailService logs to console
 FROM_EMAIL=noreply@aloeband.ru
 FRONTEND_BASE_URL=https://aloeve.club        # used in verification + reset links
 
